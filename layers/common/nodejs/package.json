@@ -1,0 +1,18 @@
+{
+  "name": "common-dependencies",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.478.0",
+    "@aws-sdk/client-eventbridge": "^3.940.0",
+    "@aws-sdk/client-secrets-manager": "^3.478.0",
+    "@aws-sdk/client-ses": "^3.478.0",
+    "@aws-sdk/client-sns": "^3.940.0",
+    "@aws-sdk/client-ssm": "^3.478.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,12 @@
+version = 0.1
+
+[default.deploy.parameters]
+
+stack_name = "myapp-prod"
+s3_bucket = "REPLACE_ME_SAM_BUCKET_PROD"
+s3_prefix = "myapp-prod"
+region = "ap-south-1"
+parameter_overrides = "EnvironmentName=prod ProjectName=myapp CorsOrigin='*' BurstLimit=500 RateLimit=250 ProvisionedConcurrency=10"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+confirm_changeset = "true"
+

@@ -1,0 +1,172 @@
+import mongoose from "mongoose";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+
+// Types
+interface MongoSecret {
+  uri: string;
+}
+
+interface ConnectionResult {
+  success: boolean;
+  error?: string;
+}
+
+// Connection cache (survives across Lambda invocations)
+let cachedConnection: typeof mongoose | null = null;
+let cachedMongoUri: string | null = null;
+
+/**
+ * Retrieves MongoDB URI from AWS Secrets Manager
+ * Caches the URI to avoid repeated API calls
+ */
+const getMongoUri = async (): Promise<string> => {
+  // Return cached URI if available
+  if (cachedMongoUri) {
+    console.log("Using cached MongoDB URI");
+    return cachedMongoUri;
+  }
+
+  const secretId = process.env.MONGODB_SECRET_ID;
+  if (!secretId) {
+    throw new Error("MONGODB_SECRET_ID environment variable is not set");
+  }
+
+  console.log("Retrieving MongoDB URI from Secrets Manager...");
+  
+  const client = new SecretsManagerClient({ region: process.env.AWS_REGION });
+  const command = new GetSecretValueCommand({ SecretId: secretId });
+  
+  try {
+    const response = await client.send(command);
+    
+    if (!response.SecretString) {
+      throw new Error("MongoDB secret not found or empty");
+    }
+    
+    const secret: MongoSecret = JSON.parse(response.SecretString);
+    
+    if (!secret.uri) {
+      throw new Error("MongoDB URI not found in secret");
+    }
+    
+    // Cache the URI
+    cachedMongoUri = secret.uri;
+    console.log("MongoDB URI retrieved and cached successfully");
+    
+    return secret.uri;
+  } catch (error) {
+    console.error("Failed to retrieve MongoDB URI:", error);
+    throw new Error(`Secrets Manager error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+/**
+ * Establishes connection to MongoDB
+ * Reuses existing connection if available and healthy
+ */
+export const connect = async (): Promise<void> => {
+  try {
+    // Check if we have a valid existing connection
+    if (cachedConnection && mongoose.connection.readyState === 1) {
+      console.log("Reusing existing MongoDB connection");
+      return;
+    }
+
+    // If connection exists but is in bad state, disconnect first
+    if (mongoose.connection.readyState !== 0) {
+      console.log("Closing stale MongoDB connection...");
+      await mongoose.connection.close();
+    }
+
+    console.log("Establishing new MongoDB connection...");
+    const uri = await getMongoUri();
+    
+    cachedConnection = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      serverApi: { 
+        version: '1', 
+        strict: true, 
+        deprecationErrors: true 
+      }
+    });
+    
+    console.log("MongoDB connected successfully");
+  } catch (error) {
+    console.error("MongoDB connection failed:", error);
+    cachedConnection = null; // Clear cache on failure
+    throw new Error(`MongoDB connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+/**
+ * Checks if MongoDB connection is healthy
+ * Performs a ping operation to verify connectivity
+ */
+export const ping = async (): Promise<ConnectionResult> => {
+  try {
+    if (!cachedConnection || mongoose.connection.readyState !== 1) {
+      return {
+        success: false,
+        error: "Not connected to MongoDB"
+      };
+    }
+
+    await mongoose.connection.db.admin().ping();
+    console.log("MongoDB ping successful");
+    
+    return { success: true };
+  } catch (error) {
+    console.error("MongoDB ping failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Ping failed'
+    };
+  }
+};
+
+/**
+ * Gets the current Mongoose connection instance
+ * Useful for advanced operations
+ */
+export const getConnection = (): typeof mongoose | null => {
+  return cachedConnection;
+};
+
+/**
+ * Gracefully closes the MongoDB connection
+ * Use sparingly - Lambda container reuse is more efficient
+ */
+export const disconnect = async (): Promise<void> => {
+  try {
+    if (cachedConnection) {
+      console.log("Disconnecting from MongoDB...");
+      await mongoose.connection.close();
+      cachedConnection = null;
+      cachedMongoUri = null;
+      console.log("MongoDB disconnected");
+    }
+  } catch (error) {
+    console.error("Error disconnecting from MongoDB:", error);
+    throw error;
+  }
+};
+
+/**
+ * Gets current connection state
+ * 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+ */
+export const getConnectionState = (): number => {
+  return mongoose.connection.readyState;
+};
+
+// Default export for convenience
+export default {
+  connect,
+  ping,
+  disconnect,
+  getConnection,
+  getConnectionState
+};

@@ -1,0 +1,11 @@
+{
+  "name": "ping-function",
+  "version": "1.0.0",
+  "description": "Ping Lambda function",
+  "main": "app.js",
+  "dependencies": {
+    "@vendia/serverless-express": "^4.12.6",
+    "express": "^4.18.2",
+    "shared": "file:../../../shared"
+  }
+}

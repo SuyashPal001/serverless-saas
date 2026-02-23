@@ -1,0 +1,10 @@
+version =0.1
+
+[default.deploy.parameters]
+stack_name = "myapp-staging"
+s3_bucket = "REPLACE_ME_SAM_BUCKET_STAGING"
+s3_prefix = "myapp-staging"
+region = "ap-south-1"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "EnvironmentName=staging ProjectName=myapp CorsOrigin='*' BurstLimit=500 RateLimit=250 ProvisionedConcurrency=1" 
+confirm_changeset = "true"

@@ -1,0 +1,31 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /register",
+  "rawPath": "/register",
+  "rawQueryString": "",
+  "headers": {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "user-agent": "Mozilla/5.0 (Local Testing)"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "local-api",
+    "domainName": "localhost",
+    "domainPrefix": "local",
+    "http": {
+      "method": "POST",
+      "path": "/register",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Local Testing)"
+    },
+    "requestId": "local-test-request-id",
+    "routeKey": "POST /register",
+    "stage": "dev",
+    "time": "22/Nov/2025:12:00:00 +0000",
+    "timeEpoch": 1732276800000
+  },
+  "body": "{\"email\":\"test@example.com\",\"password\":\"Test1234!\",\"givenName\":\"Test\",\"familyName\":\"User\"}",
+  "isBase64Encoded": false
+}

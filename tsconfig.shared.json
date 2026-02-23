@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+
+    "outDir": "./dist/shared/nodejs/node_modules/shared",
+    "rootDir": "./src",
+
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+
+    "baseUrl": "./src",
+    "paths": {
+      "shared/*": ["shared/*"],
+      "config/*": ["config/*"]
+    }
+    // "declaration": true,
+    // "declarationMap": true,
+    // "sourceMap": true
+  },
+  "include": ["src/shared/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,21 @@
+{
+  "Records": [
+    {
+      "EventSource": "aws:sns",
+      "EventVersion": "1.0",
+      "EventSubscriptionArn": "arn:aws:sns:ap-south-1:123456789012:myapp-dev-events:12345678-1234-1234-1234-123456789012",
+      "Sns": {
+        "Type": "Notification",
+        "MessageId": "12345678-1234-1234-1234-123456789012",
+        "TopicArn": "arn:aws:sns:ap-south-1:123456789012:myapp-dev-events",
+        "Subject": "Test",
+        "Message": "{\"correlationId\":\"test-123\",\"env\":\"dev\",\"timestamp\":\"2025-11-23T20:00:00.000Z\",\"eventType\":\"user.registered\",\"data\":{\"userId\":\"test-user-123\",\"email\":\"test@example.com\"}}",
+        "Timestamp": "2025-11-23T20:00:00.000Z",
+        "SignatureVersion": "1",
+        "Signature": "test-signature",
+        "SigningCertUrl": "https://sns.ap-south-1.amazonaws.com/test.pem",
+        "UnsubscribeUrl": "https://sns.ap-south-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=test"
+      }
+    }
+  ]
+}

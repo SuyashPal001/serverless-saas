@@ -1,0 +1,16 @@
+{
+  "name": "common-dependencies-layer",
+  "version": "1.0.0",
+  "description": "Common npm dependencies for Lambda functions",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@aws-sdk/client-eventbridge": "^3.940.0",
+    "@aws-sdk/client-secrets-manager": "^3.0.0",
+    "@aws-sdk/client-sns": "^3.940.0",
+    "@aws-sdk/client-ssm": "^3.0.0",
+    "@vendia/serverless-express": "^4.12.0",
+    "express": "^5.2.1",
+    "mongodb": "^6.7.0",
+    "mongoose": "^6.5.3"
+  }
+}
