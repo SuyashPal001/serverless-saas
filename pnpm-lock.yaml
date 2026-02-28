@@ -152,6 +152,9 @@ importers:
       '@serverless-saas/types':
         specifier: workspace:*
         version: link:../types
+      '@upstash/redis':
+        specifier: ^1.36.3
+        version: 1.36.3
 
   packages/foundation/logger:
     dependencies:
