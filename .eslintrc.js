@@ -1,16 +1,19 @@
-/* eslint-env node */
 module.exports = {
-  extends: [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:prettier/recommended",
-  ],
-  parser: "@typescript-eslint/parser",
-  //plugins: ['@typescript-eslint'],
-  rules: {
-    "unicorn/consistent-function-scoping": "off",
-    "prettier/prettier": "off",
-    "linebreak-style": "off",
-  },
   root: true,
+  parser: '@typescript-eslint/parser',
+  plugins: ['@typescript-eslint'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+  ],
+  env: {
+    node: true,
+    es2020: true,
+  },
+  rules: {
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-explicit-any': 'warn',
+    '@typescript-eslint/consistent-type-imports': 'error',
+  },
+  ignorePatterns: ['dist', 'node_modules', '.aws-sam', '*.js'],
 };

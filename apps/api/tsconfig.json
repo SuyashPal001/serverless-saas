@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/foundation/types" },
+    { "path": "../../packages/foundation/validators" },
+    { "path": "../../packages/foundation/events" },
+    { "path": "../../packages/foundation/cache" },
+    { "path": "../../packages/foundation/logger" },
+    { "path": "../../packages/foundation/auth" },
+    { "path": "../../packages/foundation/permissions" },
+    { "path": "../../packages/foundation/entitlements" }
+  ]
+}

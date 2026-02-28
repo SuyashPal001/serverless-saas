@@ -1,0 +1,2 @@
+// @serverless-saas/entitlements
+export {};
