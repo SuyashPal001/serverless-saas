@@ -10,9 +10,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.932.0",
     "@serverless-saas/cache": "workspace:*",
     "@serverless-saas/types": "workspace:*",
-    "@aws-sdk/client-cognito-identity-provider": "^3.932.0",
+    "@upstash/redis": "^1.36.3",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.0"
   },
