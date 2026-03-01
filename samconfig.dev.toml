@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+stack_name          = "platform-foundation-dev"
+s3_bucket           = "REPLACE_ME_SAM_BUCKET_DEV"
+s3_prefix           = "platform-foundation-dev"
+region              = "ap-south-1"
+capabilities        = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+confirm_changeset   = false
+fail_on_empty_changeset = false
+parameter_overrides = "ProjectName=platform EnvironmentName=dev"

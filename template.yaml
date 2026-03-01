@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Platform Foundation — Lambda function definitions only.
+  All infrastructure (API Gateway, Cognito, SQS, SNS, EventBridge, IAM)
+  is owned by Terraform. This template reads values Terraform writes to SSM.
+
+# -------------------------------------------------------
+# Parameters
+# Passed via samconfig.{env}.toml parameter_overrides
+# -------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: platform
+
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+# -------------------------------------------------------
+# Mappings
+# Per-environment config that lives in SAM, not Terraform
+# -------------------------------------------------------
+Mappings:
+  EnvConfig:
+    dev:
+      LogLevel: INFO
+    staging:
+      LogLevel: INFO
+    prod:
+      LogLevel: WARN
+
+# -------------------------------------------------------
+# Globals
+# Shared config applied to all Lambda functions
+# -------------------------------------------------------
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64                  # Graviton2 — 20% cheaper, faster cold start
+    MemorySize: 512
+    Timeout: 29
+    Environment:
+      Variables:
+        NODE_ENV: !Ref EnvironmentName
+        LOG_LEVEL: !FindInMap [EnvConfig, !Ref EnvironmentName, LogLevel]
+        NODE_OPTIONS: "--enable-source-maps"
+
+        # Cognito — written by Terraform cognito module via SSM
+        COGNITO_USER_POOL_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/user-pool-id}}"
+        COGNITO_CLIENT_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/client-id}}"
+
+        # Database — written by Terraform secrets module
+        DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+
+        # Cache — written by Terraform secrets module
+        UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+        UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+
+    Layers:
+      - !Ref FoundationDepsLayer
+
+# -------------------------------------------------------
+# Resources
+# -------------------------------------------------------
+Resources:
+
+  # =====================================================
+  # Lambda Layer — shared node_modules
+  # Keeps function bundles small, faster cold starts
+  # =====================================================
+  FoundationDepsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ProjectName}-foundation-deps-${EnvironmentName}"
+      Description: Shared node_modules for foundation Lambdas
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - nodejs20.x
+      CompatibleArchitectures:
+        - arm64
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: arm64
+
+  # =====================================================
+  # 1. Foundation API Lambda
+  # Hono handler — all HTTP routes
+  # API Gateway integration owned by Terraform
+  # =====================================================
+  FoundationApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-foundation-api-${EnvironmentName}"
+      Description: Hono HTTP handler for all foundation API routes
+      CodeUri: apps/api/
+      Handler: dist/lambda.handler
+      MemorySize: 512
+      Timeout: 29
+      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-api-role-arn}}"
+      Environment:
+        Variables:
+          LAMBDA_TYPE: api
+          # SQS queue URLs — written by Terraform SQS module
+          PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          WORKFLOW_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/workflow-queue-url}}"
+          # SNS topic ARN — written by Terraform SNS module
+          EVENTS_TOPIC_ARN: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sns/events-topic-arn}}"
+          # EventBridge bus — written by Terraform EventBridge module
+          EVENT_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - src/lambda.ts
+        External:
+          - "@aws-sdk/*"
+
+  # =====================================================
+  # 2. Foundation Worker Lambda
+  # SQS consumer — all background jobs
+  # Event source mapping owned by Terraform (module 7)
+  # =====================================================
+  FoundationWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-foundation-worker-${EnvironmentName}"
+      Description: SQS consumer for all foundation background jobs
+      CodeUri: apps/worker/
+      Handler: dist/lambda.handler
+      MemorySize: 1024           # more memory for batch processing
+      Timeout: 900               # 15 min — SQS max visibility timeout
+      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-worker-role-arn}}"
+      Environment:
+        Variables:
+          LAMBDA_TYPE: worker
+          PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          WORKFLOW_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/workflow-queue-url}}"
+          EVENTS_TOPIC_ARN: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sns/events-topic-arn}}"
+          EVENT_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - src/lambda.ts
+        External:
+          - "@aws-sdk/*"
+
+  # =====================================================
+  # 3. Pre Token Generation Lambda
+  # Cognito trigger — stamps tenantId, role, plan into JWT
+  # Cognito trigger wiring owned by Terraform (cognito module)
+  # Must be fast — runs synchronously on every login
+  # =====================================================
+  FoundationPretokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-foundation-pretoken-${EnvironmentName}"
+      Description: Cognito Pre Token Generation — stamps tenantId, role, plan into JWT
+      CodeUri: apps/api/
+      Handler: dist/pretoken.handler
+      MemorySize: 256            # lightweight — DB lookup + claim stamp only
+      Timeout: 5                 # Cognito fails login if trigger exceeds ~5s
+      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-pretoken-role-arn}}"
+      Environment:
+        Variables:
+          LAMBDA_TYPE: pretoken
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - src/pretoken.ts
+        External:
+          - "@aws-sdk/*"
+
+# -------------------------------------------------------
+# Outputs
+# Lambda ARNs — Terraform module 7 reads these via SSM
+# Written to SSM by post-deploy script (see Makefile)
+# -------------------------------------------------------
+Outputs:
+  FoundationApiLambdaArn:
+    Description: Foundation API Lambda ARN
+    Value: !GetAtt FoundationApiFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationApiLambdaArn"
+
+  FoundationWorkerLambdaArn:
+    Description: Foundation Worker Lambda ARN
+    Value: !GetAtt FoundationWorkerFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationWorkerLambdaArn"
+
+  FoundationPretokenLambdaArn:
+    Description: Foundation Pre Token Lambda ARN
+    Value: !GetAtt FoundationPretokenFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationPretokenLambdaArn"
+
+  FoundationDepsLayerArn:
+    Description: Foundation shared dependency layer ARN
+    Value: !Ref FoundationDepsLayer
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationDepsLayerArn"

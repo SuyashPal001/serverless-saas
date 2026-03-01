@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+stack_name          = "platform-foundation-staging"
+s3_bucket           = "REPLACE_ME_SAM_BUCKET_STAGING"
+s3_prefix           = "platform-foundation-staging"
+region              = "ap-south-1"
+capabilities        = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+confirm_changeset   = true
+fail_on_empty_changeset = false
+parameter_overrides = "ProjectName=platform EnvironmentName=staging"
