@@ -8,13 +8,7 @@
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit"
   },
-  "dependencies": {
-    "@serverless-saas/types": "workspace:*",
-    "@serverless-saas/events": "workspace:*",
-    "@serverless-saas/cache": "workspace:*",
-    "@serverless-saas/logger": "workspace:*",
-    "@serverless-saas/idempotency": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0"
   }
