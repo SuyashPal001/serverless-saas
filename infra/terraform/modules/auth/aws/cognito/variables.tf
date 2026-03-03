@@ -9,8 +9,9 @@ variable "domain_prefix" {
 }
 
 variable "pre_token_generation_lambda_arn" {
-  description = "ARN of the Lambda function invoked before JWT is issued. Stamps custom claims (tenantId, role, plan)."
+  description = "ARN of the Lambda function invoked before JWT is issued. Leave empty on first apply — wire after SAM deploys the function."
   type        = string
+  default     = ""
 }
 
 variable "password_policy" {
@@ -57,7 +58,7 @@ variable "deletion_protection" {
 variable "email_configuration" {
   description = "SES email configuration. If null, Cognito default email is used (dev only)."
   type = object({
-    email_sending_account  = string # DEVELOPER (SES) or COGNITO_DEFAULT
+    email_sending_account  = string
     source_arn             = optional(string, null)
     from_email_address     = optional(string, null)
     reply_to_email_address = optional(string, null)

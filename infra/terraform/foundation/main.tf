@@ -3,14 +3,14 @@
 # -------------------------------------------------------
 locals {
   name_prefix = "${var.project}-${var.environment}"
-  module_path = "../modules"
+  ssm_prefix  = "/${var.project}/${var.environment}"
 }
 
 # -------------------------------------------------------
 # Module: Cognito
 # -------------------------------------------------------
 module "cognito" {
-  source = "${local.module_path}/auth/aws/cognito"
+  source = "../modules/auth/aws/cognito"
 
   user_pool_name                  = "${local.name_prefix}-user-pool"
   domain_prefix                   = var.cognito_domain_prefix
@@ -54,83 +54,123 @@ module "cognito" {
 }
 
 # -------------------------------------------------------
-# Module: SQS — Processing Queue
+# Module: SQS — Processing + Workflow queues
+# Both queues in one module call — each gets its own DLQ
 # -------------------------------------------------------
-module "sqs_processing" {
-  source = "${local.module_path}/messaging/aws/sqs"
+module "sqs" {
+  source = "../modules/messaging/aws/sqs"
 
-  queue_name                 = var.processing_queue_name
-  visibility_timeout_seconds = var.visibility_timeout_seconds
-  message_retention_seconds  = var.message_retention_seconds
-  fifo                       = false
-  tags                       = {}
-}
+  queues = {
+    processing = {
+      name                       = var.processing_queue_name
+      visibility_timeout_seconds = var.visibility_timeout_seconds
+      message_retention_seconds  = var.message_retention_seconds
+    }
+    workflow = {
+      name                       = var.workflow_queue_name
+      visibility_timeout_seconds = var.visibility_timeout_seconds
+      message_retention_seconds  = var.message_retention_seconds
+    }
+  }
 
-# -------------------------------------------------------
-# Module: SQS — Workflow Queue
-# -------------------------------------------------------
-module "sqs_workflow" {
-  source = "${local.module_path}/messaging/aws/sqs"
-
-  queue_name                 = var.workflow_queue_name
-  visibility_timeout_seconds = var.visibility_timeout_seconds
-  message_retention_seconds  = var.message_retention_seconds
-  fifo                       = false
-  tags                       = {}
+  tags = {}
 }
 
 # -------------------------------------------------------
 # Module: SNS — Events Topic
 # -------------------------------------------------------
 module "sns_events" {
-  source = "${local.module_path}/messaging/aws/sns"
+  source = "../modules/messaging/aws/sns"
 
-  topic_name = var.events_topic_name
-  tags       = {}
+  topics = {
+    events = {
+      name = var.events_topic_name
+    }
+  }
+  tags = {}
 }
 
 # -------------------------------------------------------
 # Module: EventBridge — Custom Event Bus
 # -------------------------------------------------------
 module "eventbridge" {
-  source = "${local.module_path}/messaging/aws/eventbridge"
+  source = "../modules/messaging/aws/eventbridge"
 
-  event_bus_name = var.event_bus_name
-  tags           = {}
+  buses = {
+    main = {
+      name = var.event_bus_name
+    }
+  }
+  tags = {}
 }
 
 # -------------------------------------------------------
 # Module: CloudWatch — Log Groups
 # -------------------------------------------------------
 module "cloudwatch" {
-  source = "${local.module_path}/observability/aws/cloudwatch"
+  source = "../modules/observability/aws/cloudwatch"
 
   log_groups = {
-    api    = "/aws/lambda/${local.name_prefix}-foundation-api"
-    worker = "/aws/lambda/${local.name_prefix}-foundation-worker"
-    pretoken = "/aws/lambda/${local.name_prefix}-foundation-pretoken"
+    api_gateway = {
+      name              = "/aws/apigateway/${local.name_prefix}"
+      retention_in_days = var.log_retention_days
+    }
+    foundation_api = {
+      name              = "/aws/lambda/${local.name_prefix}-foundation-api"
+      retention_in_days = var.log_retention_days
+    }
+    foundation_worker = {
+      name              = "/aws/lambda/${local.name_prefix}-foundation-worker"
+      retention_in_days = var.log_retention_days
+    }
+    foundation_pretoken = {
+      name              = "/aws/lambda/${local.name_prefix}-foundation-pretoken"
+      retention_in_days = var.log_retention_days
+    }
   }
-  retention_in_days = var.log_retention_days
-  tags              = {}
+  tags = {}
 }
 
 # -------------------------------------------------------
 # Module: API Gateway
 # -------------------------------------------------------
 module "api_gateway" {
-  source = "${local.module_path}/api-gateway/aws/http-api"
+  source = "../modules/api-gateway/aws/http-api"
 
-  api_name       = var.api_name
-  stage_name     = var.api_stage_name
-  cors_allow_origins = var.cors_allow_origins
+  name                 = var.api_name
+  access_log_group_arn = module.cloudwatch.log_group_arns["api_gateway"]
 
-  # JWT authorizer — Cognito
-  jwt_issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${module.cognito.user_pool_id}"
-  jwt_audience = [module.cognito.app_client_ids["web"]]
+  jwt_authorizer = {
+    issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${module.cognito.user_pool_id}"
+    audience = [module.cognito.app_client_ids["web"]]
+  }
 
-  # Route integrations — Lambda ARNs from SAM
-  lambda_integrations = {
-    "ANY /api/v1/{proxy+}" = var.foundation_api_lambda_arn
+  cors = {
+    allow_origins = var.cors_allow_origins
+  }
+
+  integrations = {
+    foundation_api = {
+      lambda_arn = var.foundation_api_lambda_arn
+    }
+  }
+
+  routes = {
+    api = {
+      route_key       = "ANY /api/v1/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = true
+    }
+    health = {
+      route_key       = "GET /health"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    health_ready = {
+      route_key       = "GET /health/ready"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
   }
 
   tags = {}
@@ -139,21 +179,181 @@ module "api_gateway" {
 # -------------------------------------------------------
 # Module: Event Source Mapping — SQS → Worker Lambda
 # -------------------------------------------------------
-module "esm_processing" {
-  source = "${local.module_path}/integration/aws/event-source-mapping"
+module "esm" {
+  source = "../modules/integration/aws/event-source-mapping"
 
-  event_source_arn = module.sqs_processing.queue_arn
-  function_arn     = var.foundation_worker_lambda_arn
-  batch_size       = 10
+  sqs_mappings = {
+    processing = {
+      queue_arn  = module.sqs.queue_arns["processing"]
+      lambda_arn = var.foundation_worker_lambda_arn
+      batch_size = 10
+    }
+  }
+}
+
+# -------------------------------------------------------
+# Module: IAM — Lambda execution roles
+# -------------------------------------------------------
+module "iam" {
+  source = "../modules/iam/aws/role"
+
+  roles = {
+    foundation_api = {
+      name        = "${local.name_prefix}-foundation-api-role"
+      description = "Execution role for foundation API Lambda (Hono HTTP handler)"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        sqs_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = ["sqs:SendMessage"]
+            Resource = [
+              module.sqs.queue_arns["processing"],
+              module.sqs.queue_arns["workflow"],
+            ]
+          }]
+        })
+        sns_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["sns:Publish"]
+            Resource = module.sns_events.topic_arns["events"]
+          }]
+        })
+        eventbridge_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["events:PutEvents"]
+            Resource = module.eventbridge.bus_arns["main"]
+          }]
+        })
+      }
+    }
+
+    foundation_worker = {
+      name        = "${local.name_prefix}-foundation-worker-role"
+      description = "Execution role for foundation Worker Lambda (SQS consumer)"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        sns_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["sns:Publish"]
+            Resource = module.sns_events.topic_arns["events"]
+          }]
+        })
+        eventbridge_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["events:PutEvents"]
+            Resource = module.eventbridge.bus_arns["main"]
+          }]
+        })
+      }
+    }
+
+    foundation_pretoken = {
+      name        = "${local.name_prefix}-foundation-pretoken-role"
+      description = "Execution role for Pre Token Generation Lambda (Cognito trigger)"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+      }
+    }
+  }
+
+  tags = {}
 }
 
 # -------------------------------------------------------
 # SSM Bridge — Terraform writes, SAM reads
 # -------------------------------------------------------
-locals {
-  ssm_prefix = "/${var.project}/${var.environment}"
-}
-
 resource "aws_ssm_parameter" "cognito_user_pool_id" {
   name  = "${local.ssm_prefix}/cognito/user-pool-id"
   type  = "String"
@@ -175,25 +375,25 @@ resource "aws_ssm_parameter" "cognito_jwks_uri" {
 resource "aws_ssm_parameter" "sqs_processing_queue_url" {
   name  = "${local.ssm_prefix}/sqs/processing-queue-url"
   type  = "String"
-  value = module.sqs_processing.queue_url
+  value = module.sqs.queue_urls["processing"]
 }
 
 resource "aws_ssm_parameter" "sqs_workflow_queue_url" {
   name  = "${local.ssm_prefix}/sqs/workflow-queue-url"
   type  = "String"
-  value = module.sqs_workflow.queue_url
+  value = module.sqs.queue_urls["workflow"]
 }
 
 resource "aws_ssm_parameter" "sns_events_topic_arn" {
   name  = "${local.ssm_prefix}/sns/events-topic-arn"
   type  = "String"
-  value = module.sns_events.topic_arn
+  value = module.sns_events.topic_arns["events"]
 }
 
 resource "aws_ssm_parameter" "eventbridge_bus_name" {
   name  = "${local.ssm_prefix}/eventbridge/bus-name"
   type  = "String"
-  value = module.eventbridge.event_bus_name
+  value = module.eventbridge.bus_names["main"]
 }
 
 resource "aws_ssm_parameter" "api_gateway_id" {
@@ -206,4 +406,22 @@ resource "aws_ssm_parameter" "api_gateway_url" {
   name  = "${local.ssm_prefix}/api-gateway/url"
   type  = "String"
   value = module.api_gateway.api_endpoint
+}
+
+resource "aws_ssm_parameter" "iam_foundation_api_role_arn" {
+  name  = "${local.ssm_prefix}/iam/foundation-api-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["foundation_api"]
+}
+
+resource "aws_ssm_parameter" "iam_foundation_worker_role_arn" {
+  name  = "${local.ssm_prefix}/iam/foundation-worker-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["foundation_worker"]
+}
+
+resource "aws_ssm_parameter" "iam_foundation_pretoken_role_arn" {
+  name  = "${local.ssm_prefix}/iam/foundation-pretoken-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["foundation_pretoken"]
 }

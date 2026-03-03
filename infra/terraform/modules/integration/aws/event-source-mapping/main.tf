@@ -1,8 +1,18 @@
 # -------------------------------------------------------
 # SQS → Lambda Event Source Mappings
+# Only created when lambda_arn is non-empty
+# Pass 1: empty ARNs → skipped
+# Pass 2: real ARNs → wired
 # -------------------------------------------------------
+locals {
+  active_sqs_mappings = {
+    for k, v in var.sqs_mappings : k => v
+    if v.lambda_arn != ""
+  }
+}
+
 resource "aws_lambda_event_source_mapping" "sqs" {
-  for_each = var.sqs_mappings
+  for_each = local.active_sqs_mappings
 
   event_source_arn = each.value.queue_arn
   function_name    = each.value.lambda_arn
@@ -15,11 +25,14 @@ resource "aws_lambda_event_source_mapping" "sqs" {
     maximum_concurrency = each.value.maximum_concurrency
   }
 
-  filter_criteria {
-    dynamic "filter" {
-      for_each = each.value.filters
-      content {
-        pattern = jsonencode(filter.value)
+  dynamic "filter_criteria" {
+    for_each = length(each.value.filters) > 0 ? [1] : []
+    content {
+      dynamic "filter" {
+        for_each = each.value.filters
+        content {
+          pattern = jsonencode(filter.value)
+        }
       }
     }
   }
@@ -29,8 +42,6 @@ resource "aws_lambda_event_source_mapping" "sqs" {
 
 # -------------------------------------------------------
 # EventBridge Pipe — DLQ → Lambda alerting (optional)
-# Surfaces DLQ messages as structured alerts without
-# needing a separate polling Lambda
 # -------------------------------------------------------
 resource "aws_pipes_pipe" "dlq_alert" {
   for_each = var.dlq_alert_mappings

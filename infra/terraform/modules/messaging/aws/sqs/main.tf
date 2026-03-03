@@ -1,5 +1,4 @@
 locals {
-  # Build a map of queues that have a DLQ enabled
   queues_with_dlq = {
     for k, v in var.queues : k => v if v.create_dlq
   }
@@ -14,7 +13,7 @@ resource "aws_sqs_queue" "dlq" {
 
   name                      = "${each.value.name}-dlq${each.value.fifo ? ".fifo" : ""}"
   fifo_queue                = each.value.fifo
-  message_retention_seconds = 1209600 # 14 days — max retention for failed messages
+  message_retention_seconds = 1209600
   kms_master_key_id         = each.value.kms_key_id
 
   tags = merge(var.tags, {
@@ -38,13 +37,10 @@ resource "aws_sqs_queue" "this" {
   receive_wait_time_seconds  = each.value.receive_wait_time_seconds
   kms_master_key_id          = each.value.kms_key_id
 
-  dynamic "redrive_policy" {
-    for_each = each.value.create_dlq ? [1] : []
-    content {
-      dead_letter_target_arn = aws_sqs_queue.dlq[each.key].arn
-      max_receive_count      = each.value.max_receive_count
-    }
-  }
+  redrive_policy = each.value.create_dlq ? jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq[each.key].arn
+    maxReceiveCount     = each.value.max_receive_count
+  }) : null
 
   tags = merge(var.tags, {
     Name = each.key

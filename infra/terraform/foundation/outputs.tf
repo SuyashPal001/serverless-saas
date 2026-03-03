@@ -44,22 +44,22 @@ output "api_gateway_endpoint" {
 # -------------------------------------------------------
 output "sqs_processing_queue_url" {
   description = "Processing queue URL."
-  value       = module.sqs_processing.queue_url
+  value       = module.sqs.queue_urls["processing"]
 }
 
 output "sqs_processing_queue_arn" {
   description = "Processing queue ARN."
-  value       = module.sqs_processing.queue_arn
+  value       = module.sqs.queue_arns["processing"]
 }
 
 output "sqs_workflow_queue_url" {
   description = "Workflow queue URL."
-  value       = module.sqs_workflow.queue_url
+  value       = module.sqs.queue_urls["workflow"]
 }
 
 output "sqs_workflow_queue_arn" {
   description = "Workflow queue ARN."
-  value       = module.sqs_workflow.queue_arn
+  value       = module.sqs.queue_arns["workflow"]
 }
 
 # -------------------------------------------------------
@@ -67,7 +67,7 @@ output "sqs_workflow_queue_arn" {
 # -------------------------------------------------------
 output "sns_events_topic_arn" {
   description = "Events SNS topic ARN."
-  value       = module.sns_events.topic_arn
+  value       = module.sns_events.topic_arns["events"]
 }
 
 # -------------------------------------------------------
@@ -75,16 +75,16 @@ output "sns_events_topic_arn" {
 # -------------------------------------------------------
 output "eventbridge_bus_name" {
   description = "Custom EventBridge event bus name."
-  value       = module.eventbridge.event_bus_name
+  value       = module.eventbridge.bus_names["main"]
 }
 
 output "eventbridge_bus_arn" {
   description = "Custom EventBridge event bus ARN."
-  value       = module.eventbridge.event_bus_arn
+  value       = module.eventbridge.bus_arns["main"]
 }
 
 # -------------------------------------------------------
-# SSM Parameter paths (for reference in SAM templates)
+# SSM Parameter prefix (for reference in SAM templates)
 # -------------------------------------------------------
 output "ssm_prefix" {
   description = "SSM parameter store prefix for this environment."

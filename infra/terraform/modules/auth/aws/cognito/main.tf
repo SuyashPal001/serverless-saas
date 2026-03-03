@@ -10,7 +10,6 @@ data "aws_region" "current" {}
 resource "aws_cognito_user_pool" "this" {
   name = var.user_pool_name
 
-  # Username config — email as primary identifier
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
@@ -18,7 +17,6 @@ resource "aws_cognito_user_pool" "this" {
     case_sensitive = false
   }
 
-  # Password policy
   password_policy {
     minimum_length                   = var.password_policy.minimum_length
     require_uppercase                = var.password_policy.require_uppercase
@@ -28,7 +26,6 @@ resource "aws_cognito_user_pool" "this" {
     temporary_password_validity_days = var.password_policy.temporary_password_validity_days
   }
 
-  # MFA — optional by default, can be enforced per tenant via app clients
   mfa_configuration = var.mfa_configuration
 
   dynamic "software_token_mfa_configuration" {
@@ -38,16 +35,13 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # Account recovery
   account_recovery_setting {
     recovery_mechanism {
-      name     = "verified_email_first"
+      name     = "verified_email"
       priority = 1
     }
   }
 
-  # Schema — custom attributes for tenant context
-  # These are stamped into the JWT by the Pre Token Generation Lambda
   schema {
     name                = "tenantId"
     attribute_data_type = "String"
@@ -78,7 +72,6 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # Email configuration
   dynamic "email_configuration" {
     for_each = var.email_configuration != null ? [var.email_configuration] : []
     content {
@@ -89,20 +82,21 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # Lambda triggers
-  lambda_config {
-    pre_token_generation_config {
-      lambda_arn     = var.pre_token_generation_lambda_arn
-      lambda_version = "V2_0"
+  # Lambda triggers — only wired when ARN is provided (SAM must deploy first)
+  dynamic "lambda_config" {
+    for_each = var.pre_token_generation_lambda_arn != "" ? [1] : []
+    content {
+      pre_token_generation_config {
+        lambda_arn     = var.pre_token_generation_lambda_arn
+        lambda_version = "V2_0"
+      }
     }
   }
 
-  # User pool add-ons
   user_pool_add_ons {
     advanced_security_mode = var.advanced_security_mode
   }
 
-  # Deletion protection
   deletion_protection = var.deletion_protection ? "ACTIVE" : "INACTIVE"
 
   tags = var.tags
@@ -110,7 +104,6 @@ resource "aws_cognito_user_pool" "this" {
 
 # -------------------------------------------------------
 # User Pool Domain
-# Needed for hosted UI and OAuth flows
 # -------------------------------------------------------
 resource "aws_cognito_user_pool_domain" "this" {
   domain       = var.domain_prefix
@@ -119,7 +112,6 @@ resource "aws_cognito_user_pool_domain" "this" {
 
 # -------------------------------------------------------
 # App Clients
-# One per use case — web, mobile, machine-to-machine
 # -------------------------------------------------------
 resource "aws_cognito_user_pool_client" "this" {
   for_each = var.app_clients
@@ -127,7 +119,6 @@ resource "aws_cognito_user_pool_client" "this" {
   name         = each.value.name
   user_pool_id = aws_cognito_user_pool.this.id
 
-  # Token validity
   access_token_validity  = each.value.access_token_validity_hours
   id_token_validity      = each.value.id_token_validity_hours
   refresh_token_validity = each.value.refresh_token_validity_days
@@ -138,10 +129,8 @@ resource "aws_cognito_user_pool_client" "this" {
     refresh_token = "days"
   }
 
-  # Auth flows
   explicit_auth_flows = each.value.explicit_auth_flows
 
-  # OAuth config
   allowed_oauth_flows                  = each.value.allowed_oauth_flows
   allowed_oauth_flows_user_pool_client = length(each.value.allowed_oauth_flows) > 0
   allowed_oauth_scopes                 = each.value.allowed_oauth_scopes
@@ -149,11 +138,9 @@ resource "aws_cognito_user_pool_client" "this" {
   logout_urls                          = each.value.logout_urls
   supported_identity_providers         = each.value.supported_identity_providers
 
-  # Security
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
 
-  # Read/write attributes
   read_attributes  = each.value.read_attributes
   write_attributes = each.value.write_attributes
 
@@ -161,10 +148,11 @@ resource "aws_cognito_user_pool_client" "this" {
 }
 
 # -------------------------------------------------------
-# Lambda trigger permission
-# Allows Cognito to invoke Pre Token Generation Lambda
+# Lambda trigger permission — only when ARN is provided
 # -------------------------------------------------------
 resource "aws_lambda_permission" "pre_token_generation" {
+  count = var.pre_token_generation_lambda_arn != "" ? 1 : 0
+
   statement_id  = "AllowCognitoInvokePreTokenGeneration"
   action        = "lambda:InvokeFunction"
   function_name = var.pre_token_generation_lambda_arn
