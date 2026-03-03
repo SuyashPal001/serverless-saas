@@ -4,23 +4,27 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
     "build": "tsc",
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "hono": "^4.6.0",
+    "@hono/node-server": "^1.13.0",
+    "zod": "^3.23.0",
+    "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/database": "workspace:*",
+    "@serverless-saas/logger": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
     "@serverless-saas/events": "workspace:*",
-    "@serverless-saas/cache": "workspace:*",
-    "@serverless-saas/logger": "workspace:*",
     "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/permissions": "workspace:*",
-    "@serverless-saas/entitlements": "workspace:*",
-    "hono": "^4.6.0",
-    "zod": "^3.23.0"
+    "@serverless-saas/entitlements": "workspace:*"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.0"
+    "@types/aws-lambda": "^8.10.0",
+    "tsx": "^4.19.0"
   }
 }

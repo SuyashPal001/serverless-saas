@@ -1,18 +1,26 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "lib": ["ES2020"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "noEmit": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"],
     "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../packages/foundation/types" },
-    { "path": "../../packages/foundation/validators" },
-    { "path": "../../packages/foundation/events" },
-    { "path": "../../packages/foundation/cache" },
-    { "path": "../../packages/foundation/logger" },
-    { "path": "../../packages/foundation/auth" },
-    { "path": "../../packages/foundation/permissions" },
-    { "path": "../../packages/foundation/entitlements" }
-  ]
+  "exclude": ["node_modules", "dist", ".aws-sam"]
 }

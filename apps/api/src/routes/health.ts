@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { getCacheClient } from '@serverless-saas/cache';
+import { db } from '@serverless-saas/database';
+import { sql } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
 const healthRoutes = new Hono<AppEnv>();
@@ -30,15 +32,16 @@ healthRoutes.get('/ready', async (c) => {
     allHealthy = false;
   }
 
-  // Database check — added when database package is built
-  // try {
-  //   const start = Date.now();
-  //   await db.execute(sql`SELECT 1`);
-  //   checks.database = { status: 'ok', latencyMs: Date.now() - start };
-  // } catch (e) {
-  //   checks.database = { status: 'error', error: e.message };
-  //   allHealthy = false;
-  // }
+  // Database check
+  try {
+    const start = Date.now();
+    await db.execute(sql`SELECT 1`);
+    checks.database = { status: 'ok', latencyMs: Date.now() - start };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    checks.database = { status: 'error', error: message };
+    allHealthy = false;
+  }
 
   const status = allHealthy ? 'ready' : 'degraded';
   return c.json({ status, checks }, allHealthy ? 200 : 503);
