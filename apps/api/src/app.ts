@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { healthRoutes } from './routes/health';
 import { errorHandler } from './middleware/error-handler';
 import type { AppEnv } from './types';
+import { userUpsertMiddleware } from './middleware/userUpsert';
+
 
 const app = new Hono<AppEnv>();
 
@@ -13,35 +15,28 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
-// ============================================
-// Middleware chain (applied to /api/* routes)
-// ============================================
-// Order matters — matches the foundation middleware chain:
-//   1. Auth Context (extract claims, resolve user)
-//   2. Session Validation (jti against Upstash blacklist)
-//   3. Tenant Resolution (full tenant context, check status)
-//   4. Rate Limiting (entitlements cache → Redis INCR → 429)
-//   5. Feature Gating (entitlements cache → 403)
-//   6. Permission Check (RBAC cache → 403)
-//   7. Query Scoping (attach tenantId to all Drizzle queries)
-//
-// Each middleware will be wired in as packages are completed.
-// For now, the chain is documented but not enforced.
-// ============================================
+// Public routes — JWT extraction + user upsert only (no tenant/permission checks)
+const publicApi = new Hono<AppEnv>();
 
-const api = new Hono<AppEnv>();
+// Protected routes — full middleware chain
+const secureApi = new Hono<AppEnv>();
+
+// Step 1: JWT extraction (TODO — not built yet)
+// Step 2: User upsert — create or sync user from Cognito claims
+publicApi.use('*', userUpsertMiddleware);
+secureApi.use('*', userUpsertMiddleware);
 
 // TODO: Wire middleware as packages complete
-// api.use('*', authMiddleware);
-// api.use('*', sessionMiddleware);
-// api.use('*', tenantMiddleware);
-// api.use('*', rateLimitMiddleware);
-// api.use('*', featureGateMiddleware);
-// api.use('*', permissionMiddleware);
-// api.use('*', queryScopeMiddleware);
+// secureApi.use('*', authMiddleware);
+// secureApi.use('*', sessionMiddleware);
+// secureApi.use('*', tenantMiddleware);
+// secureApi.use('*', rateLimitMiddleware);
+// secureApi.use('*', featureGateMiddleware);
+// secureApi.use('*', permissionMiddleware);
+// secureApi.use('*', queryScopeMiddleware);
 
 // Mount API routes under /api/v1
-app.route('/api/v1', api);
+app.route('/api/v1/', publicApi);
+app.route('/api/v1/', secureApi);
 
-export { app };
-export { api };
+export { app, publicApi, secureApi };
