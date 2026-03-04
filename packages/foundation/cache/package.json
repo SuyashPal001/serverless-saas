@@ -1,0 +1,17 @@
+{
+  "name": "@serverless-saas/cache",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@serverless-saas/types": "workspace:*",
+    "@upstash/redis": "^1.34.0",
+    "ioredis": "^5.10.0"
+  }
+}

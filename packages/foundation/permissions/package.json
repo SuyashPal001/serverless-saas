@@ -1,0 +1,17 @@
+{
+  "name": "@serverless-saas/permissions",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/types": "workspace:*",
+    "@upstash/redis": "^1.36.3"
+  }
+}

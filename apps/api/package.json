@@ -1,0 +1,33 @@
+{
+  "name": "@serverless-saas/api",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@serverless-saas/auth": "workspace:*",
+    "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/database": "workspace:*",
+    "@serverless-saas/entitlements": "workspace:*",
+    "@serverless-saas/events": "workspace:*",
+    "@serverless-saas/logger": "workspace:*",
+    "@serverless-saas/permissions": "workspace:*",
+    "@serverless-saas/types": "workspace:*",
+    "@serverless-saas/validators": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "@types/node": "^20.19.35",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}
