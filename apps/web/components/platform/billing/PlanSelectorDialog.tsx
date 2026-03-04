@@ -1,0 +1,147 @@
+"use client";
+
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
+import { can } from "@/lib/permissions";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Check, ArrowRight } from "lucide-react";
+
+interface Plan {
+    id: string;
+    name: string;
+    price: string;
+    description: string;
+    features: string[];
+}
+
+const PLANS: Plan[] = [
+    {
+        id: "free",
+        name: "Free",
+        price: "$0",
+        description: "Perfect for exploring the platform.",
+        features: ["Up to 3 team members", "1,000 API calls/mo", "Community Support"],
+    },
+    {
+        id: "starter",
+        name: "Starter",
+        price: "$29/mo",
+        description: "For small teams taking off.",
+        features: ["Up to 10 team members", "10,000 API calls/mo", "Email Support"],
+    },
+    {
+        id: "business",
+        name: "Business",
+        price: "$99/mo",
+        description: "For scaling businesses.",
+        features: ["Unlimited team members", "1M API calls/mo", "Priority Support"],
+    },
+    {
+        id: "enterprise",
+        name: "Enterprise",
+        price: "Custom",
+        description: "For large scale organizations.",
+        features: ["Unlimited everything", "Dedicated Account Manager", "24/7 Phone Support"],
+    },
+];
+
+export function PlanSelectorDialog({ currentPlan }: { currentPlan: string }) {
+    const { tenantId, permissions = [] } = useTenant();
+    const queryClient = useQueryClient();
+    const [open, setOpen] = useState(false);
+
+    const canUpdateBilling = can(permissions, "billing", "update");
+
+    const changePlanMutation = useMutation({
+        mutationFn: (planId: string) => api.post("/api/v1/billing/subscription", { plan: planId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["subscription", tenantId] });
+            queryClient.invalidateQueries({ queryKey: ["entitlements", tenantId] });
+            toast.success("Subscription plan updated successfully");
+            setOpen(false);
+        },
+        onError: (error: Error) => {
+            toast.error(error.message || "Failed to update subscription plan");
+        },
+    });
+
+    if (!canUpdateBilling) return null;
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto">
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Change Plan
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[800px] gap-0 p-0">
+                <DialogHeader className="p-6 pb-2">
+                    <DialogTitle className="text-2xl">Upgrade or Downgrade Plan</DialogTitle>
+                    <DialogDescription>
+                        Select the plan that best fits your needs. Changes take effect immediately.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border pt-4">
+                    {PLANS.map((plan) => {
+                        const isCurrent = currentPlan.toLowerCase() === plan.id;
+                        return (
+                            <div
+                                key={plan.id}
+                                className={`bg-card p-6 flex flex-col ${isCurrent ? 'ring-2 ring-primary relative z-10' : ''}`}
+                            >
+                                {isCurrent && (
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-primary text-primary-foreground px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-widest">
+                                        Current
+                                    </div>
+                                )}
+                                <div className="mb-4">
+                                    <h3 className="text-xl font-bold">{plan.name}</h3>
+                                    <div className="mt-2 text-2xl font-black">{plan.price}</div>
+                                    <p className="mt-2 text-sm text-muted-foreground min-h-[40px]">
+                                        {plan.description}
+                                    </p>
+                                </div>
+
+                                <ul className="space-y-3 mb-8 flex-1">
+                                    {plan.features.map((feature, i) => (
+                                        <li key={i} className="flex items-start gap-2 text-sm">
+                                            <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                                            <span className="text-muted-foreground">{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                <Button
+                                    variant={isCurrent ? "outline" : "default"}
+                                    disabled={isCurrent || changePlanMutation.isPending}
+                                    className="w-full mt-auto"
+                                    onClick={() => {
+                                        if (!isCurrent) changePlanMutation.mutate(plan.id);
+                                    }}
+                                >
+                                    {changePlanMutation.isPending && !isCurrent
+                                        ? "Updating..."
+                                        : isCurrent
+                                            ? "Current Plan"
+                                            : "Select Plan"}
+                                </Button>
+                            </div>
+                        );
+                    })}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
