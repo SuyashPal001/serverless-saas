@@ -50,3 +50,4 @@ apps/**/package.sam.json
 
 # Binaries dropped at root
 tsx
+terraform.tfstate
