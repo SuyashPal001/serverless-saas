@@ -4,7 +4,7 @@ import { healthRoutes } from './routes/health';
 import { errorHandler } from './middleware/error-handler';
 import type { AppEnv } from './types';
 import { userUpsertMiddleware } from './middleware/userUpsert';
-
+import { onboardingRoutes } from './routes/onboarding';
 
 const app = new Hono<AppEnv>();
 
@@ -17,7 +17,6 @@ app.route('/health', healthRoutes);
 
 // Public routes — JWT extraction + user upsert only (no tenant/permission checks)
 const publicApi = new Hono<AppEnv>();
-
 // Protected routes — full middleware chain
 const secureApi = new Hono<AppEnv>();
 
@@ -36,6 +35,7 @@ secureApi.use('*', userUpsertMiddleware);
 // secureApi.use('*', queryScopeMiddleware);
 
 // Mount API routes under /api/v1
+publicApi.route('/onboarding', onboardingRoutes);
 app.route('/api/v1/', publicApi);
 app.route('/api/v1/', secureApi);
 

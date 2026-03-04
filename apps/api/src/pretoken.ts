@@ -35,8 +35,8 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   // Extract user identity from Cognito event
   // event.userName is always the Cognito identifier — works for email and Google OAuth
   const cognitoId = event.userName;
-  const email = event.request.userAttributes.email;
-  const name = event.request.userAttributes.name;
+  // const email = event.request.userAttributes.email;
+  // const name = event.request.userAttributes.name;
 
   // Step 1 — find user in our DB by cognitoId
   // User is created here via middleware upsert on first API call (Volca pattern, ADR-024)

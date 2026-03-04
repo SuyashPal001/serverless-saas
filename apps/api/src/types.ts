@@ -8,6 +8,7 @@ export interface AppEnv {
   Variables: {
     requestContext?: RequestContext;
     apiKeyContext?: ApiKeyContext;
+    userId?: string;
     traceId: string;
     startTime: number;
   };
