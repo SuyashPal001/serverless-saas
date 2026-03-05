@@ -6,6 +6,7 @@ import type { AppEnv } from './types';
 import { userUpsertMiddleware } from './middleware/userUpsert';
 import { onboardingRoutes } from './routes/onboarding';
 import { apiKeyAuthMiddleware } from './middleware/apiKeyAuth';
+import { tenantResolutionMiddleware } from './middleware/tenantResolution';
 
 const app = new Hono<AppEnv>();
 
@@ -16,12 +17,12 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
+// Step 1: JWT extraction 
 // Public routes — JWT extraction + user upsert only (no tenant/permission checks)
 const publicApi = new Hono<AppEnv>();
 // Protected routes — full middleware chain
 const secureApi = new Hono<AppEnv>();
 
-// Step 1: JWT extraction (TODO — not built yet)
 // Step 2: User upsert — create or sync user from Cognito claims
 publicApi.use('*', userUpsertMiddleware);
 secureApi.use('*', userUpsertMiddleware);
@@ -29,6 +30,9 @@ secureApi.use('*', userUpsertMiddleware);
 // Step 3: API key auth
 publicApi.use('*', apiKeyAuthMiddleware);
 secureApi.use('*', apiKeyAuthMiddleware);
+
+// Step 4: Tenant resolution
+secureApi.use('*', tenantResolutionMiddleware);
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);

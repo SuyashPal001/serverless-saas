@@ -11,5 +11,6 @@ export interface AppEnv {
     userId?: string;
     traceId: string;
     startTime: number;
+    jwtPayload?: Record<string, string>;
   };
 }
