@@ -8,6 +8,7 @@ import { onboardingRoutes } from './routes/onboarding';
 import { apiKeyAuthMiddleware } from './middleware/apiKeyAuth';
 import { tenantResolutionMiddleware } from './middleware/tenantResolution';
 import { sessionValidationMiddleware } from './middleware/sessionValidation';
+import { entitlementsMiddleware } from './middleware/entitlements';
 
 const app = new Hono<AppEnv>();
 
@@ -37,6 +38,9 @@ secureApi.use('*', tenantResolutionMiddleware);
 
 // Step 5: Session validation
 secureApi.use('*', sessionValidationMiddleware);
+
+// Step 6: Entitlements
+secureApi.use('*', entitlementsMiddleware);
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);
