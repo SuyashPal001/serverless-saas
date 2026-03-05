@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/error-handler';
 import type { AppEnv } from './types';
 import { userUpsertMiddleware } from './middleware/userUpsert';
 import { onboardingRoutes } from './routes/onboarding';
+import { apiKeyAuthMiddleware } from './middleware/apiKeyAuth';
 
 const app = new Hono<AppEnv>();
 
@@ -24,6 +25,10 @@ const secureApi = new Hono<AppEnv>();
 // Step 2: User upsert — create or sync user from Cognito claims
 publicApi.use('*', userUpsertMiddleware);
 secureApi.use('*', userUpsertMiddleware);
+
+// Step 3: API key auth
+publicApi.use('*', apiKeyAuthMiddleware);
+secureApi.use('*', apiKeyAuthMiddleware);
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);
