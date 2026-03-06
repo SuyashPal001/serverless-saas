@@ -10,6 +10,8 @@ import { tenantResolutionMiddleware } from './middleware/tenantResolution';
 import { sessionValidationMiddleware } from './middleware/sessionValidation';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
+import { queryScopeMiddleware } from './middleware/queryScope';
+import { authRoutes } from './routes/auth';
 
 const app = new Hono<AppEnv>();
 
@@ -21,9 +23,8 @@ app.onError(errorHandler);
 app.route('/health', healthRoutes);
 
 // Step 1: JWT extraction 
-// Public routes — JWT extraction + user upsert only (no tenant/permission checks)
+// Step 1: User upsert runs on both routers — syncs user from Cognito claims
 const publicApi = new Hono<AppEnv>();
-// Protected routes — full middleware chain
 const secureApi = new Hono<AppEnv>();
 
 // Step 2: User upsert — create or sync user from Cognito claims
@@ -40,11 +41,14 @@ secureApi.use('*', tenantResolutionMiddleware);
 // Step 5: Session validation
 secureApi.use('*', sessionValidationMiddleware);
 
-// Step 6: Entitlements
+// Step 6: Entitlements (feature gateway)
 secureApi.use('*', entitlementsMiddleware);
 
 // Step 7: Permissions
 secureApi.use('*', permissionsMiddleware);
+
+// Step 8: Query scope
+secureApi.use('*', queryScopeMiddleware);
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);
@@ -59,5 +63,8 @@ secureApi.use('*', permissionsMiddleware);
 publicApi.route('/onboarding', onboardingRoutes);
 app.route('/api/v1/', publicApi);
 app.route('/api/v1/', secureApi);
+
+// Auth routes
+app.route('/auth', authRoutes);
 
 export { app, publicApi, secureApi };
