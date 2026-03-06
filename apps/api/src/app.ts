@@ -12,6 +12,7 @@ import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
 import { authRoutes } from './routes/auth';
+import { membersRoutes } from './routes/members';
 
 const app = new Hono<AppEnv>();
 
@@ -49,6 +50,8 @@ secureApi.use('*', permissionsMiddleware);
 
 // Step 8: Query scope
 secureApi.use('*', queryScopeMiddleware);
+//
+
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);
@@ -65,6 +68,10 @@ app.route('/api/v1/', publicApi);
 app.route('/api/v1/', secureApi);
 
 // Auth routes
-app.route('/auth', authRoutes);
+secureApi.route('/auth', authRoutes);
+
+// Members routes
+secureApi.route('/members', membersRoutes);
 
 export { app, publicApi, secureApi };
+
