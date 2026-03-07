@@ -1,0 +1,60 @@
+import { Hono } from 'hono';
+import { and, eq, desc } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
+import { agentWorkflowRuns } from '@serverless-saas/database/schema/agents';
+import type { AppEnv } from '../types';
+
+export const agentRunsRoutes = new Hono<AppEnv>();
+
+// GET /agent-runs — list all runs for tenant, newest first
+agentRunsRoutes.get('/', async (c) => {
+    const tenantId = c.get('tenantId');
+    const requestContext = c.get('requestContext') as any;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('agents:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    // Optional filter by agentId via query param
+    const agentId = c.req.query('agentId');
+
+    const conditions = [eq(agentWorkflowRuns.tenantId, tenantId)];
+    if (agentId) {
+        conditions.push(eq(agentWorkflowRuns.agentId, agentId));
+    }
+
+    const data = await db.query.agentWorkflowRuns.findMany({
+        where: and(...conditions),
+        orderBy: desc(agentWorkflowRuns.startedAt),
+        limit: 50,
+    });
+
+    return c.json({ data });
+});
+
+// GET /agent-runs/:id — full detail of one run
+agentRunsRoutes.get('/:id', async (c) => {
+    const tenantId = c.get('tenantId');
+    const requestContext = c.get('requestContext') as any;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('agents:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const runId = c.req.param('id');
+
+    const data = await db.query.agentWorkflowRuns.findFirst({
+        where: and(
+            eq(agentWorkflowRuns.id, runId),
+            eq(agentWorkflowRuns.tenantId, tenantId)
+        ),
+    });
+
+    if (!data) {
+        return c.json({ error: 'Run not found' }, 404);
+    }
+
+    return c.json({ data });
+});

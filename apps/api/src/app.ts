@@ -6,6 +6,20 @@ import type { AppEnv } from './types';
 import { userUpsertMiddleware } from './middleware/userUpsert';
 import { onboardingRoutes } from './routes/onboarding';
 import { apiKeyAuthMiddleware } from './middleware/apiKeyAuth';
+import { tenantResolutionMiddleware } from './middleware/tenantResolution';
+import { sessionValidationMiddleware } from './middleware/sessionValidation';
+import { entitlementsMiddleware } from './middleware/entitlements';
+import { permissionsMiddleware } from './middleware/permissions';
+import { queryScopeMiddleware } from './middleware/queryScope';
+import { authRoutes } from './routes/auth';
+import { membersRoutes } from './routes/members';
+import { rolesRoutes } from './routes/roles';
+import { apiKeysRoutes } from './routes/api-keys';
+import { agentsRoutes } from './routes/agents';
+import { agentRunsRoutes } from './routes/agent-runs';
+import { notificationsRoutes } from './routes/notifications';
+import { auditLogRoutes } from './routes/audit-log';
+import { billingRoutes } from './routes/billing';
 
 const app = new Hono<AppEnv>();
 
@@ -16,12 +30,11 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
-// Public routes — JWT extraction + user upsert only (no tenant/permission checks)
+// Step 1: JWT extraction 
+// Step 1: User upsert runs on both routers — syncs user from Cognito claims
 const publicApi = new Hono<AppEnv>();
-// Protected routes — full middleware chain
 const secureApi = new Hono<AppEnv>();
 
-// Step 1: JWT extraction (TODO — not built yet)
 // Step 2: User upsert — create or sync user from Cognito claims
 publicApi.use('*', userUpsertMiddleware);
 secureApi.use('*', userUpsertMiddleware);
@@ -29,6 +42,23 @@ secureApi.use('*', userUpsertMiddleware);
 // Step 3: API key auth
 publicApi.use('*', apiKeyAuthMiddleware);
 secureApi.use('*', apiKeyAuthMiddleware);
+
+// Step 4: Tenant resolution
+secureApi.use('*', tenantResolutionMiddleware);
+
+// Step 5: Session validation
+secureApi.use('*', sessionValidationMiddleware);
+
+// Step 6: Entitlements (feature gateway)
+secureApi.use('*', entitlementsMiddleware);
+
+// Step 7: Permissions
+secureApi.use('*', permissionsMiddleware);
+
+// Step 8: Query scope
+secureApi.use('*', queryScopeMiddleware);
+//
+
 
 // TODO: Wire middleware as packages complete
 // secureApi.use('*', authMiddleware);
@@ -44,4 +74,35 @@ publicApi.route('/onboarding', onboardingRoutes);
 app.route('/api/v1/', publicApi);
 app.route('/api/v1/', secureApi);
 
+// Auth routes
+secureApi.route('/auth', authRoutes);
+
+// Members routes
+secureApi.route('/members', membersRoutes);
+
+// Roles routes
+secureApi.route('/roles', rolesRoutes);
+
+// API keys routes
+secureApi.route('/api-keys', apiKeysRoutes);
+
+// Agents routes
+secureApi.route('/agents', agentsRoutes);
+
+// Agent runs routes
+secureApi.route('/agent-runs', agentRunsRoutes);
+
+// Notification routes
+secureApi.route('/notifications', notificationsRoutes);
+
+// Audit-logs routes
+
+secureApi.route('/audit-log', auditLogRoutes);
+
+// Billing routes
+
+secureApi.route('/biling', billingRoutes);
+
+
 export { app, publicApi, secureApi };
+
