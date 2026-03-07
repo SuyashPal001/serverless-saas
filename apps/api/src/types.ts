@@ -7,6 +7,7 @@ import type { RequestContext, ApiKeyContext } from '@serverless-saas/types';
 export interface AppEnv {
   Variables: {
     requestContext?: RequestContext;
+    tenantId: string;
     apiKeyContext?: ApiKeyContext;
     userId?: string;
     traceId: string;

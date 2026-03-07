@@ -13,6 +13,13 @@ import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
 import { authRoutes } from './routes/auth';
 import { membersRoutes } from './routes/members';
+import { rolesRoutes } from './routes/roles';
+import { apiKeysRoutes } from './routes/api-keys';
+import { agentsRoutes } from './routes/agents';
+import { agentRunsRoutes } from './routes/agent-runs';
+import { notificationsRoutes } from './routes/notifications';
+import { auditLogRoutes } from './routes/audit-log';
+import { billingRoutes } from './routes/billing';
 
 const app = new Hono<AppEnv>();
 
@@ -72,6 +79,30 @@ secureApi.route('/auth', authRoutes);
 
 // Members routes
 secureApi.route('/members', membersRoutes);
+
+// Roles routes
+secureApi.route('/roles', rolesRoutes);
+
+// API keys routes
+secureApi.route('/api-keys', apiKeysRoutes);
+
+// Agents routes
+secureApi.route('/agents', agentsRoutes);
+
+// Agent runs routes
+secureApi.route('/agent-runs', agentRunsRoutes);
+
+// Notification routes
+secureApi.route('/notifications', notificationsRoutes);
+
+// Audit-logs routes
+
+secureApi.route('/audit-log', auditLogRoutes);
+
+// Billing routes
+
+secureApi.route('/biling', billingRoutes);
+
 
 export { app, publicApi, secureApi };
 
