@@ -20,6 +20,7 @@ import { agentRunsRoutes } from './routes/agent-runs';
 import { notificationsRoutes } from './routes/notifications';
 import { auditLogRoutes } from './routes/audit-log';
 import { billingRoutes } from './routes/billing';
+import { authInjectionMiddleware } from './middleware/authInjection';
 
 const app = new Hono<AppEnv>();
 
@@ -30,10 +31,12 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
-// Step 1: JWT extraction 
-// Step 1: User upsert runs on both routers — syncs user from Cognito claims
 const publicApi = new Hono<AppEnv>();
 const secureApi = new Hono<AppEnv>();
+
+// Step 1: JWT extraction / Auth Injection — handles local dev JWT validation
+publicApi.use('*', authInjectionMiddleware);
+secureApi.use('*', authInjectionMiddleware);
 
 // Step 2: User upsert — create or sync user from Cognito claims
 publicApi.use('*', userUpsertMiddleware);

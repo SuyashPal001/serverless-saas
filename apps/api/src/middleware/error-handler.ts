@@ -5,6 +5,7 @@ import type { AppEnv } from '../types';
 export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
   const logger = getLogger();
   const traceId = c.get('traceId') ?? 'unknown';
+  console.error('UNHANDLED ERROR:', err);
 
   logger.error('unhandled_error', {
     traceId,
