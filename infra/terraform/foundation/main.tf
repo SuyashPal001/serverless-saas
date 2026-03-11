@@ -36,7 +36,9 @@ module "cognito" {
       refresh_token_validity_days = 30
       explicit_auth_flows = [
         "ALLOW_USER_SRP_AUTH",
-        "ALLOW_REFRESH_TOKEN_AUTH"
+        "ALLOW_REFRESH_TOKEN_AUTH",
+        "ALLOW_USER_PASSWORD_AUTH",
+        "ALLOW_ADMIN_USER_PASSWORD_AUTH"
       ]
       allowed_oauth_flows          = ["code"]
       allowed_oauth_scopes         = ["email", "openid", "profile"]
@@ -255,6 +257,20 @@ module "iam" {
             Effect   = "Allow"
             Action   = ["events:PutEvents"]
             Resource = module.eventbridge.bus_arns["main"]
+          }]
+        })
+        cognito_idp = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action = [
+              "cognito-idp:AdminInitiateAuth",
+              "cognito-idp:AdminRespondToAuthChallenge",
+              "cognito-idp:AdminGetUser",
+              "cognito-idp:AdminUpdateUserAttributes",
+              "cognito-idp:AdminSetUserPassword"
+            ]
+            Resource = module.cognito.user_pool_arn
           }]
         })
       }
