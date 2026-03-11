@@ -11,7 +11,7 @@ import { sessionValidationMiddleware } from './middleware/sessionValidation';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
-import { authRoutes } from './routes/auth';
+import { authRoutes, authPublicRoutes } from './routes/auth';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
 import { apiKeysRoutes } from './routes/api-keys';
@@ -73,6 +73,7 @@ secureApi.use('*', queryScopeMiddleware);
 // secureApi.use('*', queryScopeMiddleware);
 
 // Mount API routes under /api/v1
+publicApi.route('/auth', authPublicRoutes);
 publicApi.route('/onboarding', onboardingRoutes);
 app.route('/api/v1/', publicApi);
 app.route('/api/v1/', secureApi);
@@ -104,7 +105,7 @@ secureApi.route('/audit-log', auditLogRoutes);
 
 // Billing routes
 
-secureApi.route('/biling', billingRoutes);
+secureApi.route('/billing', billingRoutes);
 
 
 export { app, publicApi, secureApi };

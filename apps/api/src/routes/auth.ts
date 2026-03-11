@@ -6,8 +6,45 @@ import { sessions } from '@serverless-saas/database/schema/auth';
 import { memberships } from '@serverless-saas/database';
 import { getCacheClient } from '@serverless-saas/cache';
 
+import { adminInitiateAuth } from '@serverless-saas/auth';
+
 
 export const authRoutes = new Hono<AppEnv>();
+export const authPublicRoutes = new Hono<AppEnv>();
+
+// POST /auth/login
+authPublicRoutes.post('/login', async (c) => {
+    const body = await c.req.json();
+    const { email, password } = body;
+
+    if (!email || !password) {
+        return c.json({ error: 'Email and password are required' }, 400);
+    }
+
+    try {
+        const result = await adminInitiateAuth(email, password);
+
+        if (result.ChallengeName) {
+            return c.json({
+                challenge: result.ChallengeName,
+                session: result.Session,
+                parameters: result.ChallengeParameters,
+            });
+        }
+
+        return c.json({
+            token: result.AuthenticationResult?.IdToken,
+            accessToken: result.AuthenticationResult?.AccessToken,
+            refreshToken: result.AuthenticationResult?.RefreshToken,
+            expiresIn: result.AuthenticationResult?.ExpiresIn,
+        });
+    } catch (err: any) {
+        console.error('Login error:', err);
+        const code = err.name || 'INTERNAL_ERROR';
+        const message = err.message || 'Authentication failed';
+        return c.json({ error: message, code }, 401);
+    }
+});
 
 authRoutes.get('/me', (c) => {
     const requestContext = c.get('requestContext') as any;
