@@ -15,38 +15,33 @@ import { users } from '@serverless-saas/database/schema/auth';
  * Attaches userId to context so downstream middleware can use it.
  */
 export const userUpsertMiddleware = async (c: Context, next: Next) => {
-    // Step 1 — extract claims from the validated JWT
-    // API Gateway validates the JWT, Hono makes claims available via jwtPayload
     const jwtPayload = c.get('jwtPayload');
-    const cognitoId = jwtPayload.sub;
-    const email = jwtPayload.email;
-    const name = jwtPayload.name;
 
-    // Step 2 — validate required claims are present
+    // Skip upsert if no JWT payload (e.g. API key request or non-authenticated)
+    if (!jwtPayload) {
+        return next();
+    }
+
+    const cognitoId = jwtPayload.sub;
+    const email = jwtPayload.email as string;
+    const name = jwtPayload.name as string | undefined;
+
     if (!cognitoId || !email) {
         return c.json({ error: 'Invalid JWT payload' }, 401);
     }
 
-    // Step 3 — upsert user into DB
-    // Single atomic query — insert if new, update email/name if existing
-    // ON CONFLICT (cognitoId) handles the case where user already exists
     const [user] = await db.insert(users)
         .values({
-            cognitoId,
-            email,
-            name,
+            cognitoId: cognitoId,
+            email: email,
+            name: name || ""
         })
         .onConflictDoUpdate({
             target: users.cognitoId,
-            set: {
-                email,
-                name,
-                updatedAt: new Date(),
-            },
+            set: { email, name: name || "", updatedAt: new Date() },
         })
         .returning();
 
-    // Step 4 — attach userId to context for downstream middleware
     c.set('userId', user.id);
 
     await next();

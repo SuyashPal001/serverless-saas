@@ -1,0 +1,50 @@
+import { eq, and } from 'drizzle-orm';
+import { permissions } from '../schema/index';
+import type { db as DB } from './index';
+
+type Action = 'create' | 'read' | 'update' | 'delete';
+
+export const RESOURCES: Record<string, Action[]> = {
+    members: ['create', 'read', 'update', 'delete'],
+    invitations: ['create', 'read', 'delete'],
+    roles: ['create', 'read', 'update', 'delete'],
+    billing: ['read', 'update'],
+    invoices: ['read'],
+    subscriptions: ['create', 'read', 'update', 'delete'],
+    'api-keys': ['create', 'read', 'update', 'delete'],
+    agents: ['create', 'read', 'update', 'delete'],
+    'agent-workflows': ['create', 'read', 'update', 'delete'],
+    'agent-runs': ['read', 'delete'],
+    notifications: ['create', 'read', 'update', 'delete'],
+    audit: ['read'],
+    tenant: ['read', 'update', 'delete'],
+    entitlements: ['create', 'read', 'update', 'delete'],
+    integrations: ['create', 'read', 'update', 'delete'],
+};
+
+export async function seedPermissions(db: typeof DB) {
+    console.log('seeding permissions');
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const [resource, actions] of Object.entries(RESOURCES)) {
+        for (const action of actions) {
+            const existing = await db
+                .select({ id: permissions.id })
+                .from(permissions)
+                .where(and(eq(permissions.resource, resource), eq(permissions.action, action)))
+                .limit(1);
+
+            if (existing.length > 0) {
+                skipped++;
+                continue;
+            }
+
+            await db.insert(permissions).values({ resource, action });
+            created++;
+        }
+    }
+
+    console.log(`  inserted ${created}, skipped ${skipped}`);
+}
