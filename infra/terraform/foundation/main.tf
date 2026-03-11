@@ -441,3 +441,25 @@ resource "aws_ssm_parameter" "iam_foundation_pretoken_role_arn" {
   type  = "String"
   value = module.iam.role_arns["foundation_pretoken"]
 }
+
+
+resource "aws_secretsmanager_secret" "database" {
+  name = "${var.project}/${var.environment}/database"
+}
+
+resource "aws_secretsmanager_secret_version" "database" {
+  secret_id     = aws_secretsmanager_secret.database.id
+  secret_string = jsonencode({ url = var.database_url })
+}
+
+resource "aws_secretsmanager_secret" "cache" {
+  name = "${var.project}/${var.environment}/cache"
+}
+
+resource "aws_secretsmanager_secret_version" "cache" {
+  secret_id     = aws_secretsmanager_secret.cache.id
+  secret_string = jsonencode({
+    url   = var.upstash_redis_rest_url
+    token = var.upstash_redis_rest_token
+  })
+}

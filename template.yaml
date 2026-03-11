@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  serverless-saas Foundation — Lambda function definitions only.
+  serverless-saas Foundation — Lambda definitions only.
   All infrastructure (API Gateway, Cognito, SQS, SNS, EventBridge, IAM)
-  is owned by Terraform. This template reads values Terraform writes to SSM.
+  is owned by Terraform. SAM reads values Terraform writes to SSM.
 
 Parameters:
   ProjectName:
@@ -13,80 +13,86 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: dev
-    AllowedValues:
-      - dev
-      - staging
-      - prod
+    AllowedValues: [dev, staging, prod]
 
-Mappings:
-  EnvConfig:
-    dev:
-      LogLevel: INFO
-    staging:
-      LogLevel: INFO
-    prod:
-      LogLevel: WARN
+  FoundationApiRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/foundation-api-role-arn
+
+  FoundationWorkerRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/foundation-worker-role-arn
+
+  FoundationPretokenRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/foundation-pretoken-role-arn
+
+
 
 Globals:
   Function:
     Runtime: nodejs20.x
-    Architectures:
-      - arm64
-    MemorySize: 512
+    Architectures: [arm64]
     Timeout: 29
+    MemorySize: 512
+    Tracing: Active
     Environment:
       Variables:
         NODE_ENV: !Ref EnvironmentName
-        LOG_LEVEL: !FindInMap [EnvConfig, !Ref EnvironmentName, LogLevel]
-        NODE_OPTIONS: "--enable-source-maps"
-        COGNITO_USER_POOL_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/user-pool-id}}"
-        COGNITO_CLIENT_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/client-id}}"
-        DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
-        UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
-        UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+        PROJECT: !Ref ProjectName
 
 Resources:
 
+  # ─────────────────────────────────────────────
+  # API Lambda — Hono HTTP handler (Lambdalith)
+  # ─────────────────────────────────────────────
   FoundationApiFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "${ProjectName}-foundation-api-${EnvironmentName}"
-      Description: Hono HTTP handler for all foundation API routes
+      Description: Foundation API — Hono HTTP handler
       CodeUri: apps/api/
       Handler: index.handler
-      MemorySize: 512
-      Timeout: 29
-      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-api-role-arn}}"
+      Role: !Ref FoundationApiRoleArn
       Environment:
         Variables:
           LAMBDA_TYPE: api
-          PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
-          WORKFLOW_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/workflow-queue-url}}"
-          EVENTS_TOPIC_ARN: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sns/events-topic-arn}}"
-          EVENT_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
+          COGNITO_USER_POOL_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/user-pool-id}}"
+          COGNITO_CLIENT_ID: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/client-id}}"
+          COGNITO_JWKS_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/cognito/jwks-uri}}"
+          SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          SNS_EVENTS_TOPIC_ARN: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sns/events-topic-arn}}"
+          EVENTBRIDGE_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
     Metadata:
       BuildMethod: makefile
 
+  # ─────────────────────────────────────────────
+  # Worker Lambda — SQS consumer
+  # ─────────────────────────────────────────────
   FoundationWorkerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "${ProjectName}-foundation-worker-${EnvironmentName}"
-      Description: SQS consumer for all foundation background jobs
+      Description: Foundation Worker — SQS consumer for background jobs
       CodeUri: apps/worker/
       Handler: lambda.handler
-      MemorySize: 1024
-      Timeout: 900
-      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-worker-role-arn}}"
+      Timeout: 300
+      Role: !Ref FoundationWorkerRoleArn
       Environment:
         Variables:
           LAMBDA_TYPE: worker
-          PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
-          WORKFLOW_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/workflow-queue-url}}"
-          EVENTS_TOPIC_ARN: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sns/events-topic-arn}}"
-          EVENT_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
     Metadata:
       BuildMethod: makefile
 
+  # ─────────────────────────────────────────────
+  # Pre Token Generation Lambda — stamps JWT claims
+  # ─────────────────────────────────────────────
   FoundationPretokenFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -94,30 +100,30 @@ Resources:
       Description: Cognito Pre Token Generation — stamps tenantId, role, plan into JWT
       CodeUri: apps/api/
       Handler: pretoken.handler
-      MemorySize: 256
       Timeout: 5
-      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/foundation-pretoken-role-arn}}"
+      MemorySize: 256
+      Role: !Ref FoundationPretokenRoleArn
       Environment:
         Variables:
           LAMBDA_TYPE: pretoken
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
     Metadata:
       BuildMethod: makefile
 
 Outputs:
   FoundationApiLambdaArn:
-    Description: Foundation API Lambda ARN
     Value: !GetAtt FoundationApiFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationApiLambdaArn"
 
   FoundationWorkerLambdaArn:
-    Description: Foundation Worker Lambda ARN
     Value: !GetAtt FoundationWorkerFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationWorkerLambdaArn"
 
   FoundationPretokenLambdaArn:
-    Description: Foundation Pre Token Lambda ARN
     Value: !GetAtt FoundationPretokenFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationPretokenLambdaArn"

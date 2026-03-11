@@ -127,3 +127,23 @@ variable "foundation_worker_lambda_arn" {
   description = "ARN of the foundation worker Lambda. Written by SAM deploy."
   type        = string
 }
+
+# Upstash Redis
+variable "upstash_redis_rest_url" {
+  description = "Upstash Redis REST URL"
+  type        = string
+}
+
+variable "upstash_redis_rest_token" {
+  description = "Upstash Redis REST token"
+  type        = string
+  sensitive   = true
+}
+
+# Upstash Redis
+# Neon PostgreSQL
+variable "database_url" {
+  description = "Neon PostgreSQL connection string"
+  type        = string
+  sensitive   = true
+}
