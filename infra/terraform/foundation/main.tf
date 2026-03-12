@@ -173,7 +173,7 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
-  }
+    }
 
   tags = {}
 }

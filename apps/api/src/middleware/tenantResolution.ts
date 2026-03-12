@@ -41,8 +41,11 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {
-        // Cache hit — parse JSON string back to object and attach to context
-        c.set('requestContext', JSON.parse(cached as string));
+        // Upstash REST client auto-deserializes JSON on get — returns object, not string
+        // ioredis always returns strings — so we handle both cases here
+        // Calling JSON.parse on an already-deserialized object throws: "[object Object] is not valid JSON"
+        const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
+        c.set('requestContext', parsed);
         return next();
     }
 
@@ -69,9 +72,9 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
         status: tenant.status,
     };
 
-
     // Store in Redis for subsequent requests
-    // JSON.stringify because Redis only stores strings, not objects
+    // JSON.stringify because ioredis only stores strings
+    // Upstash will store as JSON and return already parsed on next get
     await getCacheClient().set(cacheKey, JSON.stringify(tenantContext), { ex: TENANT_CACHE_TTL_SECONDS });
 
     c.set('requestContext', { tenant: tenantContext } as any);
