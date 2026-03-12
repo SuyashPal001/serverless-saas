@@ -1,11 +1,10 @@
 import { pgTable, uuid, text, timestamp, boolean, pgEnum, unique } from 'drizzle-orm/pg-core';
-import { tenants } from './tenancy';
 
 export const actionEnum = pgEnum('action', ['create', 'read', 'update', 'delete']);
 
 export const roles = pgTable('roles', {
   id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').references(() => tenants.id),
+  tenantId: uuid('tenant_id'),
   name: text('name').notNull(),
   description: text('description'),
   isDefault: boolean('is_default').notNull().default(false),
