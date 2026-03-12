@@ -1,14 +1,22 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
 import * as schema from './schema';
 
 const connectionString = process.env.DATABASE_URL!;
 
-// Use standard postgres driver for local dev
-// Switch to @neondatabase/serverless for production Lambda
-const client = postgres(connectionString, {
-  max: process.env.NODE_ENV === 'production' ? 1 : 10,
-});
+function createDb() {
+  if (connectionString.includes('neon.tech')) {
+    // Production — Neon HTTP driver (no TCP connection pooling problem)
+    const { neon } = require('@neondatabase/serverless');
+    const { drizzle } = require('drizzle-orm/neon-http');
+    const sql = neon(connectionString);
+    return drizzle(sql, { schema });
+  } else {
+    // Local dev — standard postgres TCP driver
+    const postgres = require('postgres');
+    const { drizzle } = require('drizzle-orm/postgres-js');
+    const client = postgres(connectionString, { max: 10 });
+    return drizzle(client, { schema });
+  }
+}
 
-export const db = drizzle(client, { schema });
+export const db = createDb();
 export type DB = typeof db;
