@@ -57,7 +57,7 @@ onboardingRoutes.post('/complete', async (c) => {
     }
 
     // Step 5: DB transaction
-    const { tenantId } = await db.transaction(async (tx) => {
+    const { tenantId } = await db.transaction(async (tx: any) => {
         const [tenant] = await tx.insert(tenants).values({
             name: workspaceName,
             slug: finalSlug,

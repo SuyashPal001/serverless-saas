@@ -76,7 +76,7 @@ agentsRoutes.post('/', async (c) => {
     const keyHash = hashKey(rawKey);
 
     // Transaction — all three inserts succeed or none do
-    const agent = await db.transaction(async (tx) => {
+    const agent = await db.transaction(async (tx: any) => {
 
         const [newKey] = await tx.insert(apiKeys).values({
             tenantId,
@@ -176,7 +176,7 @@ agentsRoutes.delete('/:id', async (c) => {
         return c.json({ error: 'Agent not found' }, 404);
     }
 
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: any) => {
         await tx.update(agents)
             .set({ status: 'retired', updatedAt: new Date() })
             .where(eq(agents.id, agentId));

@@ -107,12 +107,15 @@ export const handler: PreTokenGenerationTriggerHandler = async (
 
   // Step 5 — stamp real claims into the JWT
   // These claims are read by middleware on every API request
-  event.response = {
-    claimsOverrideDetails: {
-      claimsToAddOrOverride: {
-        'custom:tenantId': membership.tenantId,
-        'custom:role': role.name,
-        'custom:plan': subscription.plan,
+  // Cast to any because @types/aws-lambda often lags behind V2_0 response shapes
+  (event as any).response = {
+    claimsAndScopeOverrideDetails: {
+      idTokenGeneration: {
+        claimsToAddOrOverride: {
+          'custom:tenantId': membership.tenantId,
+          'custom:role': role.name,
+          'custom:plan': subscription.plan,
+        },
       },
     },
   };
@@ -132,12 +135,14 @@ export const handler: PreTokenGenerationTriggerHandler = async (
  * Empty tenantId signals frontend to redirect to /onboarding
  */
 const emptyClaimsResponse = (event: PreTokenGenerationTriggerEvent) => {
-  event.response = {
-    claimsOverrideDetails: {
-      claimsToAddOrOverride: {
-        'custom:tenantId': '',
-        'custom:role': '',
-        'custom:plan': 'free',
+  (event as any).response = {
+    claimsAndScopeOverrideDetails: {
+      idTokenGeneration: {
+        claimsToAddOrOverride: {
+          'custom:tenantId': '',
+          'custom:role': '',
+          'custom:plan': 'free',
+        },
       },
     },
   };
