@@ -23,7 +23,7 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {
-        requestContext.entitlements = JSON.parse(cached as string);
+        requestContext.entitlements = typeof cached === 'string' ? JSON.parse(cached) : cached;
         return next();
     }
 
