@@ -52,7 +52,7 @@ apiKeysRoutes.post('/', async (c) => {
     const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
     const permissions = requestContext?.permissions ?? [];
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
 
     if (!permissions.includes('api_keys:create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -100,7 +100,7 @@ apiKeysRoutes.delete('/:id', async (c) => {
     const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
     const permissions = requestContext?.permissions ?? [];
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
 
     if (!permissions.includes('api_keys:delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
