@@ -32,58 +32,53 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
-const publicApi = new Hono<AppEnv>();
-const secureApi = new Hono<AppEnv>();
+const api = new Hono<AppEnv>();
 
 // ── Middleware chain ──────────────────────────────────────────────────────────
 
 // Step 1: JWT extraction
-publicApi.use('*', authInjectionMiddleware);
-secureApi.use('*', authInjectionMiddleware);
+api.use('*', authInjectionMiddleware);
 
 // Step 2: User upsert
-publicApi.use('*', userUpsertMiddleware);
-secureApi.use('*', userUpsertMiddleware);
+api.use('*', userUpsertMiddleware);
 
 // Step 3: API key auth
-publicApi.use('*', apiKeyAuthMiddleware);
-secureApi.use('*', apiKeyAuthMiddleware);
+api.use('*', apiKeyAuthMiddleware);
+
+// ── Public routes — registered BEFORE secure middleware ───────────────────────
+api.route('/auth', authPublicRoutes);
+api.route('/onboarding', onboardingRoutes);
+
+// ── Secure middleware — runs for all routes below ─────────────────────────────
 
 // Step 4: Tenant resolution
-secureApi.use('*', tenantResolutionMiddleware);
+api.use('*', tenantResolutionMiddleware);
 
 // Step 5: Session validation
-secureApi.use('*', sessionValidationMiddleware);
+api.use('*', sessionValidationMiddleware);
 
 // Step 6: Entitlements
-secureApi.use('*', entitlementsMiddleware);
+api.use('*', entitlementsMiddleware);
 
 // Step 7: Permissions
-secureApi.use('*', permissionsMiddleware);
+api.use('*', permissionsMiddleware);
 
 // Step 8: Query scope
-secureApi.use('*', queryScopeMiddleware);
+api.use('*', queryScopeMiddleware);
 
-// ── Routes — register BEFORE mounting ────────────────────────────────────────
+// ── Secure routes ─────────────────────────────────────────────────────────────
+api.route('/auth', authRoutes);
+api.route('/members', membersRoutes);
+api.route('/roles', rolesRoutes);
+api.route('/api-keys', apiKeysRoutes);
+api.route('/agents', agentsRoutes);
+api.route('/agent-runs', agentRunsRoutes);
+api.route('/notifications', notificationsRoutes);
+api.route('/audit-log', auditLogRoutes);
+api.route('/billing', billingRoutes);
+api.route('/ops', opsRoutes);
 
-// Public routes
-publicApi.route('/auth', authPublicRoutes);
-publicApi.route('/onboarding', onboardingRoutes);
+// ── Mount ─────────────────────────────────────────────────────────────────────
+app.route('/api/v1', api);
 
-
-// Secure routes
-secureApi.route('/auth', authRoutes);
-secureApi.route('/members', membersRoutes);
-secureApi.route('/roles', rolesRoutes);
-secureApi.route('/api-keys', apiKeysRoutes);
-secureApi.route('/agents', agentsRoutes);
-secureApi.route('/agent-runs', agentRunsRoutes);
-secureApi.route('/notifications', notificationsRoutes);
-secureApi.route('/audit-log', auditLogRoutes);
-secureApi.route('/billing', billingRoutes);
-secureApi.route('/ops', opsRoutes);
-// ── Mount — AFTER all routes are registered ───────────────────────────────────
-app.route('/api/v1', publicApi);
-app.route('/api/v1', secureApi);
-
-export { app, publicApi, secureApi };
+export { app };
