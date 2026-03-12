@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { notificationInbox } from '@serverless-saas/database/schema/notifications';
+import { notificationInbox } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
 
 export const notificationsRoutes = new Hono<AppEnv>();

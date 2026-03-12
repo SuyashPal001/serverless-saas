@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
+import { subscriptions, invoices } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
+
 
 export const billingRoutes = new Hono<AppEnv>();
 

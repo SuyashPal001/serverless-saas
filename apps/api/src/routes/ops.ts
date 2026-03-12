@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { and, eq, ilike, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { tenantFeatureOverrides } from '@serverless-saas/database/schema/entitlements';
+import { tenants } from '@serverless-saas/database/schema';
+import { tenantFeatureOverrides } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();

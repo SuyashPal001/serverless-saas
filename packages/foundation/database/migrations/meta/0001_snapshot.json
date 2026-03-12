@@ -1,6 +1,6 @@
 {
-  "id": "b3bdce2b-3897-41cf-bb55-5ab0624daccd",
-  "prevId": "8a84ccfc-e6ff-4a9e-b2b5-abf22bbce7b9",
+  "id": "d137c8a8-e2ff-4029-a870-0f0d9dba51d1",
+  "prevId": "b3bdce2b-3897-41cf-bb55-5ab0624daccd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -682,21 +682,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "roles_tenant_id_tenants_id_fk": {
-          "name": "roles_tenant_id_tenants_id_fk",
-          "tableFrom": "roles",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "roles_name_tenant_id_unique": {
