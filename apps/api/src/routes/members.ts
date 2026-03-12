@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
+import { roles } from '@serverless-saas/database/schema/authorization';
 import type { AppEnv } from '../types';
 
 export const membersRoutes = new Hono<AppEnv>();
@@ -19,22 +20,28 @@ membersRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    // Load memberships with user and role details in one query
-    // 'with' is Drizzle's relation loader — avoids N+1 queries
-    const members = await db.query.memberships.findMany({
-        where: and(
+    // Plain join — avoids Drizzle relational API (db.query...with) which requires
+    // a fully resolved relations map that is broken by circular schema imports
+    const members = await db
+        .select({
+            id: memberships.id,
+            status: memberships.status,
+            memberType: memberships.memberType,
+            joinedAt: memberships.joinedAt,
+            userId: memberships.userId,
+            userEmail: users.email,
+            userName: users.name,
+            userAvatarUrl: users.avatarUrl,
+            roleId: roles.id,
+            roleName: roles.name,
+        })
+        .from(memberships)
+        .leftJoin(users, eq(memberships.userId, users.id))
+        .leftJoin(roles, eq(memberships.roleId, roles.id))
+        .where(and(
             eq(memberships.tenantId, tenantId),
             eq(memberships.status, 'active')
-        ),
-        with: {
-            user: {
-                columns: { id: true, email: true, name: true, avatarUrl: true }
-            },
-            role: {
-                columns: { id: true, name: true }
-            }
-        }
-    });
+        ));
 
     return c.json({ members });
 });
