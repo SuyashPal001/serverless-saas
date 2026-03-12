@@ -14,9 +14,8 @@ const JWKS = jwksUri ? createRemoteJWKSet(new URL(jwksUri)) : null;
  */
 export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     // Production path: API Gateway JWT authorizer validates the token and passes
-    // claims via event.requestContext.authorizer.jwt.claims
-    const event = (c.env as any)?.event;
-    const claims = event?.requestContext?.authorizer?.jwt?.claims;
+    // claims via event.requestContext.authorizer.jwt.claims (HTTP API v2)
+    const claims = (c.env?.event?.requestContext as any)?.authorizer?.jwt?.claims;
     if (claims) {
         c.set('jwtPayload', claims as Record<string, string>);
         return next();
