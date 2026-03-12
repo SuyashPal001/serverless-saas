@@ -34,11 +34,13 @@ app.route('/health', healthRoutes);
 const publicApi = new Hono<AppEnv>();
 const secureApi = new Hono<AppEnv>();
 
-// Step 1: JWT extraction / Auth Injection — handles local dev JWT validation
+// ── Middleware chain ──────────────────────────────────────────────────────────
+
+// Step 1: JWT extraction
 publicApi.use('*', authInjectionMiddleware);
 secureApi.use('*', authInjectionMiddleware);
 
-// Step 2: User upsert — create or sync user from Cognito claims
+// Step 2: User upsert
 publicApi.use('*', userUpsertMiddleware);
 secureApi.use('*', userUpsertMiddleware);
 
@@ -52,7 +54,7 @@ secureApi.use('*', tenantResolutionMiddleware);
 // Step 5: Session validation
 secureApi.use('*', sessionValidationMiddleware);
 
-// Step 6: Entitlements (feature gateway)
+// Step 6: Entitlements
 secureApi.use('*', entitlementsMiddleware);
 
 // Step 7: Permissions
@@ -60,53 +62,26 @@ secureApi.use('*', permissionsMiddleware);
 
 // Step 8: Query scope
 secureApi.use('*', queryScopeMiddleware);
-//
 
+// ── Routes — register BEFORE mounting ────────────────────────────────────────
 
-// TODO: Wire middleware as packages complete
-// secureApi.use('*', authMiddleware);
-// secureApi.use('*', sessionMiddleware);
-// secureApi.use('*', tenantMiddleware);
-// secureApi.use('*', rateLimitMiddleware);
-// secureApi.use('*', featureGateMiddleware);
-// secureApi.use('*', permissionMiddleware);
-// secureApi.use('*', queryScopeMiddleware);
-
-// Mount API routes under /api/v1
+// Public routes
 publicApi.route('/auth', authPublicRoutes);
 publicApi.route('/onboarding', onboardingRoutes);
-app.route('/api/v1/', publicApi);
-app.route('/api/v1/', secureApi);
 
-// Auth routes
+
+// Secure routes
 secureApi.route('/auth', authRoutes);
-
-// Members routes
 secureApi.route('/members', membersRoutes);
-
-// Roles routes
 secureApi.route('/roles', rolesRoutes);
-
-// API keys routes
 secureApi.route('/api-keys', apiKeysRoutes);
-
-// Agents routes
 secureApi.route('/agents', agentsRoutes);
-
-// Agent runs routes
 secureApi.route('/agent-runs', agentRunsRoutes);
-
-// Notification routes
 secureApi.route('/notifications', notificationsRoutes);
-
-// Audit-logs routes
-
 secureApi.route('/audit-log', auditLogRoutes);
-
-// Billing routes
-
 secureApi.route('/billing', billingRoutes);
-
+// ── Mount — AFTER all routes are registered ───────────────────────────────────
+app.route('/api/v1', publicApi);
+app.route('/api/v1', secureApi);
 
 export { app, publicApi, secureApi };
-
