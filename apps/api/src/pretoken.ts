@@ -8,7 +8,7 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 
 /**
  * Cognito Pre Token Generation Lambda
@@ -32,11 +32,11 @@ import { eq, and } from 'drizzle-orm';
 export const handler: PreTokenGenerationTriggerHandler = async (
   event: PreTokenGenerationTriggerEvent
 ) => {
-  // Extract user identity from Cognito event
-  // event.userName is always the Cognito identifier — works for email and Google OAuth
-  const cognitoId = event.userName;
-  // const email = event.request.userAttributes.email;
-  // const name = event.request.userAttributes.name;
+  // Always use the Cognito sub (UUID) — event.userName for email/password users
+  // may be the raw email string, which won't match cognitoId in our DB.
+  // event.request.userAttributes.sub is always the stable UUID.
+  const cognitoId = event.request.userAttributes.sub;
+  console.log('[pretoken] step=start', { cognitoId, userName: event.userName });
 
   // Step 1 — find user in our DB by cognitoId
   // User is created here via middleware upsert on first API call (Volca pattern, ADR-024)
@@ -44,6 +44,8 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   const user = await db.query.users.findFirst({
     where: eq(users.cognitoId, cognitoId)
   });
+
+  console.log('[pretoken] step=1/user', { found: !!user, id: user?.id });
 
   if (!user) {
     // User not in DB yet — new signup, middleware will create them on first API call
@@ -57,6 +59,12 @@ export const handler: PreTokenGenerationTriggerHandler = async (
     where: eq(memberships.userId, user.id)
   });
 
+  console.log('[pretoken] step=2/membership', {
+    found: !!membership,
+    tenantId: membership?.tenantId,
+    status: membership?.status,
+  });
+
   if (!membership) {
     // User exists but has no tenant yet — needs to complete onboarding
     return emptyClaimsResponse(event);
@@ -68,22 +76,32 @@ export const handler: PreTokenGenerationTriggerHandler = async (
     where: eq(roles.id, membership.roleId)
   });
 
+  console.log('[pretoken] step=3/role', { found: !!role, name: role?.name });
+
   if (!role) {
     // Role not found — data integrity issue, fail safely
     return emptyClaimsResponse(event);
   }
 
-  // Step 4 — find active subscription to get the plan
+  // Step 4 — find active OR trialing subscription to get the plan
   // Plan drives feature gating across the entire platform (ADR entitlements)
+  // IMPORTANT: newly created subscriptions default to 'trialing', not 'active'.
+  // Filtering for 'active' only causes this step to always miss after onboarding.
   const subscription = await db.query.subscriptions.findFirst({
     where: and(
       eq(subscriptions.tenantId, membership.tenantId),
-      eq(subscriptions.status, 'active')
+      inArray(subscriptions.status, ['active', 'trialing'])
     )
   });
 
+  console.log('[pretoken] step=4/subscription', {
+    found: !!subscription,
+    status: subscription?.status,
+    plan: subscription?.plan,
+  });
+
   if (!subscription) {
-    // No active subscription — stamp free plan as safe default
+    // No active or trialing subscription — stamp free plan as safe default
     return emptyClaimsResponse(event);
   }
 
@@ -98,6 +116,12 @@ export const handler: PreTokenGenerationTriggerHandler = async (
       },
     },
   };
+
+  console.log('[pretoken] step=5/done — claims stamped', {
+    tenantId: membership.tenantId,
+    role: role.name,
+    plan: subscription.plan,
+  });
 
   return event;
 };
