@@ -20,6 +20,7 @@ import { agentRunsRoutes } from './routes/agent-runs';
 import { notificationsRoutes } from './routes/notifications';
 import { auditLogRoutes } from './routes/audit-log';
 import { billingRoutes } from './routes/billing';
+import { opsRoutes } from './routes/ops';
 import { authInjectionMiddleware } from './middleware/authInjection';
 
 const app = new Hono<AppEnv>();
@@ -80,6 +81,7 @@ secureApi.route('/agent-runs', agentRunsRoutes);
 secureApi.route('/notifications', notificationsRoutes);
 secureApi.route('/audit-log', auditLogRoutes);
 secureApi.route('/billing', billingRoutes);
+secureApi.route('/ops', opsRoutes);
 // ── Mount — AFTER all routes are registered ───────────────────────────────────
 app.route('/api/v1', publicApi);
 app.route('/api/v1', secureApi);
