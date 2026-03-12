@@ -8,3 +8,4 @@ export * from './access';
 export * from './audit';
 export * from './notifications';
 export * from './entitlements';
+export * from './relations';
