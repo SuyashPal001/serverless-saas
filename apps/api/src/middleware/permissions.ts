@@ -50,7 +50,7 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
         .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
         .where(eq(rolePermissions.roleId, membership.roleId));
 
-    const resolvedPermissions = permissionRows.map(p => `${p.resource}:${p.action}`);
+    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
 
     // Cache and attach to context for route handlers to read
     await getCacheClient().set(cacheKey, JSON.stringify(resolvedPermissions), { ex: PERMISSIONS_CACHE_TTL_SECONDS });

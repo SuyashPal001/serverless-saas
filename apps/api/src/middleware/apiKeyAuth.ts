@@ -46,8 +46,10 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     }
 
     // Confirm agent is still active
-    const agent = await db.query.agents.findFirst({
-        where: eq(agents.id, apiKey.agentId),
+    const agent = await db.transaction(async (tx: typeof db) => {
+        return tx.query.agents.findFirst({
+            where: eq(agents.id, apiKey.agentId),
+        });
     });
 
     if (!agent || agent.status !== 'active') {
@@ -76,7 +78,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         .where(eq(rolePermissions.roleId, membership.roleId));
 
     // Flatten to "resource:action" strings — same format used across the whole platform
-    const resolvedPermissions = permissionRows.map(p => `${p.resource}:${p.action}`);
+    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
 
     // Set apiKeyContext — the correct context type for programmatic access
     // Routes read this the same way regardless of whether caller is human or agent
@@ -88,10 +90,12 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     });
 
     // Non-blocking usage tracking — failure here must never block the request
-    db.update(apiKeys)
-        .set({ lastUsedAt: new Date() })
-        .where(eq(apiKeys.id, apiKey.id))
-        .catch(() => { });
+    await db.transaction(async (tx: typeof db) => {
+        tx.update(apiKeys)
+            .set({ lastUsedAt: new Date() })
+            .where(eq(apiKeys.id, apiKey.id))
+            .catch(() => { });
+    });
 
     return next();
 });
