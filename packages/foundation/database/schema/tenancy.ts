@@ -1,5 +1,7 @@
+import { relations } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, pgEnum, unique } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+import { roles } from './authorization';
 
 export const tenantTypeEnum = pgEnum('tenant_type', ['individual', 'startup', 'business', 'enterprise']);
 export const tenantStatusEnum = pgEnum('tenant_status', ['active', 'suspended', 'deleted']);
@@ -33,4 +35,19 @@ export const memberships = pgTable('memberships', {
 }, (t) => ({
   uniqueUserTenant: unique().on(t.userId, t.tenantId),
   uniqueAgentTenant: unique().on(t.agentId, t.tenantId),
+}));
+
+export const membershipsRelations = relations(memberships, ({ one }) => ({
+  user: one(users, {
+    fields: [memberships.userId],
+    references: [users.id],
+  }),
+  role: one(roles, {
+    fields: [memberships.roleId],
+    references: [roles.id],
+  }),
+  tenant: one(tenants, {
+    fields: [memberships.tenantId],
+    references: [tenants.id],
+  }),
 }));
