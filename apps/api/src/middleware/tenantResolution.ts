@@ -75,7 +75,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     // Store in Redis for subsequent requests
     // JSON.stringify because ioredis only stores strings
     // Upstash will store as JSON and return already parsed on next get
-    await getCacheClient().set(cacheKey, JSON.stringify(tenantContext), { ex: TENANT_CACHE_TTL_SECONDS });
+    await getCacheClient().set(cacheKey, JSON.stringify({ tenant: tenantContext }), { ex: TENANT_CACHE_TTL_SECONDS });
 
     c.set('requestContext', { tenant: tenantContext } as any);
     return next();
