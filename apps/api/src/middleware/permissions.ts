@@ -25,7 +25,7 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {
-        requestContext.permissions = JSON.parse(cached as string);
+        requestContext.permissions = typeof cached === 'string' ? JSON.parse(cached) : cached;
         return next();
     }
 
