@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -12,46 +12,54 @@ export const membersRoutes = new Hono<AppEnv>();
 // GET /members
 // Returns all active members in the tenant with their user and role details
 membersRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('members:read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    // Plain join — avoids Drizzle relational API (db.query...with) which requires
-    // a fully resolved relations map that is broken by circular schema imports
-    const members = await db
-        .select({
-            id: memberships.id,
-            status: memberships.status,
-            memberType: memberships.memberType,
-            joinedAt: memberships.joinedAt,
-            userId: memberships.userId,
-            userEmail: users.email,
-            userName: users.name,
-            userAvatarUrl: users.avatarUrl,
-            roleId: roles.id,
-            roleName: roles.name,
-        })
-        .from(memberships)
-        .leftJoin(users, eq(memberships.userId, users.id))
-        .leftJoin(roles, eq(memberships.roleId, roles.id))
-        .where(and(
-            eq(memberships.tenantId, tenantId),
-            eq(memberships.status, 'active')
-        ));
+    try {
+        // Plain join — avoids Drizzle relational API (db.query...with) which requires
+        // a fully resolved relations map that is broken by circular schema imports
+        const members = await db
+            .select({
+                id: memberships.id,
+                status: memberships.status,
+                memberType: memberships.memberType,
+                joinedAt: memberships.joinedAt,
+                userId: memberships.userId,
+                userEmail: users.email,
+                userName: users.name,
+                userAvatarUrl: users.avatarUrl,
+                roleId: roles.id,
+                roleName: roles.name,
+            })
+            .from(memberships)
+            .leftJoin(users, eq(memberships.userId, users.id))
+            .leftJoin(roles, eq(memberships.roleId, roles.id))
+            .where(and(
+                eq(memberships.tenantId, tenantId),
+                eq(memberships.status, 'active'),
+                isNull(users.deletedAt)
+            ));
 
-    return c.json({ members });
+        return c.json({ members });
+    } catch (err: any) {
+        console.error('Get members error:', err);
+        const code = err.name || 'INTERNAL_ERROR';
+        const message = err.message || 'Failed to fetch members';
+        return c.json({ error: message, code }, 500);
+    }
 });
 
 // POST /members/invite
 // Invites a user to the tenant by email and assigns them a role
 // Creates membership with status 'invited' — not active until accepted
 membersRoutes.post('/invite', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('members:create')) {
@@ -108,9 +116,9 @@ membersRoutes.post('/invite', async (c) => {
 // PATCH /members/:id/role
 // Changes a member's role within the tenant
 membersRoutes.patch('/:id/role', async (c) => {
-    const tenantId = c.get('tenantId');
-    const memberId = c.req.param('id');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const memberId = c.req.param('id');
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('members:update')) {
@@ -149,9 +157,9 @@ membersRoutes.patch('/:id/role', async (c) => {
 // Soft deletes a member by suspending their membership (ADR-009)
 // Row is preserved for audit trail — hard deleted after 30 day retention window
 membersRoutes.delete('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
-    const memberId = c.req.param('id');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const memberId = c.req.param('id');
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('members:delete')) {
