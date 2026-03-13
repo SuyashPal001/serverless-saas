@@ -25,7 +25,7 @@ rolesRoutes.get('/', async (c) => {
         ),
     });
 
-    return c.json({ data });
+    return c.json({ roles: data });
 });
 
 // POST /roles — create a custom role (requires custom_roles entitlement)
