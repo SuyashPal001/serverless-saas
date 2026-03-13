@@ -20,11 +20,15 @@ import { Button } from "@/components/ui/button";
 
 interface Member {
     id: string;
-    name?: string;
-    email: string;
-    roleId: string;
+    userId: string | null;
+    userName: string | null;
+    userEmail: string | null;
+    userAvatarUrl: string | null;
+    roleId: string | null;
+    roleName: string | null;
+    memberType: "human" | "agent";
     status: "active" | "invited" | "suspended";
-    joinedAt: string;
+    joinedAt: string | null;
 }
 
 export function MembersList() {
@@ -32,7 +36,10 @@ export function MembersList() {
 
     const { data: members, isLoading, isError, error } = useQuery<Member[]>({
         queryKey: ["members", tenantId],
-        queryFn: () => api.get<Member[]>("/api/v1/members"),
+        queryFn: async () => {
+            const response = await api.get<{ members: Member[] }>("/api/v1/members");
+            return response.members;
+        },
     });
 
     const canUpdateUsers = can(permissions, "users", "update");
@@ -99,22 +106,22 @@ export function MembersList() {
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center border border-border shrink-0">
                                         <span className="text-xs font-bold text-accent-foreground">
-                                            {getInitials(member.name, member.email)}
+                                            {getInitials(member.userName ?? undefined, member.userEmail ?? undefined)}
                                         </span>
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium text-foreground">
-                                            {member.name || "Unknown"}
+                                            {member.userName || "Unknown"}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
-                                            {member.email}
+                                            {member.userEmail}
                                         </span>
                                     </div>
                                 </div>
                             </TableCell>
                             <TableCell>
                                 <Badge variant="outline" className="text-xs">
-                                    {member.roleId}
+                                    {member.roleName || member.roleId || "No Role"}
                                 </Badge>
                             </TableCell>
                             <TableCell>
@@ -126,7 +133,7 @@ export function MembersList() {
                                 </Badge>
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                                {new Date(member.joinedAt).toLocaleDateString()}
+                                {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "Pending"}
                             </TableCell>
                             {canUpdateUsers && (
                                 <TableCell className="text-right">
