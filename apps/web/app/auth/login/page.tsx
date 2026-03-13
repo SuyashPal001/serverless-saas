@@ -42,7 +42,7 @@ export default function LoginPage() {
 
         try {
             // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
-            const { idToken } = await signIn(data.email, data.password);
+            const { idToken, refreshToken } = await signIn(data.email, data.password);
 
             // 2. Fetch user profile to get the tenant slug
             // Note: We pass the idToken directly in the header since the cookie isn't set yet.
@@ -60,7 +60,10 @@ export default function LoginPage() {
             const res = await fetch("/api/auth/session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: idToken }),
+                body: JSON.stringify({
+                    token: idToken,
+                    refreshToken
+                }),
             });
 
             if (!res.ok) throw new Error("Failed to create secure session");

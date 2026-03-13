@@ -217,3 +217,97 @@ Local dev uses `.env` files (not checked in).
 - `apps/api/src/pretoken.ts` - JWT claim stamping
 - `packages/foundation/database/schema/` - Database schema
 - `infra/terraform/` - Infrastructure as code
+
+#
+## Frontend Integration (apps/web)
+
+### Current State
+Next.js 15 App Router frontend is wired to the live backend. Basic dashboard pages are rendering with real data. `.env.local` exists at `apps/web/.env.local` (not committed — in `.gitignore`).
+
+### Dev Server
+```bash
+# From repo root
+pnpm --filter @serverless-saas/web dev
+```
+
+### Environment Variables (apps/web/.env.local)
+```
+NEXT_PUBLIC_API_URL=https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com
+NEXT_PUBLIC_ROOT_DOMAIN=localhost:3000
+NEXT_PUBLIC_COGNITO_USER_POOL_ID=ap-south-1_7ojsspkCU
+NEXT_PUBLIC_COGNITO_CLIENT_ID=o8m606564m72f8uh2np6m0odl
+```
+
+### API Proxy Route
+All frontend API calls go through `apps/web/app/api/proxy/[...path]/route.ts`.
+This Next.js route handler forwards requests to the backend, attaching the `platform_token` httpOnly cookie as a Bearer token. Check this file for the exact `NEXT_PUBLIC_API_URL` usage before adding any new API calls.
+
+### Auth Pattern
+- JWT stored in `platform_token` httpOnly cookie only — never localStorage
+- All API calls use `lib/api.ts` typed fetch wrapper — never raw fetch
+- Cognito calls use direct fetch to `https://cognito-idp.ap-south-1.amazonaws.com/` with `X-Amz-Target` headers — no aws-amplify SDK
+- Token refresh: read `platform_refresh_token` cookie server-side, call `refreshSession()` from `lib/auth.ts`, POST new idToken to `/api/auth/session`
+
+### TenantContext
+`apps/web/app/[tenant]/dashboard/layout.tsx` fetches `/auth/me` server-side and injects into context:
+```typescript
+{
+  tenantId: string
+  slug: string
+  role: string
+  plan: string
+  permissions: string[]   // e.g. ["members:read", "api_keys:create", ...]
+  needsOnboarding: boolean
+}
+```
+Access via `useTenant()` hook in any client component.
+
+### Permission Checks (client side — UX only)
+```typescript
+import { can } from '@/lib/permissions'
+const { permissions } = useTenant()
+if (can(permissions, 'members', 'create')) { ... }
+```
+
+### Onboarding Flow (needs building)
+- Route: `apps/web/app/onboarding/page.tsx` — does not exist yet, returns 404
+- User lands here when JWT `custom:tenantId` is empty (ADR-026)
+- Form: single field — workspace name
+- On submit: POST `/api/v1/onboarding/complete` with `{ workspaceName: string }`
+- Backend returns: `{ tenantId, slug, message }`
+- After success: call Cognito token refresh to get new JWT with tenantId stamped
+- Token refresh payload:
+  ```json
+  {
+    "AuthFlow": "REFRESH_TOKEN_AUTH",
+    "AuthParameters": { "REFRESH_TOKEN": "<stored_refresh_token>" },
+    "ClientId": "o8m606564m72f8uh2np6m0odl"
+  }
+  ```
+  POST to `https://cognito-idp.ap-south-1.amazonaws.com/` with header `X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth`
+- After success: read `platform_refresh_token` cookie server-side, call `refreshSession(refreshToken)` from `lib/auth.ts`, POST new idToken to `/api/auth/session` to update `platform_token`, redirect to `/{slug}/dashboard`
+
+### What's Working
+- `/[tenant]/dashboard` — renders with real data
+- Members page — real data
+- Roles page — verify after dev server restart (system roles should appear)
+- Billing page — real data (date fix applied)
+- API Keys page — real data
+- Audit log — real data
+- Entitlements endpoint — wired
+
+### What Needs Building (priority order)
+1. **Onboarding page** — `/onboarding` (described above)
+2. **Dashboard home** — overview widgets: member count, current plan badge, recent audit entries
+3. **Write operations** — invite member, generate API key, create agent (review plan before running)
+
+### Frontend Rules (always enforce)
+- JWT in httpOnly cookie only — never localStorage or sessionStorage
+- All API calls via `lib/api.ts` — never raw fetch
+- All data fetching via TanStack Query — never useEffect for data fetching
+- All forms via React Hook Form + Zod
+- shadcn/ui components only
+- Tenant context from `useTenant()` — never from URL params
+- Client permission checks are UX only — API always enforces server-side
+- Dark mode throughout
+- No heavy chart libraries — simple data display only
