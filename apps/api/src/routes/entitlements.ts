@@ -1,4 +1,10 @@
 import { Hono } from 'hono';
+import { and, eq, gte, sql } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
+import { features } from '@serverless-saas/database/schema/entitlements';
+import { memberships } from '@serverless-saas/database/schema/tenancy';
+import { agents } from '@serverless-saas/database/schema/auth';
+import { usageRecords } from '@serverless-saas/database/schema/billing';
 import type { AppEnv } from '../types';
 
 export const entitlementsRoutes = new Hono<AppEnv>();
@@ -7,13 +13,98 @@ export const entitlementsRoutes = new Hono<AppEnv>();
 // No permission check — all authenticated users can read their own entitlements
 entitlementsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
 
     try {
         // Entitlements are already loaded and cached by entitlementsMiddleware
         // Format: { featureId: { enabled, valueLimit, unlimited }, ... }
-        const entitlements = requestContext?.entitlements ?? {};
+        const entitlementsMap = requestContext?.entitlements ?? {};
 
-        return c.json({ entitlements });
+        // Step 1: Query features table to get all feature IDs and map them to keys
+        const featureIds = Object.keys(entitlementsMap);
+
+        if (featureIds.length === 0) {
+            // No entitlements configured — return empty structure
+            return c.json({
+                seats: { used: 0, limit: 0, unlimited: false },
+                api_calls: { used: 0, limit: 0, unlimited: false },
+                agents: { used: 0, limit: 0, unlimited: false },
+            });
+        }
+
+        const featureRows = await db.query.features.findMany({
+            where: sql`${features.id} = ANY(${featureIds}::uuid[])`,
+        });
+
+        // Build map: key → entitlement data
+        const entitlementsByKey: Record<string, any> = {};
+        for (const feature of featureRows) {
+            const entitlement = entitlementsMap[feature.id];
+            if (entitlement) {
+                entitlementsByKey[feature.key] = {
+                    enabled: entitlement.enabled,
+                    valueLimit: entitlement.valueLimit,
+                    unlimited: entitlement.unlimited,
+                };
+            }
+        }
+
+        // Step 2: Count usage for each feature
+
+        // Seats: COUNT memberships WHERE tenantId AND status = 'active' AND memberType = 'human'
+        const [seatsCount] = await db
+            .select({ count: sql<number>`COUNT(*)::int` })
+            .from(memberships)
+            .where(and(
+                eq(memberships.tenantId, tenantId),
+                eq(memberships.status, 'active'),
+                eq(memberships.memberType, 'human')
+            ));
+
+        // Agents: COUNT agents WHERE tenantId AND status = 'active'
+        const [agentsCount] = await db
+            .select({ count: sql<number>`COUNT(*)::int` })
+            .from(agents)
+            .where(and(
+                eq(agents.tenantId, tenantId),
+                eq(agents.status, 'active')
+            ));
+
+        // API calls: SUM usage_records WHERE tenantId AND metric = 'api_calls' AND recordedAt within current month
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const [apiCallsSum] = await db
+            .select({ total: sql<string>`COALESCE(SUM(${usageRecords.quantity}), 0)` })
+            .from(usageRecords)
+            .where(and(
+                eq(usageRecords.tenantId, tenantId),
+                eq(usageRecords.metric, 'api_calls'),
+                gte(usageRecords.recordedAt, monthStart)
+            ));
+
+        // Step 3: Build response object with exact shape
+        const seatsEntitlement = entitlementsByKey['seats'] || { enabled: false, valueLimit: 0, unlimited: false };
+        const apiCallsEntitlement = entitlementsByKey['api_calls'] || { enabled: false, valueLimit: 0, unlimited: false };
+        const agentsEntitlement = entitlementsByKey['agents'] || { enabled: false, valueLimit: 0, unlimited: false };
+
+        return c.json({
+            seats: {
+                used: seatsCount?.count ?? 0,
+                limit: seatsEntitlement.valueLimit ?? 0,
+                unlimited: seatsEntitlement.unlimited ?? false,
+            },
+            api_calls: {
+                used: parseInt(apiCallsSum?.total ?? '0', 10),
+                limit: apiCallsEntitlement.valueLimit ?? 0,
+                unlimited: apiCallsEntitlement.unlimited ?? false,
+            },
+            agents: {
+                used: agentsCount?.count ?? 0,
+                limit: agentsEntitlement.valueLimit ?? 0,
+                unlimited: agentsEntitlement.unlimited ?? false,
+            },
+        });
     } catch (err: any) {
         console.error('Get entitlements error:', err);
         const code = err.name || 'INTERNAL_ERROR';
