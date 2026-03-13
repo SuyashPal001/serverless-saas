@@ -8,30 +8,48 @@ export const auditLogRoutes = new Hono<AppEnv>();
 
 // GET /audit-log — list audit entries for tenant, newest first
 auditLogRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('audit_log:read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    // Optional filters via query params
-    const actorId = c.req.query('actorId');
-    const resource = c.req.query('resource');
-    const actorType = c.req.query('actorType');
+    try {
+        // Query params for pagination
+        const page = parseInt(c.req.query('page') || '1', 10);
+        const pageSize = Math.min(parseInt(c.req.query('pageSize') || '50', 10), 100);
+        const offset = (page - 1) * pageSize;
 
-    const conditions = [eq(auditLog.tenantId, tenantId)];
+        // Optional filters via query params
+        const actorId = c.req.query('actorId');
+        const resource = c.req.query('resource');
+        const actorType = c.req.query('actorType');
 
-    if (actorId) conditions.push(eq(auditLog.actorId, actorId));
-    if (resource) conditions.push(eq(auditLog.resource, resource));
-    if (actorType) conditions.push(eq(auditLog.actorType, actorType as any));
+        const conditions = [eq(auditLog.tenantId, tenantId)];
 
-    const data = await db.query.auditLog.findMany({
-        where: and(...conditions),
-        orderBy: desc(auditLog.createdAt),
-        limit: 100,
-    });
+        if (actorId) conditions.push(eq(auditLog.actorId, actorId));
+        if (resource) conditions.push(eq(auditLog.resource, resource));
+        if (actorType) conditions.push(eq(auditLog.actorType, actorType as any));
 
-    return c.json({ data });
+        const logs = await db.query.auditLog.findMany({
+            where: and(...conditions),
+            orderBy: desc(auditLog.createdAt),
+            limit: pageSize,
+            offset: offset,
+        });
+
+        return c.json({
+            logs,
+            page,
+            pageSize,
+            hasMore: logs.length === pageSize,
+        });
+    } catch (err: any) {
+        console.error('Get audit log error:', err);
+        const code = err.name || 'INTERNAL_ERROR';
+        const message = err.message || 'Failed to fetch audit logs';
+        return c.json({ error: message, code }, 500);
+    }
 });

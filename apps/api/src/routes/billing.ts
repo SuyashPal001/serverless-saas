@@ -8,6 +8,33 @@ import type { AppEnv } from '../types';
 
 export const billingRoutes = new Hono<AppEnv>();
 
+// GET /billing/subscription — get current active subscription
+billingRoutes.get('/subscription', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('billing:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    try {
+        const subscription = await db.query.subscriptions.findFirst({
+            where: and(
+                eq(subscriptions.tenantId, tenantId),
+                eq(subscriptions.status, 'active')
+            ),
+        });
+
+        return c.json({ subscription: subscription ?? null });
+    } catch (err: any) {
+        console.error('Get subscription error:', err);
+        const code = err.name || 'INTERNAL_ERROR';
+        const message = err.message || 'Failed to fetch subscription';
+        return c.json({ error: message, code }, 500);
+    }
+});
+
 // GET /billing/plan — get current active subscription
 billingRoutes.get('/plan', async (c) => {
     const tenantId = c.get('tenantId');
