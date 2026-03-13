@@ -29,6 +29,7 @@ import {
 const apiKeySchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
     type: z.enum(["rest", "mcp", "agent"]),
+    permissions: z.string().optional(),
     expiresAt: z.string().optional().nullable(),
 });
 
@@ -47,6 +48,7 @@ export function CreateApiKeyForm({ onSuccess }: CreateApiKeyFormProps) {
         defaultValues: {
             name: "",
             type: "rest",
+            permissions: "",
             expiresAt: "",
         },
     });
@@ -55,6 +57,9 @@ export function CreateApiKeyForm({ onSuccess }: CreateApiKeyFormProps) {
         mutationFn: (values: ApiKeyFormValues) => {
             const payload = {
                 ...values,
+                permissions: values.permissions
+                    ? values.permissions.split(',').map(p => p.trim()).filter(Boolean)
+                    : [],
                 expiresAt: values.expiresAt || null,
             };
             return api.post<{ id: string; name: string; type: string; key: string }>("/api/v1/api-keys", payload);
@@ -112,6 +117,23 @@ export function CreateApiKeyForm({ onSuccess }: CreateApiKeyFormProps) {
                                     <SelectItem value="agent">Agent (Autonomous)</SelectItem>
                                 </SelectContent>
                             </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="permissions"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Permissions (Optional)</FormLabel>
+                            <FormControl>
+                                <Input placeholder="e.g. members:read, billing:read" {...field} />
+                            </FormControl>
+                            <FormDescription>
+                                Comma-separated list of resource:action pairs.
+                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}

@@ -1,24 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Search, AlertCircle, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, AlertCircle, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import {
     Table,
     TableBody,
@@ -27,230 +15,185 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import type { AuditLogResponse } from "@/components/platform/audit/types";
+import { Badge } from "@/components/ui/badge";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AuditLogResponse } from "@/components/platform/audit/types";
 
-const PAGE_SIZE = 20;
+function formatRelativeTime(dateStr: string): string {
+    const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+    const diffMs = new Date(dateStr).getTime() - Date.now();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.round(diffMs / (1000 * 60));
+
+    if (Math.abs(diffDays) > 0) return rtf.format(diffDays, "day");
+    if (Math.abs(diffHours) > 0) return rtf.format(diffHours, "hour");
+    if (Math.abs(diffMinutes) > 0) return rtf.format(diffMinutes, "minute");
+    return "just now";
+}
+
+function truncateId(id: string | null): string {
+    if (!id) return "N/A";
+    if (id.length <= 8) return id;
+    return `${id.slice(0, 8)}...`;
+}
 
 export default function AuditLogPage() {
-    const params = useParams();
-    const tenantSlug = params.tenant as string;
-    const { permissions } = useTenant();
+    const { tenantId, permissions = [] } = useTenant();
+    const [search, setSearch] = React.useState("");
 
-    const [actorType, setActorType] = React.useState<string>("all");
-    const [from, setFrom] = React.useState<string>("");
-    const [to, setTo] = React.useState<string>("");
-    const [page, setPage] = React.useState(1);
+    const canRead = can(permissions, "audit_log", "read");
 
-    const hasPermission = can(permissions, "audit", "read");
-
-    const queryKey = ["audit-log", tenantSlug, actorType, from, to, page] as const;
-
-    const { data, isLoading, isError } = useQuery<AuditLogResponse>({
-        queryKey,
-        queryFn: () => {
-            let url = `/api/v1/audit?page=${page}&pageSize=${PAGE_SIZE}`;
-            if (actorType !== "all") url += `&actorType=${actorType}`;
-            if (from) url += `&from=${from}`;
-            if (to) url += `&to=${to}`;
-            return api.get<AuditLogResponse>(url);
-        },
-        enabled: hasPermission,
+    const { data, isLoading, isError, error } = useQuery<AuditLogResponse>({
+        queryKey: ["audit-logs", tenantId],
+        queryFn: () => api.get<AuditLogResponse>("/api/v1/audit-log"),
+        enabled: canRead,
     });
 
-    const handleFilterChange = (updater: () => void) => {
-        updater();
-        setPage(1);
-    };
-
-    if (!hasPermission) {
+    if (!canRead) {
         return (
-            <div className="flex items-center justify-center py-24">
+            <div className="flex items-center justify-center min-h-[400px]">
                 <Alert variant="destructive" className="max-w-md">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>No Permission</AlertTitle>
+                    <AlertTitle>Access Denied</AlertTitle>
                     <AlertDescription>
-                        You don&apos;t have permission to view the audit log.
+                        You do not have permission to view the audit logs.
                     </AlertDescription>
                 </Alert>
             </div>
         );
     }
 
-    const logs = data?.logs ?? [];
-    const totalPages = data?.totalPages ?? 1;
+    const filteredLogs = React.useMemo(() => {
+        if (!data?.logs) return [];
+        if (!search) return data.logs;
 
-    const formatDate = (iso: string) => {
-        return new Intl.DateTimeFormat("en-US", {
-            dateStyle: "short",
-            timeStyle: "short",
-        }).format(new Date(iso));
-    };
-
-    const getActorTypeBadge = (type: string) => {
-        switch (type) {
-            case "human":
-                return <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100">human</Badge>;
-            case "agent":
-                return <Badge variant="secondary" className="bg-purple-100 text-purple-700 hover:bg-purple-100">agent</Badge>;
-            case "system":
-                return <Badge variant="secondary" className="bg-gray-100 text-gray-700 hover:bg-gray-100">system</Badge>;
-            default:
-                return <Badge variant="outline">{type}</Badge>;
-        }
-    };
+        const term = search.toLowerCase();
+        return data.logs.filter(
+            (log) =>
+                log.action.toLowerCase().includes(term) ||
+                log.resource.toLowerCase().includes(term)
+        );
+    }, [data?.logs, search]);
 
     return (
         <div className="space-y-6">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Audit Log</h1>
                 <p className="text-muted-foreground mt-1">
-                    Track activity and changes across your workspace.
+                    A record of all significant actions taken within this tenant.
                 </p>
             </div>
 
-            {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-4 p-4 border rounded-lg bg-card">
-                <div className="w-full sm:w-48">
-                    <Select
-                        value={actorType}
-                        onValueChange={(val) => handleFilterChange(() => setActorType(val))}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Actor Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Actors</SelectItem>
-                            <SelectItem value="human">Human</SelectItem>
-                            <SelectItem value="agent">Agent</SelectItem>
-                            <SelectItem value="system">System</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">From:</span>
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                        type="date"
-                        className="w-40"
-                        value={from}
-                        onChange={(e) => handleFilterChange(() => setFrom(e.target.value))}
-                    />
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">To:</span>
-                    <Input
-                        type="date"
-                        className="w-40"
-                        value={to}
-                        onChange={(e) => handleFilterChange(() => setTo(e.target.value))}
+                        placeholder="Filter by action or resource..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-9"
                     />
                 </div>
             </div>
 
-            {/* Content states */}
-            {isError && (
+            {isError ? (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load audit log.</AlertDescription>
+                    <AlertDescription>
+                        {error instanceof Error ? error.message : "Failed to load audit logs."}
+                    </AlertDescription>
                 </Alert>
-            )}
-
-            {!isLoading && !isError && logs.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground border rounded-lg bg-card">
-                    <Inbox className="h-10 w-10 opacity-40" />
-                    <p className="text-base font-medium">No audit log entries found.</p>
-                </div>
-            )}
-
-            {/* Table */}
-            {(isLoading || logs.length > 0) && (
-                <div className="border rounded-lg bg-card overflow-hidden">
+            ) : (
+                <div className="rounded-md border border-border bg-card">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Actor</TableHead>
-                                <TableHead>Type</TableHead>
                                 <TableHead>Action</TableHead>
                                 <TableHead>Resource</TableHead>
                                 <TableHead>Resource ID</TableHead>
                                 <TableHead>IP Address</TableHead>
-                                <TableHead>Time</TableHead>
+                                <TableHead>Date</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading
-                                ? Array.from({ length: 8 }).map((_, i) => (
+                            {isLoading ? (
+                                Array.from({ length: 5 }).map((_, i) => (
                                     <TableRow key={i}>
-                                        {Array.from({ length: 7 }).map((_, j) => (
-                                            <TableCell key={j}>
-                                                <Skeleton className="h-4 w-full" />
-                                            </TableCell>
-                                        ))}
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                                     </TableRow>
                                 ))
-                                : logs.map((log) => (
+                            ) : filteredLogs.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
+                                        No audit entries found.
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                filteredLogs.map((log) => (
                                     <TableRow key={log.id}>
-                                        <TableCell className="font-mono text-xs">
-                                            {log.actorId.substring(0, 8)}
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                                <Badge variant="outline" className="w-fit text-[10px] uppercase font-bold tracking-wider">
+                                                    {log.actorType}
+                                                </Badge>
+                                                <span className="text-xs text-muted-foreground font-mono">
+                                                    {truncateId(log.actorId)}
+                                                </span>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
-                                            {getActorTypeBadge(log.actorType)}
-                                        </TableCell>
-                                        <TableCell className="max-w-[150px] truncate">
-                                            {log.action}
+                                            <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono font-medium">
+                                                {log.action}
+                                            </code>
                                         </TableCell>
                                         <TableCell>
-                                            {log.resource}
+                                            <code className="text-xs font-mono">
+                                                {log.resource}
+                                            </code>
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">
-                                            {log.resourceId ? log.resourceId.substring(0, 8) : "—"}
+                                        <TableCell>
+                                            <span className="text-xs text-muted-foreground font-mono">
+                                                {truncateId(log.resourceId)}
+                                            </span>
                                         </TableCell>
-                                        <TableCell className="text-xs">
-                                            {log.ipAddress ?? "—"}
+                                        <TableCell>
+                                            <span className="text-xs font-mono">
+                                                {log.ipAddress || "N/A"}
+                                            </span>
                                         </TableCell>
-                                        <TableCell className="whitespace-nowrap">
-                                            {formatDate(log.createdAt)}
+                                        <TableCell>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger className="flex items-center gap-1.5 text-xs">
+                                                        <Clock className="h-3 w-3 text-muted-foreground" />
+                                                        {formatRelativeTime(log.createdAt)}
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>{new Date(log.createdAt).toLocaleString()}</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                ))
+                            )}
                         </TableBody>
                     </Table>
-                </div>
-            )}
-
-            {/* Pagination */}
-            {!isLoading && !isError && logs.length > 0 && (
-                <div className="flex items-center justify-between px-1">
-                    <p className="text-xs text-muted-foreground">
-                        Page{" "}
-                        <span className="font-medium text-foreground">{page}</span>{" "}
-                        of{" "}
-                        <span className="font-medium text-foreground">
-                            {totalPages}
-                        </span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                        >
-                            <ChevronLeft className="mr-1 h-4 w-4" />
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={page >= totalPages}
-                        >
-                            Next
-                            <ChevronRight className="ml-1 h-4 w-4" />
-                        </Button>
-                    </div>
                 </div>
             )}
         </div>

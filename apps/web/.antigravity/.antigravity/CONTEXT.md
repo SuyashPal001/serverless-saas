@@ -1,111 +1,150 @@
-# Antigravity Agent Rules — Platform Web
+# Project Context — Platform Web
 
-## What This Project Is
-Multi-tenant SaaS platform dashboard. Each tenant gets a subdomain (acme.yourapp.com).
-Tenant context is always resolved from JWT claims — never from URL params directly.
-This is the frontend only. Backend API already exists separately.
+## What We Are Building
+Multi-tenant SaaS platform dashboard. Frontend only — `apps/web` inside the `serverless-saas` pnpm monorepo.
 
----
-
-## Non-Negotiable Stack
-- Framework: Next.js (App Router) — TypeScript only
-- Styling: Tailwind CSS — dark mode first, always
-- Components: shadcn/ui only — never MUI, Chakra, Ant Design, or any other component library
-- Icons: Lucide only
-- Server state: TanStack Query — never useEffect for data fetching, ever
-- Forms: React Hook Form + Zod — every form, no exceptions
-- Package manager: pnpm — never npm or yarn
+The backend API is **fully built and live**. All 12 route domains are verified working. Do not build mock data or stubs — connect to the real API.
 
 ---
 
-## Security Rules (Never Violate)
-- JWT must be stored in httpOnly cookie only — never localStorage, never sessionStorage, never a JS variable
-- Client-side permission checks are UX only — they gate UI rendering, never security decisions
-- Never pass tenantId as a URL param or query string — always read from JWT claims
-- Never expose raw API credentials in client code
+## Live Backend
 
----
+| Resource | Value |
+|---|---|
+| API Base URL | `https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com` |
+| Cognito User Pool | `ap-south-1_7ojsspkCU` |
+| Cognito Client ID | `o8m606564m72f8uh2np6m0odl` |
+| Region | `ap-south-1` |
 
-## Folder Structure (Follow Exactly)
+Environment variables in `.env.local`:
 ```
-apps/web/
-  app/
-    (marketing)/
-    auth/
-      login/
-      invite/[token]/
-      sso/pnpm --version
-    [tenant]/
-      layout.tsx        ← resolves tenant, injects context
-      dashboard/
-        layout.tsx      ← sidebar + topbar shell
-        page.tsx
-        settings/members/
-        settings/roles/
-        settings/branding/
-        billing/
-        api-keys/
-        agents/
-        notifications/
-        audit/
-        ops/            ← platform_admin only
-  components/
-    ui/                 ← shadcn/ui primitives only
-    platform/           ← shared platform components
-    ops/                ← ops-only components
-  lib/
-    auth.ts             ← Cognito token + session handling
-    tenant.ts           ← subdomain resolution helpers
-    api.ts              ← typed fetch wrapper (all API calls go through here)
-    permissions.ts      ← client-side permission helpers
-  middleware.ts         ← edge middleware, subdomain routing
+NEXT_PUBLIC_API_URL=https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com
+NEXT_PUBLIC_ROOT_DOMAIN=localhost:3000
+NEXT_PUBLIC_COGNITO_USER_POOL_ID=ap-south-1_7ojsspkCU
+NEXT_PUBLIC_COGNITO_CLIENT_ID=o8m606564m72f8uh2np6m0odl
 ```
 
 ---
 
-## Patterns to Always Follow
+## API Contract
 
-### API Calls
-- All API calls go through `lib/api.ts` typed wrapper
-- Never use raw fetch() directly in components or pages
-- JWT is attached automatically by the wrapper from the httpOnly cookie
-- Base URL comes from `NEXT_PUBLIC_API_URL` env var only
+All API responses follow this shape:
+```typescript
+// Success
+{ data: T }
 
-### Data Fetching
-- Always TanStack Query (useQuery, useMutation)
-- Never useEffect + fetch
-- Loading and error states must always be handled — no silent failures
+// Error
+{ error: string, code: string }
+```
 
-### Forms
-- Always React Hook Form + Zod schema
-- Zod schema defined first, then inferred TypeScript type from it
-- shadcn/ui FormField components always used for form inputs
+All requests are tenant-scoped via JWT — no need to pass tenantId manually.
 
-### Permissions
-- Permission helper: `can(permissions, resource, action)` from `lib/permissions.ts`
-- Gate UI rendering with permission checks, not routes
-- Ops routes additionally check `platform_admin` role before rendering anything
+### Endpoints (all under /api/v1)
 
-### Tenant Context
-- Tenant slug comes from subdomain, resolved in edge middleware
-- Full tenant context (tenantId, role, plan) comes from JWT claims
-- Never trust or read tenantId from URL path or query params
+**Members**
+- `GET /members` → `{ data: Member[] }`
+- `POST /members/invite` → `{ data: Member }` — body: `{ email, roleId }`
+- `PATCH /members/:id/role` → `{ data: Member }` — body: `{ roleId }`
+- `DELETE /members/:id`
+
+**Roles**
+- `GET /roles` → `{ data: Role[] }`
+- `POST /roles` → `{ data: Role }` — body: `{ name, description }`
+
+**Billing**
+- `GET /billing/plan` → `{ data: Subscription }`
+- `POST /billing/upgrade` → body: `{ plan, billingCycle }`
+- `POST /billing/cancel`
+- `GET /billing/invoices` → `{ data: Invoice[] }`
+
+**API Keys**
+- `GET /api-keys` → `{ data: ApiKey[] }`
+- `POST /api-keys` → `{ data: { key: string, ...ApiKey } }` — body: `{ name, type, permissions, expiresAt? }`
+- `DELETE /api-keys/:id/revoke`
+
+**Agents**
+- `GET /agents` → `{ data: Agent[] }`
+- `POST /agents` → `{ data: Agent }`
+- `GET /agents/:id` → `{ data: Agent }`
+- `PATCH /agents/:id`
+
+**Agent Runs**
+- `GET /agent-runs` → `{ data: AgentRun[] }`
+- `GET /agent-runs/:id` → `{ data: AgentRun }`
+
+**Notifications**
+- `GET /notifications` → `{ data: NotificationInboxItem[] }`
+- `PATCH /notifications/:id` → mark as read — body: `{ read: true }`
+
+**Audit Log**
+- `GET /audit-log` → `{ data: AuditEntry[] }`
+
+**Ops (platform_admin only)**
+- `GET /ops/tenants` → `{ data: Tenant[] }`
+- `PATCH /ops/tenants/:id` → body: `{ status }`
+- `GET /ops/overrides` → `{ data: Override[] }`
+- `POST /ops/overrides` → body: `{ tenantId, featureId, enabled?, valueLimit?, reason, expiresAt? }`
+- `POST /ops/overrides/:id/revoke`
+
+**Auth**
+- `POST /auth/logout`
+- `POST /auth/switch-tenant` → body: `{ tenantSlug }`
 
 ---
 
-## Design Rules
-- Dark mode first — all components default dark
-- Reference aesthetic: Google AI Studio — clean, minimal, content takes full width
-- Sidebar navigation, no heavy charts or tables day one
-- No heavy chart libraries day one
-- Responsive but desktop-first for the dashboard
+## Permission Model
+
+Permissions are strings in format `resource:action`. Examples:
+- `members:create`, `members:read`, `members:update`, `members:delete`
+- `roles:create`, `roles:read`
+- `billing:read`, `billing:update`
+- `api_keys:create`, `api_keys:read`, `api_keys:delete`
+- `agents:create`, `agents:read`, `agents:update`
+- `agent_runs:read`
+- `notifications:read`, `notifications:update`
+- `audit_log:read`
+
+Use `can(permissions, resource, action)` from `lib/permissions.ts` to gate UI elements.
+
+Platform admin role: `platform_admin` — check `role === 'platform_admin'` from useTenant() for ops routes.
 
 ---
 
-## What to Never Do
-- Never install a component library other than shadcn/ui
-- Never store JWT anywhere except httpOnly cookie
-- Never fetch data with useEffect
-- Never read tenant context from URL params
-- Never render ops routes without checking platform_admin role
-- Never commit .env files
+## Tenant Model
+- Every tenant gets a subdomain: `acme.yourapp.com`
+- Edge middleware resolves subdomain → passes `x-tenant-slug` header
+- JWT claims: `custom:tenantId`, `custom:role`, `custom:plan`
+- `useTenant()` hook returns: `{ tenantId, tenantSlug, role, plan, permissions }`
+
+---
+
+## Auth Flow
+- Login → Cognito via aws-amplify → JWT stored in httpOnly cookie (`platform_token`)
+- Token refresh: silent via Cognito refresh token
+- Invite accept → `completeNewPassword` flow → redirect to tenant subdomain
+- Onboarding: if `custom:tenantId` is empty in JWT → redirect to `/onboarding`
+
+---
+
+## Real-Time (Notifications)
+- WebSocket connection to API Gateway WebSocket endpoint
+- On connect: server stores `connectionId` in Upstash Redis keyed to userId
+- Lambda pushes new notifications to browser via connectionId
+- Frontend: maintain WebSocket connection in notifications context, update TanStack Query cache on message received
+
+---
+
+## Completed Tasks
+- ✅ Task 1 — Scaffold (Next.js 15, dependencies, folder structure, lib/api.ts, lib/permissions.ts, middleware.ts)
+- ✅ Task 2 — Auth Flow (lib/auth.ts, session route, login page, invite page, tenant layout, TenantProvider)
+- ✅ Task 3 — Dashboard Shell (layout, Sidebar, Topbar)
+- ✅ Task 4 — Members Page (list, invite modal, role change, permission gates)
+- ✅ Task 5 — Roles Page
+- ✅ Task 6 — Billing + Invoices
+
+## Remaining Tasks
+- Task 7 — API Keys (Flash)
+- Task 8 — Agents List + Detail + Runs (Pro Low)
+- Task 9 — Notifications Inbox with WebSocket (Pro High)
+- Task 10 — Audit Log (Flash)
+- Task 11 — Ops Portal — Tenants + Feature Overrides (Pro Low)

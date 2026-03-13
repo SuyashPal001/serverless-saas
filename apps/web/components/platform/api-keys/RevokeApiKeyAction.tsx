@@ -35,7 +35,7 @@ export function RevokeApiKeyAction({ apiKeyId, apiKeyName }: RevokeApiKeyActionP
     const [showConfirm, setShowConfirm] = useState(false);
 
     const revokeMutation = useMutation({
-        mutationFn: () => api.post(`/api/v1/api-keys/${apiKeyId}/revoke`),
+        mutationFn: () => api.del(`/api/v1/api-keys/${apiKeyId}/revoke`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["api-keys", tenantId] });
             toast.success(`API key "${apiKeyName}" revoked successfully`);
@@ -48,22 +48,15 @@ export function RevokeApiKeyAction({ apiKeyId, apiKeyName }: RevokeApiKeyActionP
 
     return (
         <>
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                        className="text-destructive focus:text-destructive flex items-center gap-2"
-                        onClick={() => setShowConfirm(true)}
-                    >
-                        <Ban className="h-4 w-4" />
-                        Revoke Key
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 font-medium"
+                onClick={() => setShowConfirm(true)}
+            >
+                <Ban className="h-3.5 w-3.5 mr-1.5" />
+                Revoke
+            </Button>
 
             <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
                 <AlertDialogContent>

@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
-import { useUnreadCount } from "@/hooks/useUnreadCount"
+import { useNotifications } from "@/lib/notifications-context"
 
 interface SidebarItemProps {
     href: string
@@ -63,7 +63,7 @@ function NotificationsItem({ href, unreadCount }: { href: string; unreadCount: n
             <span>Notifications</span>
             {unreadCount > 0 && (
                 <span className="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
             )}
         </Link>
@@ -74,7 +74,7 @@ export function Sidebar() {
     const { tenantId, role } = useTenant()
     const params = useParams()
     const tenantSlug = params.tenant as string
-    const { unreadCount } = useUnreadCount()
+    const { unreadCount } = useNotifications()
 
     const notificationsHref = `/${tenantSlug}/dashboard/notifications`
 

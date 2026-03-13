@@ -24,6 +24,7 @@ export interface ApiKey {
     name: string;
     type: "rest" | "mcp" | "agent";
     status: "active" | "revoked";
+    permissions: string[];
     lastUsedAt: string | null;
     expiresAt: string | null;
     createdAt: string;
@@ -82,11 +83,12 @@ export function ApiKeysList() {
                     <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Type</TableHead>
+                        <TableHead>Permissions</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Created</TableHead>
                         <TableHead>Last Used</TableHead>
                         <TableHead>Expires</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                        <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -104,6 +106,19 @@ export function ApiKeysList() {
                                     <Badge variant="outline" className="uppercase text-[10px] font-bold tracking-wider">
                                         {key.type}
                                     </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                        {key.permissions && key.permissions.length > 0 ? (
+                                            key.permissions.map((p) => (
+                                                <Badge key={p} variant="secondary" className="text-[9px] px-1 py-0 leading-none h-4">
+                                                    {p}
+                                                </Badge>
+                                            ))
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground italic">Full Access</span>
+                                        )}
+                                    </div>
                                 </TableCell>
                                 <TableCell>
                                     <Badge
@@ -130,7 +145,7 @@ export function ApiKeysList() {
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                     {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "Never"}
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="text-right">
                                     {!isRevoked && canRevokeKeys && (
                                         <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
                                     )}

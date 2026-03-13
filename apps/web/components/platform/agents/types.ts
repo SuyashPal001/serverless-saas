@@ -5,7 +5,7 @@ import * as z from "zod";
 export const agentSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
     type: z.enum(["ops", "support", "billing", "custom"]),
-    model: z.string().min(1, { message: "Model is required." }),
+    model: z.string().optional(),
 });
 
 export type AgentFormValues = z.infer<typeof agentSchema>;
@@ -65,6 +65,7 @@ export interface AgentRun {
     completedAt: string | null;
     stepsCompleted: StepCompleted[];
     actionsTaken: ActionTaken[];
+    insights?: string;
     humanApproved: boolean | null;
 }
 

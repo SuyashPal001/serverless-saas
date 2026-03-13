@@ -14,7 +14,8 @@ import type {
     Notification,
     NotificationsInboxResponse,
 } from "@/components/platform/notifications/types";
-import { useNotificationsSocket } from "@/hooks/useNotificationsSocket";
+import { useNotifications } from "@/lib/notifications-context";
+import { can } from "@/lib/permissions";
 
 function relativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -31,14 +32,21 @@ const PAGE_SIZE = 20;
 export default function NotificationsPage() {
     const params = useParams();
     const tenantSlug = params.tenant as string;
-    // useTenant for any future tenant-scoped logic
-    useTenant();
-    useNotificationsSocket();
+    const { permissions = [] } = useTenant();
+
+    // Notifications Context replaces the raw socket hook
+    const { markAllRead: clearSidebarBadge } = useNotifications();
+    const canUpdate = can(permissions, "notifications", "update");
 
     const queryClient = useQueryClient();
     const [page, setPage] = React.useState(1);
 
     const queryKey = ["notifications-inbox", tenantSlug, page] as const;
+
+    // Clear the unread badge in sidebar upon visiting this page
+    React.useEffect(() => {
+        clearSidebarBadge();
+    }, [clearSidebarBadge]);
 
     const { data, isLoading, isError, error } =
         useQuery<NotificationsInboxResponse>({
@@ -73,7 +81,7 @@ export default function NotificationsPage() {
         },
     });
 
-    // Mark all as read — invalidate and reset page
+    // Mark all as read
     const markAllMutation = useMutation({
         mutationFn: () => api.patch(`/api/v1/notifications/inbox/read-all`),
         onSuccess: () => {
@@ -89,7 +97,7 @@ export default function NotificationsPage() {
     const unreadCount = data?.unreadCount ?? 0;
 
     const handleRowClick = (n: Notification) => {
-        if (!n.read) {
+        if (!n.read && canUpdate) {
             markReadMutation.mutate(n.id);
         }
     };
@@ -107,7 +115,7 @@ export default function NotificationsPage() {
                     </p>
                 </div>
 
-                {unreadCount > 0 && !isLoading && !isError && (
+                {unreadCount > 0 && !isLoading && !isError && canUpdate && (
                     <Button
                         variant="outline"
                         size="sm"
@@ -171,19 +179,19 @@ export default function NotificationsPage() {
                                     handleRowClick(n);
                             }}
                             className={[
-                                "rounded-lg px-4 py-3.5 transition-colors",
-                                "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "rounded-lg px-4 py-3.5 transition-colors group relative",
+                                canUpdate && !n.read ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring" : "",
                                 n.read
                                     ? "bg-transparent hover:bg-muted/40"
-                                    : "border-l-2 border-primary bg-muted/60 hover:bg-muted/80",
+                                    : "border border-primary/20 bg-primary/5 hover:bg-primary/10",
                             ].join(" ")}
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1 space-y-1">
                                     <p
                                         className={[
-                                            "text-sm font-semibold leading-snug",
-                                            n.read ? "text-muted-foreground" : "text-foreground",
+                                            "text-sm leading-snug",
+                                            n.read ? "font-medium text-muted-foreground" : "font-bold text-primary",
                                         ].join(" ")}
                                     >
                                         {n.title}
@@ -193,14 +201,14 @@ export default function NotificationsPage() {
                                             "text-sm line-clamp-2 leading-relaxed",
                                             n.read
                                                 ? "text-muted-foreground/70"
-                                                : "text-muted-foreground",
+                                                : "text-foreground/90",
                                         ].join(" ")}
                                     >
                                         {n.body}
                                     </p>
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
-                                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                    <span className="text-[11px] text-muted-foreground whitespace-nowrap font-medium">
                                         {relativeTime(n.createdAt)}
                                     </span>
                                     <Badge
@@ -211,6 +219,12 @@ export default function NotificationsPage() {
                                     </Badge>
                                 </div>
                             </div>
+
+                            {!n.read && canUpdate && (
+                                <div className="absolute right-4 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Click to mark read</span>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
