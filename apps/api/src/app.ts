@@ -22,6 +22,7 @@ import { auditLogRoutes } from './routes/audit-log';
 import { billingRoutes } from './routes/billing';
 import { opsRoutes } from './routes/ops';
 import { authInjectionMiddleware } from './middleware/authInjection';
+import { entitlementsRoutes } from './routes/entitlements';
 
 const app = new Hono<AppEnv>();
 
@@ -77,6 +78,7 @@ api.route('/notifications', notificationsRoutes);
 api.route('/audit-log', auditLogRoutes);
 api.route('/billing', billingRoutes);
 api.route('/ops', opsRoutes);
+api.route('/entitlements', entitlementsRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', api);
