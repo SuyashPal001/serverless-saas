@@ -8,8 +8,8 @@ export const agentRunsRoutes = new Hono<AppEnv>();
 
 // GET /agent-runs — list all runs for tenant, newest first
 agentRunsRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('agents:read')) {
@@ -35,8 +35,8 @@ agentRunsRoutes.get('/', async (c) => {
 
 // GET /agent-runs/:id — full detail of one run
 agentRunsRoutes.get('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('agents:read')) {

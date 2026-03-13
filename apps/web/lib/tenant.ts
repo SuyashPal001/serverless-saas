@@ -12,8 +12,10 @@ export function getTenantSlug(request: NextRequest | Request): string | null {
 
 export interface TenantClaims {
     tenantId: string;
+    tenantSlug?: string;
     role: string;
     plan: string;
+    permissions?: string[];
     [key: string]: any;
 }
 

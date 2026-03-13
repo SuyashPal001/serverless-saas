@@ -30,9 +30,12 @@ export interface Subscription {
 export function SubscriptionDetails() {
     const { tenantId } = useTenant();
 
-    const { data: subscription, isLoading, isError, error } = useQuery<Subscription>({
+    const { data: subscription, isLoading, isError, error } = useQuery<Subscription | null>({
         queryKey: ["subscription", tenantId],
-        queryFn: () => api.get<Subscription>("/api/v1/billing/subscription"),
+        queryFn: async () => {
+            const response = await api.get<{ subscription: Subscription | null }>("/api/v1/billing/subscription");
+            return response.subscription;
+        },
     });
 
     if (isLoading) {

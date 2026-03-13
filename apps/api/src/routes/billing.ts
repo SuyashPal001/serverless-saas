@@ -37,8 +37,8 @@ billingRoutes.get('/subscription', async (c) => {
 
 // GET /billing/plan — get current active subscription
 billingRoutes.get('/plan', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('billing:read')) {
@@ -58,8 +58,8 @@ billingRoutes.get('/plan', async (c) => {
 // POST /billing/upgrade — change plan in DB
 // TODO: wire payment provider (Stripe/Paddle) before going live
 billingRoutes.post('/upgrade', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('billing:update')) {
@@ -99,8 +99,8 @@ billingRoutes.post('/upgrade', async (c) => {
 // POST /billing/cancel — cancel active subscription
 // TODO: wire payment provider cancellation before going live
 billingRoutes.post('/cancel', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('billing:update')) {
@@ -128,8 +128,8 @@ billingRoutes.post('/cancel', async (c) => {
 
 // GET /billing/invoices — list invoices for tenant
 billingRoutes.get('/invoices', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('billing:read')) {

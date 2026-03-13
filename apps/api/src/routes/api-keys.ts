@@ -19,8 +19,8 @@ const hashKey = (rawKey: string): string => {
 
 // GET /api-keys — list all keys for tenant (metadata only, no raw key)
 apiKeysRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('api_keys:read')) {
@@ -49,8 +49,8 @@ apiKeysRoutes.get('/', async (c) => {
 
 // POST /api-keys — create new key, return raw key ONCE
 apiKeysRoutes.post('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
@@ -97,8 +97,8 @@ apiKeysRoutes.post('/', async (c) => {
 
 // DELETE /api-keys/:id — revoke a key
 apiKeysRoutes.delete('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 

@@ -50,8 +50,8 @@ notificationsRoutes.get('/inbox', async (c) => {
 
 // GET /notifications — list inbox items for current user
 notificationsRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const userId = requestContext?.user?.id;
 
     // Optional filter — unread only
@@ -78,8 +78,8 @@ notificationsRoutes.get('/', async (c) => {
 
 // PATCH /notifications/:id — mark as read
 notificationsRoutes.patch('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const userId = requestContext?.user?.id;
 
     const notificationId = c.req.param('id');

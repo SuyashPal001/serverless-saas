@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname, useParams } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
     LayoutDashboard,
     Users,
@@ -71,26 +71,24 @@ function NotificationsItem({ href, unreadCount }: { href: string; unreadCount: n
 }
 
 export function Sidebar() {
-    const { tenantId, role } = useTenant()
-    const params = useParams()
-    const tenantSlug = params.tenant as string
+    const { tenantSlug, role } = useTenant()
     const { unreadCount } = useNotifications()
 
-    const notificationsHref = `/${tenantSlug}/dashboard/notifications`
+    const base = `/${tenantSlug}/dashboard`
 
     const navItems = [
-        { href: `/${tenantId}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
-        { href: `/${tenantId}/settings/members`, label: "Members", icon: Users },
-        { href: `/${tenantId}/settings/roles`, label: "Roles", icon: Shield },
-        { href: `/${tenantId}/billing`, label: "Billing", icon: CreditCard },
-        { href: `/${tenantId}/api-keys`, label: "API Keys", icon: Key },
-        { href: `/${tenantId}/agents`, label: "Agents", icon: Bot },
-        { href: `/${tenantId}/audit`, label: "Audit Log", icon: FileText },
+        { href: `${base}`, label: "Dashboard", icon: LayoutDashboard },
+        { href: `${base}/settings/members`, label: "Members", icon: Users },
+        { href: `${base}/settings/roles`, label: "Roles", icon: Shield },
+        { href: `${base}/billing`, label: "Billing", icon: CreditCard },
+        { href: `${base}/api-keys`, label: "API Keys", icon: Key },
+        { href: `${base}/agents`, label: "Agents", icon: Bot },
+        { href: `${base}/audit`, label: "Audit Log", icon: FileText },
     ]
 
     const opsItems = [
-        { href: `/${tenantId}/ops/tenants`, label: "All Tenants", icon: Building2 },
-        { href: `/${tenantId}/ops/overrides`, label: "Feature Overrides", icon: Sliders },
+        { href: `${base}/ops/tenants`, label: "All Tenants", icon: Building2 },
+        { href: `${base}/ops/overrides`, label: "Feature Overrides", icon: Sliders },
     ]
 
     return (
@@ -106,9 +104,8 @@ export function Sidebar() {
                 {navItems.map((item) => (
                     <SidebarItem key={item.href} {...item} />
                 ))}
-                {/* Notifications — rendered separately to support the unread badge */}
                 <NotificationsItem
-                    href={notificationsHref}
+                    href={`${base}/notifications`}
                     unreadCount={unreadCount}
                 />
             </nav>

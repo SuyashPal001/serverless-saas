@@ -1,4 +1,6 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const BASE_URL = typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_URL
+    : '/api/proxy';
 
 export class ApiError extends Error {
     constructor(public status: number, public data: any) {
@@ -19,8 +21,6 @@ async function request<T>(
             'Content-Type': 'application/json',
             ...options.headers,
         },
-        // Attach JWT from httpOnly cookie automatically
-        credentials: 'include',
     });
 
     if (!response.ok) {
@@ -33,7 +33,6 @@ async function request<T>(
         throw new ApiError(response.status, errorData);
     }
 
-    // Handle 204 No Content
     if (response.status === 204) {
         return {} as T;
     }

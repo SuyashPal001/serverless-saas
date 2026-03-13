@@ -21,8 +21,8 @@ const hashKey = (rawKey: string): string => {
 
 // GET /agents
 agentsRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('agents:read')) {
@@ -40,8 +40,8 @@ agentsRoutes.get('/', async (c) => {
 
 // POST /agents — create agent + api key + membership in one transaction
 agentsRoutes.post('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
     const userId = requestContext?.user?.id;
 
@@ -114,8 +114,8 @@ agentsRoutes.post('/', async (c) => {
 
 // PATCH /agents/:id
 agentsRoutes.patch('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('agents:update')) {
@@ -155,8 +155,8 @@ agentsRoutes.patch('/:id', async (c) => {
 
 // DELETE /agents/:id — retire agent + revoke its api key
 agentsRoutes.delete('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('agents:delete')) {

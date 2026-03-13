@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "@/lib/auth";
+import { decodeTenantClaims } from "@/lib/tenant";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +33,7 @@ export default function LoginPage() {
 
     const form = useForm<LoginSchema>({
         resolver: zodResolver(loginSchema),
-        defaultValues: {
-            email: "",
-            password: "",
-        },
+        defaultValues: { email: "", password: "" },
     });
 
     async function onSubmit(data: LoginSchema) {
@@ -43,61 +41,40 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            // 1. Authenticate with Cognito (Amplify securely isolated from localStorage)
-            const authResult = await signIn({
-                username: data.email,
-                password: data.password,
+            // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
+            const { idToken } = await signIn(data.email, data.password);
+
+            // 2. Fetch user profile to get the tenant slug
+            // Note: We pass the idToken directly in the header since the cookie isn't set yet.
+            const profileRes = await fetch(`/api/proxy/api/v1/auth/me`, {
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                },
             });
 
-            if (!authResult.isSignedIn) {
-                throw new Error("MFA required or additional steps needed. Not implemented for this flow.");
-            }
+            if (!profileRes.ok) throw new Error("Failed to fetch user profile");
+            const profile = await profileRes.json();
+            const slug = profile.slug;
 
-            // 2. We need the token to POST to the session endpoint
-            // To get it, we MUST import getAccessToken from lib/auth
-            // However, to avoid circular dependencies or complex state inside onSubmit, 
-            // we'll rely on a dynamic import or direct call to getAccessToken.
-            // Easiest is to import it at the top.
-            const { getAccessToken } = await import("@/lib/auth");
-            const token = await getAccessToken();
-
-            if (!token) {
-                throw new Error("Authentication succeeded but no token was retrieved.");
-            }
-
-            // 3. POST raw token to the Next.js API route so it sets the httpOnly cookie
+            // 3. POST idToken to Next.js API route to set httpOnly cookie
             const res = await fetch("/api/auth/session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token }),
+                body: JSON.stringify({ token: idToken }),
             });
 
-            if (!res.ok) {
-                throw new Error("Failed to create secure session");
-            }
+            if (!res.ok) throw new Error("Failed to create secure session");
 
-            // 4. Redirect to the tenant dashboard
-            // Tenant is resolved via headers in middleware, but since we are client-side 
-            // and want to navigate, we should theoretically know the tenant from the JWT.
-            // For this scaffold, a simple router.push("/dashboard") will hit middleware.
-            // Middleware requires the slug to be in the subdomain.
-            // Since this is the login page (likely on root domain or auth subdomain), 
-            // we redirect to the root of wherever the middleware will map them.
-            // The rules state: /auth/login -> /{tenantSlug}/dashboard
-            // We'll decode the JWT here strictly to find the tenantSlug for navigation.
-            const { decodeTenantClaims } = await import("@/lib/tenant");
-            const claims = decodeTenantClaims(token);
-
-            const targetPath = claims?.tenantId
-                ? `/${claims.tenantId}/dashboard`
-                : "/dashboard";
+            // 4. Redirect to the tenant dashboard using the slug
+            const targetPath = slug
+                ? `/${slug}/dashboard`
+                : "/onboarding";
 
             router.push(targetPath);
             router.refresh();
 
         } catch (err: any) {
-            console.error("Login Error:", err);
-            // Simplify Amplify errors if possible
+            console.error("Login error:", err);
             setError(err.message || "Invalid email or password. Please try again.");
         } finally {
             setIsLoading(false);

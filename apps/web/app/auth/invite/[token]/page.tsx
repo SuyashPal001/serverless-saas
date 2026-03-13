@@ -46,12 +46,11 @@ export default function InvitePage() {
         setError(null);
 
         try {
-            // Complete the new password challenge
-            // Note: This assumes signIn was already called and we are in the 
-            // NEW_PASSWORD_REQUIRED challenge state.
-            // Usually, invite links might carry a temporary password, or the user
-            // has to enter their email and temporary password first on a login screen.
-            // Assuming a strict "Invite Page" means they've reached the challenge step.
+            // TODO: Implement custom Cognito invite/new-password challenge 
+            // since aws-amplify has been replaced with direct fetch calls in lib/auth.ts
+            throw new Error("Invite flow needs to be updated for the new custom Cognito implementation.");
+
+            /*
             const confirmInput: ConfirmSignInInput = {
                 challengeResponse: data.password,
             };
@@ -89,6 +88,7 @@ export default function InvitePage() {
 
             router.push(targetPath);
             router.refresh();
+            */
 
         } catch (err: any) {
             console.error("Invite Error:", err);

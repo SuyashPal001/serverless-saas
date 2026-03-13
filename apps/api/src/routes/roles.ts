@@ -10,8 +10,8 @@ export const rolesRoutes = new Hono<AppEnv>();
 
 // GET /roles — list system roles + tenant custom roles
 rolesRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('roles:read')) {
@@ -30,8 +30,8 @@ rolesRoutes.get('/', async (c) => {
 
 // POST /roles — create a custom role (requires custom_roles entitlement)
 rolesRoutes.post('/', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
     const entitlements = requestContext?.entitlements ?? {};
 
@@ -74,7 +74,7 @@ rolesRoutes.post('/', async (c) => {
 
 rolesRoutes.patch('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
-    const tenantId = c.get('tenantId');
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('roles:update')) {
@@ -111,8 +111,8 @@ rolesRoutes.patch('/:id', async (c) => {
     return c.json({ data: updated });
 });
 rolesRoutes.delete('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
     const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('roles:delete')) {

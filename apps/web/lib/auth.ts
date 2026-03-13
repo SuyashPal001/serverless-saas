@@ -1,94 +1,60 @@
-import { Amplify } from 'aws-amplify';
-import {
-    signIn as amplifySignIn,
-    signOut as amplifySignOut,
-    getCurrentUser as amplifyGetCurrentUser,
-    fetchAuthSession,
-    type SignInInput
-} from 'aws-amplify/auth';
+const COGNITO_ENDPOINT = `https://cognito-idp.ap-south-1.amazonaws.com/`;
+const CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
 
-/**
- * Custom strictly-in-memory storage for Amplify
- * This prevents Amplify from storing any tokens in localStorage, sessionStorage, or cookies.
- */
-class InMemoryStorage {
-    private store: Map<string, string> = new Map();
-
-    async setItem(key: string, value: string): Promise<void> {
-        this.store.set(key, value);
-    }
-
-    async getItem(key: string): Promise<string | null> {
-        return this.store.get(key) || null;
-    }
-
-    async removeItem(key: string): Promise<void> {
-        this.store.delete(key);
-    }
-
-    async clear(): Promise<void> {
-        this.store.clear();
-    }
-}
-
-const memoryStorage = new InMemoryStorage();
-
-export function configureAmplify() {
-    Amplify.configure({
-        Auth: {
-            Cognito: {
-                userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || '',
-                userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '',
-            }
-        }
-    }, {
-        Auth: {
-            // @ts-ignore - explicitly overriding internal storage
-            storage: memoryStorage
-        }
+async function cognitoRequest(target: string, body: object) {
+    const res = await fetch(COGNITO_ENDPOINT, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-amz-json-1.1',
+            'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
+        },
+        body: JSON.stringify(body),
     });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.__type || 'Cognito request failed');
+    return data;
 }
 
-export async function signIn(input: SignInInput) {
-    const result = await amplifySignIn(input);
-    return result;
+export async function signIn(email: string, password: string) {
+    const data = await cognitoRequest('InitiateAuth', {
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        ClientId: CLIENT_ID,
+        AuthParameters: {
+            USERNAME: email,
+            PASSWORD: password,
+        },
+    });
+
+    return {
+        idToken: data.AuthenticationResult.IdToken,
+        accessToken: data.AuthenticationResult.AccessToken,
+        refreshToken: data.AuthenticationResult.RefreshToken,
+    };
+}
+
+export async function refreshSession(refreshToken: string) {
+    const data = await cognitoRequest('InitiateAuth', {
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        ClientId: CLIENT_ID,
+        AuthParameters: {
+            REFRESH_TOKEN: refreshToken,
+        },
+    });
+
+    return {
+        idToken: data.AuthenticationResult.IdToken,
+        accessToken: data.AuthenticationResult.AccessToken,
+    };
 }
 
 export async function signOut() {
-    await amplifySignOut();
-    // We must also call our own API endpoint to clear the httpOnly cookie
     if (typeof window !== 'undefined') {
         try {
             await fetch('/api/auth/session', { method: 'DELETE' });
         } catch (e) {
-            console.error('Failed to clear cookie session', e);
+            console.error('Failed to clear session cookie', e);
         }
         window.location.href = '/auth/login';
-    }
-}
-
-export async function getCurrentUser() {
-    try {
-        return await amplifyGetCurrentUser();
-    } catch (err) {
-        return null;
-    }
-}
-
-export async function getAccessToken() {
-    try {
-        const session = await fetchAuthSession();
-        return session.tokens?.accessToken?.toString() || null;
-    } catch (err) {
-        return null;
-    }
-}
-
-export async function refreshSession() {
-    try {
-        const session = await fetchAuthSession({ forceRefresh: true });
-        return session;
-    } catch (err) {
-        return null;
     }
 }
