@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -33,7 +33,7 @@ entitlementsRoutes.get('/', async (c) => {
         }
 
         const featureRows = await db.query.features.findMany({
-            where: sql`${features.id} = ANY(${featureIds}::uuid[])`,
+            where: inArray(features.id, featureIds),
         });
 
         // Build map: key → entitlement data
