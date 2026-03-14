@@ -1,10 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { memberships } from '@serverless-saas/database/schema/tenancy';
-import { users } from '@serverless-saas/database/schema/auth';
-import { roles } from '@serverless-saas/database/schema/authorization';
+import { db, memberships, users, roles, agents } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const membersRoutes = new Hono<AppEnv>();
@@ -35,14 +32,17 @@ membersRoutes.get('/', async (c) => {
                 userAvatarUrl: users.avatarUrl,
                 roleId: roles.id,
                 roleName: roles.name,
+                agentId: memberships.agentId,
+                agentName: agents.name,
+                agentType: agents.type,
             })
             .from(memberships)
-            .leftJoin(users, eq(memberships.userId, users.id))
+            .leftJoin(users, and(eq(memberships.userId, users.id), isNull(users.deletedAt)))
             .leftJoin(roles, eq(memberships.roleId, roles.id))
+            .leftJoin(agents, eq(memberships.agentId, agents.id))
             .where(and(
                 eq(memberships.tenantId, tenantId),
                 inArray(memberships.status, ['active', 'invited']),
-                isNull(users.deletedAt)
             ));
 
         return c.json({ members });
@@ -100,6 +100,8 @@ membersRoutes.post('/invite', async (c) => {
     const userId = c.get('userId');
 
     // Create membership with status 'invited' — invitedBy tracks who sent the invite
+    // userId is nullable on memberships — invited users without an existing account will have
+    // null userId until they complete signup and onboarding (ADR-026)
     const [membership] = await db.insert(memberships).values({
         userId: existingUser?.id,
         tenantId,
