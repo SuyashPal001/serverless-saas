@@ -55,23 +55,14 @@ export default function OnboardingPage() {
 
             const { slug } = await res.json();
 
-            // 2. Get refresh token from server, exchange for new JWT with tenantId stamped
-            const refreshRes = await fetch('/api/auth/refresh', { method: 'POST' });
-            if (!refreshRes.ok) throw new Error('Failed to refresh session');
-            const { idToken } = await refreshRes.json();
+            // 2. Clear current session (required to force Pre Token Lambda to run on next login)
+            // REFRESH_TOKEN_AUTH does not trigger Pre Token Lambda, so the JWT claims won't update
+            // with the new tenantId. We need to force a full re-login to trigger claim stamping.
+            await fetch('/api/auth/session', { method: 'DELETE' });
 
-            // 3. Update platform_token cookie with new JWT
-            const sessionRes = await fetch('/api/auth/session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: idToken }),
-            });
-
-            if (!sessionRes.ok) throw new Error('Failed to update session');
-
-            // 4. Redirect to tenant dashboard
-            router.push(`/${slug}/dashboard`);
-            router.refresh();
+            // 3. Redirect to login with success message and slug in URL
+            // User will log in again, Pre Token Lambda will run, claims will be stamped correctly
+            router.push(`/auth/login?onboarded=true&slug=${slug}`);
 
         } catch (err: any) {
             console.error('Onboarding error:', err);

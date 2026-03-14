@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,10 +26,21 @@ const loginSchema = z.object({
 
 type LoginSchema = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginPageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+
+    // Show success message if redirected from onboarding
+    useEffect(() => {
+        const onboarded = searchParams.get('onboarded');
+        const slug = searchParams.get('slug');
+        if (onboarded === 'true' && slug) {
+            setSuccessMessage(`Workspace created successfully! Please log in to access ${slug}.`);
+        }
+    }, [searchParams]);
 
     const form = useForm<LoginSchema>({
         resolver: zodResolver(loginSchema),
@@ -92,6 +103,12 @@ export default function LoginPage() {
                     <p className="text-sm text-muted-foreground">Sign in to your account</p>
                 </div>
 
+                {successMessage && (
+                    <div className="p-3 text-sm font-medium text-green-500 bg-green-500/10 rounded-md">
+                        {successMessage}
+                    </div>
+                )}
+
                 {error && (
                     <div className="p-3 text-sm font-medium text-destructive bg-destructive/10 rounded-md">
                         {error}
@@ -138,5 +155,21 @@ export default function LoginPage() {
                 </p>
             </div>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center min-h-screen bg-background">
+                <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+                    <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        }>
+            <LoginPageContent />
+        </Suspense>
     );
 }
