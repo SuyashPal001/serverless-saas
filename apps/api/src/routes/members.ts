@@ -42,7 +42,7 @@ membersRoutes.get('/', async (c) => {
             .leftJoin(agents, eq(memberships.agentId, agents.id))
             .where(and(
                 eq(memberships.tenantId, tenantId),
-                inArray(memberships.status, ['active', 'invited']),
+                inArray(memberships.status, ['active', 'invited', 'suspended']),
             ));
 
         return c.json({ members });
@@ -155,6 +155,44 @@ membersRoutes.patch('/:id/role', async (c) => {
     return c.json({ membership: updated });
 });
 
+// PATCH /members/:id/status
+// Updates membership status — used to reactivate or suspend a member
+membersRoutes.patch('/:id/status', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const memberId = c.req.param('id');
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('members:update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({
+        status: z.enum(['active', 'suspended']),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    // Scope update to both id AND tenantId — prevents cross-tenant updates
+    const [updated] = await db
+        .update(memberships)
+        .set({ status: result.data.status })
+        .where(and(
+            eq(memberships.id, memberId),
+            eq(memberships.tenantId, tenantId)
+        ))
+        .returning();
+
+    if (!updated) {
+        return c.json({ error: 'Member not found' }, 404);
+    }
+
+    return c.json({ membership: updated });
+});
+
 // DELETE /members/:id
 // Soft deletes a member by suspending their membership (ADR-009)
 // Row is preserved for audit trail — hard deleted after 30 day retention window
@@ -168,6 +206,24 @@ membersRoutes.delete('/:id', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
+    const userId = c.get('userId');
+
+    // Prevent self-suspension — look up the membership first
+    const target = await db.query.memberships.findFirst({
+        where: and(
+            eq(memberships.id, memberId),
+            eq(memberships.tenantId, tenantId)
+        ),
+    });
+
+    if (!target) {
+        return c.json({ error: 'Member not found' }, 404);
+    }
+
+    if (target.userId === userId) {
+        return c.json({ error: 'Cannot suspend your own membership', code: 'SELF_SUSPEND_FORBIDDEN' }, 403);
+    }
+
     // Soft delete — status: suspended, not a hard DELETE from DB
     const [removed] = await db
         .update(memberships)
@@ -177,10 +233,6 @@ membersRoutes.delete('/:id', async (c) => {
             eq(memberships.tenantId, tenantId)
         ))
         .returning();
-
-    if (!removed) {
-        return c.json({ error: 'Member not found' }, 404);
-    }
 
     return c.json({ success: true });
 });

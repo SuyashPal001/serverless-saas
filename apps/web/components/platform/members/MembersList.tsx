@@ -17,6 +17,26 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 interface Member {
     id: string;
@@ -34,8 +54,13 @@ interface Member {
     agentType: string | null;
 }
 
+interface Role {
+    id: string;
+    name: string;
+}
+
 export function MembersList() {
-    const { tenantId, permissions = [] } = useTenant();
+    const { tenantId, userId, permissions = [] } = useTenant();
     const queryClient = useQueryClient();
 
     const { data: members, isLoading, isError, error } = useQuery<Member[]>({
@@ -46,14 +71,41 @@ export function MembersList() {
         },
     });
 
+    const { data: roles } = useQuery<Role[]>({
+        queryKey: ["roles", tenantId],
+        queryFn: async () => {
+            const res = await api.get<{ roles: Role[] }>("/api/v1/roles");
+            return res.roles;
+        },
+    });
+
     const suspendMutation = useMutation({
         mutationFn: (memberId: string) => api.del(`/api/v1/members/${memberId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
+            toast.success("Member access updated");
         },
     });
 
-    const canUpdateUsers = can(permissions, "users", "update");
+    const reactivateMutation = useMutation({
+        mutationFn: (memberId: string) => 
+            api.patch(`/api/v1/members/${memberId}/status`, { status: "active" }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
+            toast.success("Member reactivated");
+        },
+    });
+
+    const updateRoleMutation = useMutation({
+        mutationFn: ({ memberId, roleId }: { memberId: string; roleId: string }) =>
+            api.patch(`/api/v1/members/${memberId}/role`, { roleId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
+            toast.success("Role updated");
+        },
+    });
+
+    const canUpdateUsers = can(permissions, "members", "update");
 
     if (isLoading) {
         return (
@@ -158,9 +210,28 @@ export function MembersList() {
                                 </div>
                             </TableCell>
                             <TableCell>
-                                <Badge variant="outline" className="text-xs">
-                                    {member.roleName || member.roleId || "No Role"}
-                                </Badge>
+                                {member.memberType === "human" && member.status !== "invited" ? (
+                                    <Select
+                                        defaultValue={member.roleId || ""}
+                                        onValueChange={(roleId) => updateRoleMutation.mutate({ memberId: member.id, roleId })}
+                                        disabled={updateRoleMutation.isPending || (member.userId === userId)}
+                                    >
+                                        <SelectTrigger className="w-[140px] h-8 text-xs">
+                                            <SelectValue placeholder="Select role" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roles?.map((role) => (
+                                                <SelectItem key={role.id} value={role.id} className="text-xs">
+                                                    {role.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <Badge variant="outline" className="text-xs">
+                                        {member.roleName || member.roleId || "No Role"}
+                                    </Badge>
+                                )}
                             </TableCell>
                             <TableCell>
                                 <Badge
@@ -175,16 +246,49 @@ export function MembersList() {
                             </TableCell>
                             {canUpdateUsers && (
                                 <TableCell className="text-right">
-                                    {member.status !== "suspended" && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="text-xs"
-                                            disabled={suspendMutation.isPending}
-                                            onClick={() => suspendMutation.mutate(member.id)}
-                                        >
-                                            Suspend
-                                        </Button>
+                                    {member.userId !== userId && (
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs"
+                                                    disabled={suspendMutation.isPending || reactivateMutation.isPending}
+                                                >
+                                                    {member.status === 'invited' ? 'Revoke invite' : 
+                                                     member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>
+                                                        {member.status === 'invited' ? 'Revoke Invitation' : 
+                                                         member.status === 'suspended' ? 'Reactivate Member' : 'Suspend Member'}
+                                                    </AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        {member.status === 'invited' ? 'This will revoke their invitation. They will no longer be able to join.' : 
+                                                         member.status === 'suspended' ? 'This will restore their access.' : 
+                                                         'This will suspend their access immediately. They will not be able to log in until reactivated.'}
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                        onClick={() => {
+                                                            if (member.status === 'suspended') {
+                                                                reactivateMutation.mutate(member.id);
+                                                            } else {
+                                                                suspendMutation.mutate(member.id);
+                                                            }
+                                                        }}
+                                                        className={member.status === 'suspended' ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
+                                                    >
+                                                        {member.status === 'invited' ? 'Revoke' : 
+                                                         member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     )}
                                 </TableCell>
                             )}
