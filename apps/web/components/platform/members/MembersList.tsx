@@ -133,7 +133,7 @@ export function MembersList() {
                                 </Badge>
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                                {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "Pending"}
+                                {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
                             </TableCell>
                             {canUpdateUsers && (
                                 <TableCell className="text-right">

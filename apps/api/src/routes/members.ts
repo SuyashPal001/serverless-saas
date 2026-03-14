@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -41,7 +41,7 @@ membersRoutes.get('/', async (c) => {
             .leftJoin(roles, eq(memberships.roleId, roles.id))
             .where(and(
                 eq(memberships.tenantId, tenantId),
-                eq(memberships.status, 'active'),
+                inArray(memberships.status, ['active', 'invited']),
                 isNull(users.deletedAt)
             ));
 
