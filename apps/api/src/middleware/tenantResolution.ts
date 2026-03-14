@@ -46,7 +46,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
         // ioredis always returns strings — so we handle both cases here
         // Calling JSON.parse on an already-deserialized object throws: "[object Object] is not valid JSON"
         const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        c.set('requestContext', parsed);
+        c.set('requestContext', { tenant: parsed } as any);
         return next();
     }
 
