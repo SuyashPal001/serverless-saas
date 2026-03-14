@@ -1,15 +1,9 @@
 import { AgentsView } from "@/components/platform/agents/AgentsView";
 
-export default async function AgentsPage({
-    params,
-}: {
-    params: Promise<{ tenant: string }>;
-}) {
-    await params;
+export const metadata = {
+    title: "Agents",
+};
 
-    return (
-        <div className="space-y-8">
-            <AgentsView />
-        </div>
-    );
+export default function AgentsPage() {
+    return <AgentsView />;
 }

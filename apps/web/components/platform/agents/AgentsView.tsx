@@ -2,19 +2,17 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { CreateAgentDialog } from "./CreateAgentDialog";
 import { AgentCard } from "./AgentCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { AgentsResponse } from "./types";
 
 export function AgentsView() {
-    const { tenantId } = useTenant();
-
     const { data, isLoading, isError, error } = useQuery<AgentsResponse>({
-        queryKey: ["agents", tenantId],
+        queryKey: ["agents"],
         queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
     });
 
@@ -45,18 +43,23 @@ export function AgentsView() {
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
                     <p className="text-muted-foreground mt-2">Manage your autonomous agents.</p>
                 </div>
-                <CreateAgentDialog />
+                <CreateAgentDialog>
+                    <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        New Agent
+                    </Button>
+                </CreateAgentDialog>
             </div>
 
             {isLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
+                    {Array.from({ length: 3 }).map((_, i) => (
                         <Skeleton key={i} className="h-[200px] w-full rounded-xl" />
                     ))}
                 </div>
-            ) : data?.agents && data.agents.length > 0 ? (
+            ) : data?.data && data.data.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {data.agents.map((agent) => (
+                    {data.data.map((agent) => (
                         <AgentCard key={agent.id} agent={agent} />
                     ))}
                 </div>
@@ -68,9 +71,14 @@ export function AgentsView() {
                         </div>
                         <h3 className="text-lg font-semibold text-foreground">No agents found</h3>
                         <p className="mb-6 mt-2 text-sm text-muted-foreground">
-                            You haven&apos;t created any agents yet. Get started by creating your first one.
+                            No agents yet. Create your first agent.
                         </p>
-                        <CreateAgentDialog />
+                        <CreateAgentDialog>
+                            <Button>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Create Agent
+                            </Button>
+                        </CreateAgentDialog>
                     </div>
                 </div>
             )}

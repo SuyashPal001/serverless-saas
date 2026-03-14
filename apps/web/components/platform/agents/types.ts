@@ -15,15 +15,16 @@ export type AgentStatus = "active" | "paused" | "retired";
 
 export interface Agent {
     id: string;
+    tenantId: string;
     name: string;
     type: AgentType;
     status: AgentStatus;
-    model: string;
+    model: string | null;
     createdAt: string;
 }
 
 export interface AgentsResponse {
-    agents: Agent[];
+    data: Agent[];
 }
 
 export interface AgentDetail extends Agent {
