@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -35,6 +36,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -62,6 +72,8 @@ interface Role {
 export function MembersList() {
     const { tenantId, userId, permissions = [] } = useTenant();
     const queryClient = useQueryClient();
+    const [selectedMemberForRole, setSelectedMemberForRole] = useState<Member | null>(null);
+    const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 
     const { data: members, isLoading, isError, error } = useQuery<Member[]>({
         queryKey: ["members", tenantId],
@@ -102,6 +114,7 @@ export function MembersList() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
             toast.success("Role updated");
+            setSelectedMemberForRole(null);
         },
     });
 
@@ -210,23 +223,72 @@ export function MembersList() {
                                 </div>
                             </TableCell>
                             <TableCell>
-                                {member.memberType === "human" && member.status !== "invited" ? (
-                                    <Select
-                                        defaultValue={member.roleId || ""}
-                                        onValueChange={(roleId) => updateRoleMutation.mutate({ memberId: member.id, roleId })}
-                                        disabled={updateRoleMutation.isPending || (member.userId === userId)}
+                                {member.memberType === "human" && member.status === "active" ? (
+                                    <Dialog 
+                                        open={selectedMemberForRole?.id === member.id} 
+                                        onOpenChange={(open) => {
+                                            if (open) {
+                                                setSelectedMemberForRole(member);
+                                                setSelectedRoleId(member.roleId || "");
+                                            } else {
+                                                setSelectedMemberForRole(null);
+                                            }
+                                        }}
                                     >
-                                        <SelectTrigger className="w-[140px] h-8 text-xs">
-                                            <SelectValue placeholder="Select role" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {roles?.map((role) => (
-                                                <SelectItem key={role.id} value={role.id} className="text-xs">
-                                                    {role.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        <DialogTrigger asChild>
+                                            <Badge 
+                                                variant="outline" 
+                                                className="text-xs cursor-pointer hover:bg-accent transition-colors"
+                                            >
+                                                {member.roleName || member.roleId || "No Role"}
+                                            </Badge>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Change Role</DialogTitle>
+                                                <DialogDescription>
+                                                    Current role: <span className="font-medium text-foreground">{member.roleName || "No Role"}</span>
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="py-4">
+                                                <Select
+                                                    value={selectedRoleId}
+                                                    onValueChange={setSelectedRoleId}
+                                                >
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue placeholder="Select role" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {roles?.map((role) => (
+                                                            <SelectItem key={role.id} value={role.id}>
+                                                                {role.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={() => setSelectedMemberForRole(null)}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button 
+                                                    onClick={() => updateRoleMutation.mutate({ 
+                                                        memberId: member.id, 
+                                                        roleId: selectedRoleId 
+                                                    })}
+                                                    disabled={updateRoleMutation.isPending || selectedRoleId === member.roleId}
+                                                >
+                                                    {updateRoleMutation.isPending && (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    )}
+                                                    Save
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
                                 ) : (
                                     <Badge variant="outline" className="text-xs">
                                         {member.roleName || member.roleId || "No Role"}
@@ -234,12 +296,46 @@ export function MembersList() {
                                 )}
                             </TableCell>
                             <TableCell>
-                                <Badge
-                                    variant="outline"
-                                    className={`text-[10px] uppercase font-bold tracking-wider ${statusColors[member.status] || ""}`}
-                                >
-                                    {member.status}
-                                </Badge>
+                                {member.status === 'suspended' ? (
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 px-2 shadow-none"
+                                            >
+                                                Suspended
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Reactivate Member</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This will restore access for {getDisplayName(member)}.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    onClick={() => reactivateMutation.mutate(member.id)}
+                                                    disabled={reactivateMutation.isPending}
+                                                >
+                                                    {reactivateMutation.isPending && (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    )}
+                                                    Reactivate
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                ) : (
+                                    <Badge
+                                        variant="outline"
+                                        className={`text-[10px] uppercase font-bold tracking-wider ${statusColors[member.status] || ""}`}
+                                    >
+                                        {member.status}
+                                    </Badge>
+                                )}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                                 {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
@@ -250,9 +346,9 @@ export function MembersList() {
                                         <AlertDialog>
                                             <AlertDialogTrigger asChild>
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="outline"
                                                     size="sm"
-                                                    className="text-xs"
+                                                    className="text-xs border-2"
                                                     disabled={suspendMutation.isPending || reactivateMutation.isPending}
                                                 >
                                                     {member.status === 'invited' ? 'Revoke invite' : 

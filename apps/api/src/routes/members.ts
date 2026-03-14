@@ -234,5 +234,9 @@ membersRoutes.delete('/:id', async (c) => {
         ))
         .returning();
 
+    if (!removed) {
+        return c.json({ error: 'Member not found' }, 404);
+    }
+
     return c.json({ success: true });
 });
