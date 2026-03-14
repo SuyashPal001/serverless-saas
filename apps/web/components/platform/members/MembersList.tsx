@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
@@ -29,16 +29,27 @@ interface Member {
     memberType: "human" | "agent";
     status: "active" | "invited" | "suspended";
     joinedAt: string | null;
+    agentId: string | null;
+    agentName: string | null;
+    agentType: string | null;
 }
 
 export function MembersList() {
     const { tenantId, permissions = [] } = useTenant();
+    const queryClient = useQueryClient();
 
     const { data: members, isLoading, isError, error } = useQuery<Member[]>({
         queryKey: ["members", tenantId],
         queryFn: async () => {
             const response = await api.get<{ members: Member[] }>("/api/v1/members");
             return response.members;
+        },
+    });
+
+    const suspendMutation = useMutation({
+        mutationFn: (memberId: string) => api.del(`/api/v1/members/${memberId}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
         },
     });
 
@@ -75,10 +86,25 @@ export function MembersList() {
         );
     }
 
-    const getInitials = (name?: string, email?: string) => {
-        if (name) return name.substring(0, 2).toUpperCase();
-        if (email) return email.substring(0, 2).toUpperCase();
-        return "US";
+    const getDisplayName = (member: Member): string => {
+        if (member.memberType === "agent") {
+            return member.agentName || "Unknown Agent";
+        }
+        if (member.status === "invited" && !member.userName && !member.userEmail) {
+            return "Pending invite";
+        }
+        return member.userName || member.userEmail || "Unknown";
+    };
+
+    const getInitials = (member: Member): string => {
+        if (member.memberType === "agent") {
+            const name = member.agentName;
+            if (name) return name.substring(0, 2).toUpperCase();
+            return "AG";
+        }
+        if (member.userName) return member.userName.substring(0, 2).toUpperCase();
+        if (member.userEmail) return member.userEmail.substring(0, 2).toUpperCase();
+        return "??";
     };
 
     const statusColors = {
@@ -106,15 +132,27 @@ export function MembersList() {
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center border border-border shrink-0">
                                         <span className="text-xs font-bold text-accent-foreground">
-                                            {getInitials(member.userName ?? undefined, member.userEmail ?? undefined)}
+                                            {getInitials(member)}
                                         </span>
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="font-medium text-foreground">
-                                            {member.userName || member.userEmail || "Unknown-invitee"}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-foreground">
+                                                {getDisplayName(member)}
+                                            </span>
+                                            {member.memberType === "agent" && (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20"
+                                                >
+                                                    agent
+                                                </Badge>
+                                            )}
+                                        </div>
                                         <span className="text-xs text-muted-foreground">
-                                            {member.userEmail}
+                                            {member.memberType === "agent"
+                                                ? member.agentType ?? ""
+                                                : member.userEmail ?? ""}
                                         </span>
                                     </div>
                                 </div>
@@ -137,9 +175,17 @@ export function MembersList() {
                             </TableCell>
                             {canUpdateUsers && (
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="sm" className="text-xs">
-                                        {member.status === "suspended" ? "Reactivate" : "Suspend"}
-                                    </Button>
+                                    {member.status !== "suspended" && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs"
+                                            disabled={suspendMutation.isPending}
+                                            onClick={() => suspendMutation.mutate(member.id)}
+                                        >
+                                            Suspend
+                                        </Button>
+                                    )}
                                 </TableCell>
                             )}
                         </TableRow>

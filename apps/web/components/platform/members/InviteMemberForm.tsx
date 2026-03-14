@@ -60,7 +60,10 @@ export function InviteMemberForm() {
 
     const { data: roles, isLoading: rolesLoading } = useQuery<Role[]>({
         queryKey: ["roles", tenantId],
-        queryFn: () => api.get<Role[]>("/api/v1/roles"),
+        queryFn: async () => {
+            const res = await api.get<{ roles: Role[] }>("/api/v1/roles");
+            return res.roles;
+        },
         enabled: canCreateUsers, // only fetch if user can see the form
     });
 
