@@ -56,33 +56,31 @@ onboardingRoutes.post('/complete', async (c) => {
         return c.json({ error: 'System configuration error' }, 500);
     }
 
-    // Step 5: DB transaction
-    const { tenantId } = await db.transaction(async (tx: any) => {
-        const [tenant] = await tx.insert(tenants).values({
-            name: workspaceName,
-            slug: finalSlug,
-            type: 'startup',
-            status: 'active',
-        }).returning();
+    // Step 5: Sequential inserts (Neon HTTP driver does not support transactions)
+    const [tenant] = await db.insert(tenants).values({
+        name: workspaceName,
+        slug: finalSlug,
+        type: 'startup',
+        status: 'active',
+    }).returning();
 
-        await tx.insert(memberships).values({
-            userId,
-            tenantId: tenant.id,
-            roleId: role.id,
-            memberType: 'human',
-            status: 'active',
-        });
-
-        await tx.insert(subscriptions).values({
-            tenantId: tenant.id,
-            plan: 'free',
-            status: 'active',
-            billingCycle: 'monthly',
-            startedAt: new Date(),
-        });
-
-        return { tenantId: tenant.id };
+    await db.insert(memberships).values({
+        userId,
+        tenantId: tenant.id,
+        roleId: role.id,
+        memberType: 'human',
+        status: 'active',
     });
+
+    await db.insert(subscriptions).values({
+        tenantId: tenant.id,
+        plan: 'free',
+        status: 'active',
+        billingCycle: 'monthly',
+        startedAt: new Date(),
+    });
+
+    const tenantId = tenant.id;
 
     // Step 6: Return response
     return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);
