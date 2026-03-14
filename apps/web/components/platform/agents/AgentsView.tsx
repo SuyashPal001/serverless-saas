@@ -1,0 +1,79 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
+import { CreateAgentDialog } from "./CreateAgentDialog";
+import { AgentCard } from "./AgentCard";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import type { AgentsResponse } from "./types";
+
+export function AgentsView() {
+    const { tenantId } = useTenant();
+
+    const { data, isLoading, isError, error } = useQuery<AgentsResponse>({
+        queryKey: ["agents", tenantId],
+        queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
+    });
+
+    if (isError) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
+                        <p className="text-muted-foreground mt-2">Manage your autonomous agents.</p>
+                    </div>
+                </div>
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>
+                        {error instanceof Error ? error.message : "Failed to load agents. Please try again later."}
+                    </AlertDescription>
+                </Alert>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
+                    <p className="text-muted-foreground mt-2">Manage your autonomous agents.</p>
+                </div>
+                <CreateAgentDialog />
+            </div>
+
+            {isLoading ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <Skeleton key={i} className="h-[200px] w-full rounded-xl" />
+                    ))}
+                </div>
+            ) : data?.agents && data.agents.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {data.agents.map((agent) => (
+                        <AgentCard key={agent.id} agent={agent} />
+                    ))}
+                </div>
+            ) : (
+                <div className="flex h-[350px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
+                    <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-4">
+                            <AlertCircle className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-foreground">No agents found</h3>
+                        <p className="mb-6 mt-2 text-sm text-muted-foreground">
+                            You haven&apos;t created any agents yet. Get started by creating your first one.
+                        </p>
+                        <CreateAgentDialog />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

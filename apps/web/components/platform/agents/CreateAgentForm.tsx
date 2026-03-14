@@ -27,7 +27,7 @@ import {
 import { agentSchema, type AgentFormValues } from "./types";
 
 interface CreateAgentFormProps {
-    onSuccess: () => void;
+    onSuccess: (data: { agent: any; apiKey: string }) => void;
 }
 
 export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
@@ -39,19 +39,17 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
         defaultValues: {
             name: "",
             type: "ops",
-            model: "gpt-4o",
         },
     });
 
     const createMutation = useMutation({
         mutationFn: (values: AgentFormValues) => {
-            return api.post("/api/v1/agents", values);
+            return api.post<{ data: { agent: any; apiKey: string } }>("/api/v1/agents", values);
         },
-        onSuccess: () => {
+        onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
             toast.success("Agent created successfully");
-            form.reset();
-            onSuccess();
+            onSuccess(res.data);
         },
         onError: (error: any) => {
             toast.error(error.data?.message || error.message || "Failed to create agent");
@@ -70,13 +68,10 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
                     name="name"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Agent Name</FormLabel>
+                            <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Name</FormLabel>
                             <FormControl>
-                                <Input placeholder="e.g. Support Bot" {...field} />
+                                <Input placeholder="e.g. Support Bot" {...field} className="bg-muted/50" />
                             </FormControl>
-                            <FormDescription>
-                                A unique name for your agent.
-                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}
@@ -87,10 +82,10 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
                     name="type"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Agent Type</FormLabel>
+                            <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Type</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                                 <FormControl>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="bg-muted/50">
                                         <SelectValue placeholder="Select a type" />
                                     </SelectTrigger>
                                 </FormControl>
@@ -106,28 +101,11 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
                     )}
                 />
 
-                <FormField
-                    control={form.control}
-                    name="model"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Model</FormLabel>
-                            <FormControl>
-                                <Input placeholder="e.g. gpt-4o" {...field} />
-                            </FormControl>
-                            <FormDescription>
-                                The underlying LLM model.
-                            </FormDescription>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
                 <div className="flex justify-end pt-4">
                     <Button
                         type="submit"
                         disabled={createMutation.isPending}
-                        className="w-full"
+                        className="w-full font-semibold"
                     >
                         {createMutation.isPending ? "Creating..." : "Create Agent"}
                     </Button>

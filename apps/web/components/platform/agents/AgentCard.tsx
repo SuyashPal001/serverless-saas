@@ -34,25 +34,48 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
-import type { Agent, AgentStatus } from "./types";
+import type { Agent, AgentStatus, AgentType } from "./types";
 
 interface AgentCardProps {
     agent: Agent;
 }
 
-const typeColors: Record<string, string> = {
-    ops: "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20",
-    support: "bg-green-500/10 text-green-500 hover:bg-green-500/20",
-    billing: "bg-purple-500/10 text-purple-500 hover:bg-purple-500/20",
-    custom: "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20",
+const typeColors: Record<AgentType, string> = {
+    ops: "bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20",
+    support: "bg-purple-500/10 text-purple-500 border-purple-500/20 hover:bg-purple-500/20",
+    billing: "bg-orange-500/10 text-orange-500 border-orange-500/20 hover:bg-orange-500/20",
+    custom: "bg-muted text-muted-foreground border-border hover:bg-muted/80",
 };
 
 const statusColors: Record<AgentStatus, string> = {
-    active: "bg-emerald-500/10 text-emerald-500",
-    paused: "bg-yellow-500/10 text-yellow-500",
-    retired: "bg-red-500/10 text-red-500",
+    active: "bg-green-500/10 text-green-500 border-green-500/20",
+    paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    retired: "bg-muted text-muted-foreground border-border",
 };
+
+function formatRelativeTime(dateString: string) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return "just now";
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+    
+    return date.toLocaleDateString();
+}
 
 export function AgentCard({ agent }: AgentCardProps) {
     const params = useParams();
@@ -67,108 +90,115 @@ export function AgentCard({ agent }: AgentCardProps) {
         },
         onSuccess: (_, status) => {
             queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
-            toast.success(`Agent ${status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'retired'} successfully`);
+            const actionText = status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'retired';
+            toast.success(`Agent ${actionText} successfully`);
         },
         onError: (error: any) => {
             toast.error(error.data?.message || error.message || "Failed to update agent");
         },
     });
 
-    const canUpdate = can(permissions, "agents", "update");
-
-    const formattedDate = new Intl.DateTimeFormat("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    }).format(new Date(agent.createdAt));
+    const isRetired = agent.status === 'retired';
+    const isActive = agent.status === 'active';
+    const isPaused = agent.status === 'paused';
 
     return (
         <>
-            <Card className="group relative overflow-hidden transition-all hover:border-primary/50">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <Card className={cn(
+                "group relative overflow-hidden border-border transition-all hover:border-primary/50",
+                isRetired && "opacity-60 grayscale-[0.5]"
+            )}>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                     <div className="space-y-1">
-                        <Link
-                            href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                            className="text-lg font-semibold hover:underline"
-                        >
-                            {agent.name}
-                        </Link>
                         <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className={typeColors[agent.type]}>
+                            <span className="text-lg font-semibold text-foreground">
+                                {agent.name}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={cn("text-[10px] font-bold uppercase tracking-wider", typeColors[agent.type])}>
                                 {agent.type}
                             </Badge>
-                            <Badge variant="outline" className={statusColors[agent.status]}>
+                            <Badge variant="outline" className={cn("text-[10px] font-bold uppercase tracking-wider", statusColors[agent.status])}>
                                 {agent.status}
                             </Badge>
                         </div>
                     </div>
-                    {canUpdate && (
+                    {!isRetired && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                     <MoreHorizontal className="h-4 w-4" />
                                     <span className="sr-only">Open menu</span>
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {agent.status === 'active' ? (
+                            <DropdownMenuContent align="end" className="w-[160px]">
+                                {isActive && (
                                     <DropdownMenuItem onClick={() => updateStatusMutation.mutate('paused')}>
                                         <Pause className="mr-2 h-4 w-4" />
-                                        Pause
+                                        Pause agent
                                     </DropdownMenuItem>
-                                ) : agent.status === 'paused' ? (
+                                )}
+                                {isPaused && (
                                     <DropdownMenuItem onClick={() => updateStatusMutation.mutate('active')}>
                                         <Play className="mr-2 h-4 w-4" />
-                                        Resume
+                                        Reactivate agent
                                     </DropdownMenuItem>
-                                ) : null}
-                                {agent.status !== 'retired' && (
+                                )}
+                                {(isActive || isPaused) && (
                                     <DropdownMenuItem
                                         onClick={() => setShowRetireConfirm(true)}
                                         className="text-destructive focus:text-destructive"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
-                                        Retire
+                                        Retire agent
                                     </DropdownMenuItem>
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-4">
                     <div className="grid gap-2 text-sm text-muted-foreground">
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center py-1 border-b border-border/50">
                             <span>Model</span>
-                            <span className="font-medium text-foreground">{agent.model}</span>
+                            <span className="font-mono text-xs text-foreground bg-muted px-1.5 py-0.5 rounded">
+                                {agent.model || "—"}
+                            </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center text-xs">
                             <span>Created</span>
-                            <span>{formattedDate}</span>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        {formatRelativeTime(agent.createdAt)}
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        {new Date(agent.createdAt).toLocaleString()}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
                     </div>
                 </CardContent>
-                <Link
-                    href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                    className="absolute inset-0 z-0"
-                    aria-label={`View details for ${agent.name}`}
-                />
             </Card>
 
             <AlertDialog open={showRetireConfirm} onOpenChange={setShowRetireConfirm}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogTitle>Retire {agent.name}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will permanently retire the agent. This action cannot be undone.
+                            This will permanently retire the agent. This action cannot be undone and the agent will no longer be available for use.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={updateStatusMutation.isPending}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={() => updateStatusMutation.mutate('retired')}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            disabled={updateStatusMutation.isPending}
                         >
-                            Retire Agent
+                            {updateStatusMutation.isPending ? "Retiring..." : "Retire Agent"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -176,3 +206,4 @@ export function AgentCard({ agent }: AgentCardProps) {
         </>
     );
 }
+
