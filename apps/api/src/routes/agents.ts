@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, count } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { agents, apiKeys, memberships, roles, auditLog } from '@serverless-saas/database';
+import { db, agents, apiKeys, memberships, roles, auditLog, features } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const agentsRoutes = new Hono<AppEnv>();
@@ -50,6 +49,39 @@ agentsRoutes.post('/', async (c) => {
 
     if (!permissions.includes('agents:create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    // Entitlement check — entitlements are keyed by featureId UUID, not feature key string
+    const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
+
+    if (entitlements) {
+        const [agentFeature] = await db
+            .select({ id: features.id })
+            .from(features)
+            .where(eq(features.key, 'agents'))
+            .limit(1);
+
+        if (agentFeature) {
+            const agentEntitlement = entitlements[agentFeature.id];
+
+            if (agentEntitlement && !agentEntitlement.unlimited) {
+                const [{ value: used }] = await db
+                    .select({ value: count() })
+                    .from(agents)
+                    .where(and(eq(agents.tenantId, tenantId), eq(agents.status, 'active')));
+
+                const limit = agentEntitlement.valueLimit ?? 0;
+
+                if (Number(used) >= limit) {
+                    return c.json({
+                        error: 'Agent limit reached for your plan',
+                        code: 'AGENT_LIMIT_REACHED',
+                        used: Number(used),
+                        limit,
+                    }, 403);
+                }
+            }
+        }
     }
 
     const schema = z.object({

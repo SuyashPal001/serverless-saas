@@ -107,7 +107,6 @@ authRoutes.post('/logout', async (c) => {
 // POST /auth/switch-tenant
 authRoutes.post('/switch-tenant', async (c) => {
     const jwtPayload = c.get('jwtPayload') as any;
-    const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId') as string;
     const jti = jwtPayload?.jti;
     const exp = jwtPayload?.exp;

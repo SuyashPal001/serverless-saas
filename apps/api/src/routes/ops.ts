@@ -167,7 +167,6 @@ opsRoutes.post('/overrides/:id/revoke', async (c) => {
     }
 
     const overrideId = c.req.param('id');
-    const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId') as string;
 
     const existing = await db.query.tenantFeatureOverrides.findFirst({
