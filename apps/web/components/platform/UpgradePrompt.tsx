@@ -31,13 +31,13 @@ const featureNames: Record<string, string> = {
 
 export function UpgradePrompt({ open, onClose, feature }: UpgradePromptProps) {
     const router = useRouter();
-    const { slug } = useTenant();
+    const { tenantSlug } = useTenant();
 
     const featureName = feature ? featureNames[feature] || 'this feature' : 'this feature';
 
     const handleViewPlans = () => {
         onClose();
-        router.push(`/${slug}/dashboard/billing`);
+        router.push(`/${tenantSlug}/dashboard/billing`);
     };
 
     return (

@@ -29,6 +29,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
 
         const path = c.req.path;
         if (!ONBOARDING_ALLOWED_PATHS.some(p => path.startsWith(p))) {
+            console.log('403 reason: onboarding required', { path, tenantId, allowedPaths: ONBOARDING_ALLOWED_PATHS });
             return c.json({ error: 'Onboarding required', code: 'ONBOARDING_REQUIRED' }, 403);
         }
 
@@ -55,12 +56,14 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     });
 
     if (!tenant) {
+        console.log('404 reason: tenant not found', { tenantId, path: c.req.path });
         return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404);
     }
 
     // Suspended tenants are blocked before any business logic runs
     // 403 not 404 — tenant exists, it just isn't permitted (ADR-002)
     if (tenant.status === 'suspended') {
+        console.log('403 reason: tenant suspended', { tenantId, slug: tenant.slug, status: tenant.status });
         return c.json({ error: 'Tenant is suspended', code: 'TENANT_SUSPENDED' }, 403);
     }
 

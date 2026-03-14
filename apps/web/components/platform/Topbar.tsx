@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 
 export function Topbar() {
     const router = useRouter()
-    const { tenantId, slug, plan, email, name } = useTenant()
+    const { tenantId, tenantSlug, plan, email, name } = useTenant()
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -30,10 +30,10 @@ export function Topbar() {
         <header className="fixed top-0 right-0 left-[240px] h-16 flex items-center justify-between px-8 bg-card border-b border-border z-40">
             <div className="flex items-center gap-4">
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-tight">
-                    {tenantId}
+                    {tenantSlug}
                 </h2>
                 <button
-                    onClick={() => router.push(`/${slug}/dashboard/billing`)}
+                    onClick={() => router.push(`/${tenantSlug}/dashboard/billing`)}
                     className={cn(
                         "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border tracking-widest transition-opacity hover:opacity-80 cursor-pointer",
                         currentPlanColor

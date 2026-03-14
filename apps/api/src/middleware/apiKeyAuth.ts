@@ -10,7 +10,10 @@ import type { AppEnv } from '../types';
 
 export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     const authHeader = c.req.header('Authorization');
-    if (!authHeader) return c.json({ error: 'Missing Authorization header' }, 401);
+    if (!authHeader) {
+        console.log('401 reason: missing authorization header', { path: c.req.path });
+        return c.json({ error: 'Missing Authorization header' }, 401);
+    }
 
     const token = authHeader.replace('Bearer ', '').trim();
 
@@ -19,6 +22,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
 
     // Unknown credential format — fail fast before any DB work
     if (!token.startsWith('ak_')) {
+        console.log('401 reason: invalid auth header format', { path: c.req.path, tokenPrefix: token.substring(0, 10) });
         return c.json({ error: 'Invalid Authorization header format' }, 401);
     }
 
@@ -35,13 +39,18 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         ),
     });
 
-    if (!apiKey) return c.json({ error: 'Invalid API key' }, 401);
+    if (!apiKey) {
+        console.log('401 reason: invalid api key', { path: c.req.path, keyHash: keyHash.substring(0, 16) });
+        return c.json({ error: 'Invalid API key' }, 401);
+    }
 
     if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+        console.log('401 reason: api key expired', { path: c.req.path, keyId: apiKey.id, expiresAt: apiKey.expiresAt });
         return c.json({ error: 'API key expired' }, 401);
     }
 
     if (!apiKey.agentId) {
+        console.log('401 reason: api key not linked to agent', { path: c.req.path, keyId: apiKey.id, tenantId: apiKey.tenantId });
         return c.json({ error: 'API key is not linked to an agent' }, 401);
     }
 
@@ -53,6 +62,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     });
 
     if (!agent || agent.status !== 'active') {
+        console.log('401 reason: agent not active', { path: c.req.path, agentId: apiKey.agentId, agentStatus: agent?.status });
         return c.json({ error: 'Agent is not active' }, 401);
     }
 
@@ -67,6 +77,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     });
 
     if (!membership) {
+        console.log('403 reason: agent no active membership', { path: c.req.path, agentId: agent.id, tenantId: apiKey.tenantId });
         return c.json({ error: 'Agent has no active membership in this tenant' }, 403);
     }
 
