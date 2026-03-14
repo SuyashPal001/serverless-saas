@@ -17,6 +17,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { RevokeApiKeyAction } from "./RevokeApiKeyAction";
+import { DeleteApiKeyAction } from "./DeleteApiKeyAction";
 import { cn } from "@/lib/utils";
 
 export interface ApiKey {
@@ -31,8 +32,13 @@ export interface ApiKey {
 }
 
 interface ApiKeysResponse {
-    apiKeys: ApiKey[];
+    data: ApiKey[];
 }
+
+const keyPreview = (type: string) => {
+    const prefix = type === "rest" ? "sk_" : type === "mcp" ? "mk_" : "ak_";
+    return `${prefix}${"•".repeat(8)}`;
+};
 
 export function ApiKeysList() {
     const { tenantId, permissions = [] } = useTenant();
@@ -66,7 +72,7 @@ export function ApiKeysList() {
         );
     }
 
-    const apiKeys = data?.apiKeys || [];
+    const apiKeys = data?.data || [];
 
     if (apiKeys.length === 0) {
         return (
@@ -82,6 +88,7 @@ export function ApiKeysList() {
                 <TableHeader>
                     <TableRow>
                         <TableHead>Name</TableHead>
+                        <TableHead>Key</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Permissions</TableHead>
                         <TableHead>Status</TableHead>
@@ -101,6 +108,9 @@ export function ApiKeysList() {
                                         <Key className="w-4 h-4 text-primary" />
                                         {key.name}
                                     </div>
+                                </TableCell>
+                                <TableCell className="font-mono text-xs text-muted-foreground/60">
+                                    {keyPreview(key.type)}
                                 </TableCell>
                                 <TableCell>
                                     <Badge variant="outline" className="uppercase text-[10px] font-bold tracking-wider">
@@ -146,9 +156,12 @@ export function ApiKeysList() {
                                     {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "Never"}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    {!isRevoked && canRevokeKeys && (
-                                        <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
-                                    )}
+                                    <div className="flex justify-end gap-1">
+                                        {!isRevoked && canRevokeKeys && (
+                                            <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
+                                        )}
+                                        <DeleteApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         );

@@ -8,7 +8,7 @@ import type { AppEnv } from '../types';
 
 export const apiKeysRoutes = new Hono<AppEnv>();
 
-const generateApiKey = (prefix: 'sk' | 'ak'): string => {
+const generateApiKey = (prefix: 'sk' | 'mk' | 'ak'): string => {
     const random = randomBytes(32).toString('hex');
     return `${prefix}_${random}`;
 };
@@ -60,7 +60,7 @@ apiKeysRoutes.post('/', async (c) => {
 
     const schema = z.object({
         name: z.string().min(1).max(100),
-        type: z.enum(['rest', 'mcp']),
+        type: z.enum(['rest', 'mcp', 'agent']),
         permissions: z.array(z.string()).min(1),
         expiresAt: z.string().datetime().optional(),
     });
@@ -70,7 +70,8 @@ apiKeysRoutes.post('/', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const rawKey = generateApiKey('sk');
+    const prefix = result.data.type === 'agent' ? 'ak' : result.data.type === 'mcp' ? 'mk' : 'sk';
+    const rawKey = generateApiKey(prefix);
     const keyHash = hashKey(rawKey);
 
     const [created] = await db.insert(apiKeys).values({

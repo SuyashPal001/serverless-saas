@@ -17,11 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CreateApiKeyForm } from "./CreateApiKeyForm";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 export function CreateApiKeyDialog() {
     const { permissions = [] } = useTenant();
     const [open, setOpen] = useState(false);
-    const [revealedKey, setRevealedKey] = useState<{ key: string; name: string } | null>(null);
+    const [revealedKey, setRevealedKey] = useState<{ key: string; name: string; type: string } | null>(null);
 
     if (!can(permissions, "api_keys", "create")) {
         return null;
@@ -51,7 +52,10 @@ export function CreateApiKeyDialog() {
                     Create API Key
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent
+                className="w-[90vw] overflow-y-auto max-h-[90vh]"
+                style={{ maxWidth: '600px' }}
+            >
                 {!revealedKey ? (
                     <>
                         <DialogHeader>
@@ -86,9 +90,17 @@ export function CreateApiKeyDialog() {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                                    Key Name: {revealedKey.name}
-                                </label>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                                            {revealedKey.name}
+                                        </label>
+                                        <Badge variant="outline" className="text-[10px] font-mono">
+                                            {revealedKey.type === 'rest' ? 'sk_' : revealedKey.type === 'mcp' ? 'mk_' : 'ak_'}
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Your API key — copy it now</p>
+                                </div>
                                 <div className="flex gap-2">
                                     <Input
                                         readOnly

@@ -6,12 +6,6 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { toast } from "sonner";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
     AlertDialog,
     AlertDialogAction,
     AlertDialogCancel,
@@ -22,27 +16,27 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Ban } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
-interface RevokeApiKeyActionProps {
+interface DeleteApiKeyActionProps {
     apiKeyId: string;
     apiKeyName: string;
 }
 
-export function RevokeApiKeyAction({ apiKeyId, apiKeyName }: RevokeApiKeyActionProps) {
+export function DeleteApiKeyAction({ apiKeyId, apiKeyName }: DeleteApiKeyActionProps) {
     const { tenantId } = useTenant();
     const queryClient = useQueryClient();
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const revokeMutation = useMutation({
-        mutationFn: () => api.patch(`/api/v1/api-keys/${apiKeyId}/revoke`, {}),
+    const deleteMutation = useMutation({
+        mutationFn: () => api.del(`/api/v1/api-keys/${apiKeyId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["api-keys", tenantId] });
-            toast.success(`API key "${apiKeyName}" revoked successfully`);
+            toast.success(`API key "${apiKeyName}" deleted successfully`);
             setShowConfirm(false);
         },
         onError: (error: Error) => {
-            toast.error(error.message || "Failed to revoke API key");
+            toast.error(error.message || "Failed to delete API key");
         },
     });
 
@@ -51,33 +45,33 @@ export function RevokeApiKeyAction({ apiKeyId, apiKeyName }: RevokeApiKeyActionP
             <Button
                 variant="ghost"
                 size="sm"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 font-medium"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 font-medium px-2"
                 onClick={() => setShowConfirm(true)}
+                title="Delete API Key"
             >
-                <Ban className="h-3.5 w-3.5 mr-1.5" />
-                Revoke
+                <Trash2 className="h-3.5 w-3.5" />
             </Button>
 
             <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Revoke API Key</AlertDialogTitle>
+                        <AlertDialogTitle>Delete API Key</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to revoke the API key <strong>{apiKeyName}</strong>?
-                            This action cannot be undone and any applications using this key will immediately lose access.
+                            Are you sure you want to permanently delete the API key <strong>{apiKeyName}</strong>?
+                            This action cannot be undone and is more permanent than revoking.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel disabled={revokeMutation.isPending}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={(e) => {
                                 e.preventDefault();
-                                revokeMutation.mutate();
+                                deleteMutation.mutate();
                             }}
-                            disabled={revokeMutation.isPending}
+                            disabled={deleteMutation.isPending}
                         >
-                            {revokeMutation.isPending ? "Revoking..." : "Revoke Key"}
+                            {deleteMutation.isPending ? "Deleting..." : "Delete Permanently"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
