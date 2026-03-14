@@ -1,12 +1,21 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
-import { auditLog } from '@serverless-saas/database/schema/audit';
+import { and, eq, ilike, gte, lte, desc, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { db, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const auditLogRoutes = new Hono<AppEnv>();
 
-// GET /audit-log — list audit entries for tenant, newest first
+const querySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    actorType: z.enum(['human', 'agent', 'system']).optional(),
+    action: z.string().optional(),
+    dateFrom: z.string().datetime().optional(),
+    dateTo: z.string().datetime().optional(),
+});
+
+// GET /audit-log — paginated, filtered audit entries for tenant
 auditLogRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
@@ -16,40 +25,32 @@ auditLogRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    try {
-        // Query params for pagination
-        const page = parseInt(c.req.query('page') || '1', 10);
-        const pageSize = Math.min(parseInt(c.req.query('pageSize') || '50', 10), 100);
-        const offset = (page - 1) * pageSize;
-
-        // Optional filters via query params
-        const actorId = c.req.query('actorId');
-        const resource = c.req.query('resource');
-        const actorType = c.req.query('actorType');
-
-        const conditions = [eq(auditLog.tenantId, tenantId)];
-
-        if (actorId) conditions.push(eq(auditLog.actorId, actorId));
-        if (resource) conditions.push(eq(auditLog.resource, resource));
-        if (actorType) conditions.push(eq(auditLog.actorType, actorType as any));
-
-        const logs = await db.query.auditLog.findMany({
-            where: and(...conditions),
-            orderBy: desc(auditLog.createdAt),
-            limit: pageSize,
-            offset: offset,
-        });
-
-        return c.json({
-            logs,
-            page,
-            pageSize,
-            hasMore: logs.length === pageSize,
-        });
-    } catch (err: any) {
-        console.error('Get audit log error:', err);
-        const code = err.name || 'INTERNAL_ERROR';
-        const message = err.message || 'Failed to fetch audit logs';
-        return c.json({ error: message, code }, 500);
+    const parsed = querySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+        return c.json({ error: parsed.error.errors[0].message }, 400);
     }
+
+    const { page, pageSize, actorType, action, dateFrom, dateTo } = parsed.data;
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [eq(auditLog.tenantId, tenantId)];
+    if (actorType) conditions.push(eq(auditLog.actorType, actorType));
+    if (action)    conditions.push(ilike(auditLog.action, `%${action}%`));
+    if (dateFrom)  conditions.push(gte(auditLog.createdAt, new Date(dateFrom)));
+    if (dateTo)    conditions.push(lte(auditLog.createdAt, new Date(dateTo)));
+
+    const where = and(...conditions);
+
+    const [entries, countResult] = await Promise.all([
+        db.select().from(auditLog)
+            .where(where)
+            .orderBy(desc(auditLog.createdAt))
+            .limit(pageSize)
+            .offset(offset),
+        db.select({ total: sql<number>`count(*)::int` }).from(auditLog).where(where),
+    ]);
+
+    const total = countResult[0]?.total ?? 0;
+
+    return c.json({ data: { entries, total, page, pageSize } });
 });
