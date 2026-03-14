@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import { eq, isNull, or, and } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, memberships } from '@serverless-saas/database';
-import { roles } from '@serverless-saas/database/schema/authorization';
-import { features } from '@serverless-saas/database/schema/entitlements';
+import { db, memberships, roles, features, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const rolesRoutes = new Hono<AppEnv>();
@@ -69,6 +67,21 @@ rolesRoutes.post('/', async (c) => {
         isAgentRole: false,
     }).returning();
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'role_created',
+            resource: 'role',
+            resourceId: role.id,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ data: role }, 201);
 });
 
@@ -107,6 +120,21 @@ rolesRoutes.patch('/:id', async (c) => {
         .set({ ...result.data, updatedAt: new Date() })
         .where(eq(roles.id, roleId))
         .returning();
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'role_updated',
+            resource: 'role',
+            resourceId: updated.id,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     return c.json({ data: updated });
 });
@@ -148,6 +176,21 @@ rolesRoutes.delete('/:id', async (c) => {
     }
 
     await db.delete(roles).where(eq(roles.id, roleId));
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'role_deleted',
+            resource: 'role',
+            resourceId: roleId,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     return c.json({ success: true });
 });

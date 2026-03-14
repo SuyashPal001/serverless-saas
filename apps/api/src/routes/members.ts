@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, memberships, users, roles, agents } from '@serverless-saas/database';
+import { db, memberships, users, roles, agents, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const membersRoutes = new Hono<AppEnv>();
@@ -112,6 +112,21 @@ membersRoutes.post('/invite', async (c) => {
         invitedAt: new Date(),
     }).returning();
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'member_invited',
+            resource: 'membership',
+            resourceId: membership.id,
+            metadata: { roleId },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ membership }, 201);
 });
 
@@ -152,6 +167,21 @@ membersRoutes.patch('/:id/role', async (c) => {
         return c.json({ error: 'Member not found' }, 404);
     }
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'member_role_changed',
+            resource: 'membership',
+            resourceId: updated.id,
+            metadata: { roleId },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ membership: updated });
 });
 
@@ -188,6 +218,21 @@ membersRoutes.patch('/:id/status', async (c) => {
 
     if (!updated) {
         return c.json({ error: 'Member not found' }, 404);
+    }
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: result.data.status === 'suspended' ? 'member_suspended' : 'member_reactivated',
+            resource: 'membership',
+            resourceId: updated.id,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
     }
 
     return c.json({ membership: updated });
@@ -236,6 +281,21 @@ membersRoutes.delete('/:id', async (c) => {
 
     if (!removed) {
         return c.json({ error: 'Member not found' }, 404);
+    }
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'member_suspended',
+            resource: 'membership',
+            resourceId: removed.id,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
     }
 
     return c.json({ success: true });

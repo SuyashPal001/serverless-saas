@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { and, eq } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
-import { sessions } from '@serverless-saas/database/schema/auth';
-import { memberships } from '@serverless-saas/database';
+import { db, memberships, sessions, auditLog } from '@serverless-saas/database';
 import { getCacheClient } from '@serverless-saas/cache';
 
 import { adminInitiateAuth } from '@serverless-saas/auth';
@@ -79,9 +77,29 @@ authRoutes.post('/logout', async (c) => {
         { ex: ttl > 0 ? ttl : 1 }
     );
 
-    await db.update(sessions)
+    const [invalidatedSession] = await db.update(sessions)
         .set({ status: 'invalidated', invalidatedAt: new Date(), invalidatedReason: 'logout' })
-        .where(eq(sessions.jwtId, jti));
+        .where(eq(sessions.jwtId, jti))
+        .returning({ id: sessions.id });
+
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    if (tenantId) {
+        try {
+            await db.insert(auditLog).values({
+                tenantId,
+                actorId: c.get('userId') ?? 'system',
+                actorType: 'human',
+                action: 'user_logged_out',
+                resource: 'session',
+                resourceId: invalidatedSession?.id ?? null,
+                metadata: {},
+                traceId: c.get('traceId') ?? '',
+            });
+        } catch (auditErr) {
+            console.error('Audit log write failed:', auditErr);
+        }
+    }
 
     return c.json({ success: true });
 });

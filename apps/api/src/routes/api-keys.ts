@@ -2,8 +2,7 @@ import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { apiKeys } from '@serverless-saas/database/schema/access';
+import { db, apiKeys, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const apiKeysRoutes = new Hono<AppEnv>();
@@ -92,6 +91,21 @@ apiKeysRoutes.post('/', async (c) => {
         createdAt: apiKeys.createdAt,
     });
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'api_key_created',
+            resource: 'api_key',
+            resourceId: created.id,
+            metadata: { type: result.data.type },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     // rawKey returned ONCE here — never stored, never returned again
     return c.json({ data: { ...created, key: rawKey } }, 201);
 });
@@ -123,6 +137,21 @@ apiKeysRoutes.delete('/:id', async (c) => {
     await db.update(apiKeys)
         .set({ status: 'revoked', revokedAt: new Date(), revokedBy: userId })
         .where(eq(apiKeys.id, keyId));
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'api_key_revoked',
+            resource: 'api_key',
+            resourceId: keyId,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     return c.json({ success: true });
 });

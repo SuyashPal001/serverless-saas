@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { agents, apiKeys, memberships, roles } from '@serverless-saas/database';
+import { agents, apiKeys, memberships, roles, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const agentsRoutes = new Hono<AppEnv>();
@@ -107,6 +107,21 @@ agentsRoutes.post('/', async (c) => {
         status: 'active',
     });
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'agent_created',
+            resource: 'agent',
+            resourceId: newAgent.id,
+            metadata: { type: result.data.type },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     // Return raw key once — caller must store it, it cannot be recovered after this response
     return c.json({ data: { agent: newAgent, apiKey: rawKey } }, 201);
 });
@@ -151,6 +166,26 @@ agentsRoutes.patch('/:id', async (c) => {
         .set({ ...result.data, updatedAt: new Date() })
         .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
         .returning();
+
+    if (result.data.status) {
+        const action = result.data.status === 'paused' ? 'agent_paused'
+            : result.data.status === 'active' ? 'agent_reactivated'
+            : 'agent_retired';
+        try {
+            await db.insert(auditLog).values({
+                tenantId,
+                actorId: c.get('userId') ?? 'system',
+                actorType: 'human',
+                action,
+                resource: 'agent',
+                resourceId: updated.id,
+                metadata: {},
+                traceId: c.get('traceId') ?? '',
+            });
+        } catch (auditErr) {
+            console.error('Audit log write failed:', auditErr);
+        }
+    }
 
     return c.json({ data: { agent: updated } });
 });

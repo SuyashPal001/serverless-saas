@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, ilike, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { tenants } from '@serverless-saas/database/schema';
-import { tenantFeatureOverrides } from '@serverless-saas/database/schema';
+import { db, tenants, tenantFeatureOverrides, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -69,6 +67,21 @@ opsRoutes.patch('/tenants/:id', async (c) => {
         .where(eq(tenants.id, tenantId))
         .returning();
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: result.data.status === 'suspended' ? 'tenant_suspended' : 'tenant_reactivated',
+            resource: 'tenant',
+            resourceId: tenantId,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ data: updated });
 });
 
@@ -129,6 +142,21 @@ opsRoutes.post('/overrides', async (c) => {
         expiresAt: result.data.expiresAt ? new Date(result.data.expiresAt) : null,
     }).returning();
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId: result.data.tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'override_granted',
+            resource: 'tenant_feature_override',
+            resourceId: override.id,
+            metadata: { featureId: result.data.featureId, reason: result.data.reason },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ data: override }, 201);
 });
 
@@ -154,6 +182,21 @@ opsRoutes.post('/overrides/:id/revoke', async (c) => {
         .set({ revokedAt: new Date(), revokedBy: userId })
         .where(eq(tenantFeatureOverrides.id, overrideId))
         .returning();
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId: existing.tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'override_revoked',
+            resource: 'tenant_feature_override',
+            resourceId: overrideId,
+            metadata: {},
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     return c.json({ data: updated });
 });

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -97,10 +97,17 @@ export function MembersList() {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
             toast.success("Member access updated");
         },
+        onError: (error) => {
+            if (error instanceof ApiError && error.status === 403 && error.data?.code === 'SELF_SUSPEND_FORBIDDEN') {
+                toast.error("You cannot suspend your own account.");
+            } else {
+                toast.error("Failed to suspend member.");
+            }
+        },
     });
 
     const reactivateMutation = useMutation({
-        mutationFn: (memberId: string) => 
+        mutationFn: (memberId: string) =>
             api.patch(`/api/v1/members/${memberId}/status`, { status: "active" }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
@@ -224,8 +231,8 @@ export function MembersList() {
                             </TableCell>
                             <TableCell>
                                 {member.memberType === "human" && member.status === "active" ? (
-                                    <Dialog 
-                                        open={selectedMemberForRole?.id === member.id} 
+                                    <Dialog
+                                        open={selectedMemberForRole?.id === member.id}
                                         onOpenChange={(open) => {
                                             if (open) {
                                                 setSelectedMemberForRole(member);
@@ -236,8 +243,8 @@ export function MembersList() {
                                         }}
                                     >
                                         <DialogTrigger asChild>
-                                            <Badge 
-                                                variant="outline" 
+                                            <Badge
+                                                variant="outline"
                                                 className="text-xs cursor-pointer hover:bg-accent transition-colors"
                                             >
                                                 {member.roleName || member.roleId || "No Role"}
@@ -268,16 +275,16 @@ export function MembersList() {
                                                 </Select>
                                             </div>
                                             <DialogFooter>
-                                                <Button 
-                                                    variant="outline" 
+                                                <Button
+                                                    variant="outline"
                                                     onClick={() => setSelectedMemberForRole(null)}
                                                 >
                                                     Cancel
                                                 </Button>
-                                                <Button 
-                                                    onClick={() => updateRoleMutation.mutate({ 
-                                                        memberId: member.id, 
-                                                        roleId: selectedRoleId 
+                                                <Button
+                                                    onClick={() => updateRoleMutation.mutate({
+                                                        memberId: member.id,
+                                                        roleId: selectedRoleId
                                                     })}
                                                     disabled={updateRoleMutation.isPending || selectedRoleId === member.roleId}
                                                 >
@@ -299,9 +306,9 @@ export function MembersList() {
                                 {member.status === 'suspended' ? (
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 px-2 shadow-none"
                                             >
                                                 Suspended
@@ -351,20 +358,20 @@ export function MembersList() {
                                                     className="text-xs border-2"
                                                     disabled={suspendMutation.isPending || reactivateMutation.isPending}
                                                 >
-                                                    {member.status === 'invited' ? 'Revoke invite' : 
-                                                     member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                    {member.status === 'invited' ? 'Revoke invite' :
+                                                        member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                                                 </Button>
                                             </AlertDialogTrigger>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader>
                                                     <AlertDialogTitle>
-                                                        {member.status === 'invited' ? 'Revoke Invitation' : 
-                                                         member.status === 'suspended' ? 'Reactivate Member' : 'Suspend Member'}
+                                                        {member.status === 'invited' ? 'Revoke Invitation' :
+                                                            member.status === 'suspended' ? 'Reactivate Member' : 'Suspend Member'}
                                                     </AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        {member.status === 'invited' ? 'This will revoke their invitation. They will no longer be able to join.' : 
-                                                         member.status === 'suspended' ? 'This will restore their access.' : 
-                                                         'This will suspend their access immediately. They will not be able to log in until reactivated.'}
+                                                        {member.status === 'invited' ? 'This will revoke their invitation. They will no longer be able to join.' :
+                                                            member.status === 'suspended' ? 'This will restore their access.' :
+                                                                'This will suspend their access immediately. They will not be able to log in until reactivated.'}
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
@@ -379,8 +386,8 @@ export function MembersList() {
                                                         }}
                                                         className={member.status === 'suspended' ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
                                                     >
-                                                        {member.status === 'invited' ? 'Revoke' : 
-                                                         member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                        {member.status === 'invited' ? 'Revoke' :
+                                                            member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                                                     </AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>

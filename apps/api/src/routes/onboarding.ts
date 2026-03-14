@@ -1,10 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db, roles, tenants, memberships, subscriptions, auditLog } from '@serverless-saas/database';
 import { eq, isNull, and } from 'drizzle-orm';
-import { roles } from '@serverless-saas/database/schema/authorization';
-import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
-import { subscriptions } from '@serverless-saas/database/schema/billing';
 import type { AppEnv } from '../types';
 
 const onboardingSchema = z.object({
@@ -81,6 +78,21 @@ onboardingRoutes.post('/complete', async (c) => {
     });
 
     const tenantId = tenant.id;
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'tenant_created',
+            resource: 'tenant',
+            resourceId: tenantId,
+            metadata: { slug: finalSlug },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     // Step 6: Return response
     return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);

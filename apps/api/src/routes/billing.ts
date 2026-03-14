@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { subscriptions, invoices } from '@serverless-saas/database/schema';
+import { db, subscriptions, invoices, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 
@@ -93,6 +92,21 @@ billingRoutes.post('/upgrade', async (c) => {
         startedAt: new Date(),
     }).returning();
 
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'subscription_updated',
+            resource: 'subscription',
+            resourceId: newSub.id,
+            metadata: { plan: result.data.plan },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
     return c.json({ data: newSub }, 201);
 });
 
@@ -122,6 +136,21 @@ billingRoutes.post('/cancel', async (c) => {
         .set({ status: 'cancelled', endedAt: new Date() })
         .where(eq(subscriptions.id, existing.id))
         .returning();
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'subscription_updated',
+            resource: 'subscription',
+            resourceId: cancelled.id,
+            metadata: { plan: cancelled.plan },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
     return c.json({ data: cancelled });
 });
