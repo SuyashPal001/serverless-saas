@@ -51,6 +51,12 @@ agentsRoutes.post('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
+    console.log('ENTITLEMENT_DEBUG', JSON.stringify({
+        hasEntitlements: !!requestContext?.entitlements,
+        entitlementsKeys: requestContext?.entitlements ? Object.keys(requestContext.entitlements) : [],
+        tenantId,
+    }));
+
     // Entitlement check — entitlements are keyed by featureId UUID, not feature key string
     const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
 
