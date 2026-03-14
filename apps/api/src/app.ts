@@ -23,11 +23,20 @@ import { billingRoutes } from './routes/billing';
 import { opsRoutes } from './routes/ops';
 import { authInjectionMiddleware } from './middleware/authInjection';
 import { entitlementsRoutes } from './routes/entitlements';
+import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
 
 // Global middlewaregit p
 app.use('*', cors());
+
+// First middleware — generates traceId for every request
+app.use('*', async (c, next) => {
+    c.set('traceId', randomUUID());
+    c.set('startTime', Date.now());
+    await next();
+});
+
 app.onError(errorHandler);
 
 // Health routes — bypass all auth/tenant middleware
