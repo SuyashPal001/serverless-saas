@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,10 @@ type RoleFormValues = z.infer<typeof roleSchema>;
 
 interface CreateRoleFormProps {
     onSuccess: () => void;
+    onUpgradeRequired?: () => void;
 }
 
-export function CreateRoleForm({ onSuccess }: CreateRoleFormProps) {
+export function CreateRoleForm({ onSuccess, onUpgradeRequired }: CreateRoleFormProps) {
     const { tenantId } = useTenant();
     const queryClient = useQueryClient();
 
@@ -56,6 +57,13 @@ export function CreateRoleForm({ onSuccess }: CreateRoleFormProps) {
             onSuccess();
         },
         onError: (error: Error) => {
+            // Check if this is a plan gate error
+            if (error instanceof ApiError && error.data?.code === 'FEATURE_NOT_AVAILABLE') {
+                if (onUpgradeRequired) {
+                    onUpgradeRequired();
+                    return;
+                }
+            }
             toast.error(error.message || "Failed to create role");
         },
     });

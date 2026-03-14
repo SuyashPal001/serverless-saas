@@ -86,35 +86,38 @@ export function PlanSelectorDialog({ currentPlan }: { currentPlan: string }) {
                     Change Plan
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[800px] gap-0 p-0">
-                <DialogHeader className="p-6 pb-2">
+            <DialogContent
+                className="w-[90vw] overflow-y-auto max-h-[90vh] gap-0 p-0"
+                style={{ maxWidth: '64rem' }}
+            >
+                <DialogHeader className="p-6 pb-4">
                     <DialogTitle className="text-2xl">Upgrade or Downgrade Plan</DialogTitle>
                     <DialogDescription>
                         Select the plan that best fits your needs. Changes take effect immediately.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6 pt-0">
                     {PLANS.map((plan) => {
                         const isCurrent = currentPlan.toLowerCase() === plan.id;
                         return (
                             <div
                                 key={plan.id}
-                                className={`bg-card p-6 flex flex-col ${isCurrent ? 'ring-2 ring-primary relative z-10' : ''}`}
+                                className={`bg-card border border-border rounded-lg p-6 flex flex-col relative min-w-0 ${isCurrent ? 'ring-2 ring-primary' : ''}`}
                             >
                                 {isCurrent && (
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-primary text-primary-foreground px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-widest">
+                                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
                                         Current
                                     </div>
                                 )}
-                                <div className="mb-4">
-                                    <h3 className="text-xl font-bold">{plan.name}</h3>
-                                    <div className="mt-2 text-2xl font-black">{plan.price}</div>
-                                    <p className="mt-2 text-sm text-muted-foreground min-h-[40px]">
+                                <div className="mb-6">
+                                    <h3 className="text-xl font-bold mb-3">{plan.name}</h3>
+                                    <div className="text-2xl font-black mb-3">{plan.price}</div>
+                                    <p className="text-sm text-muted-foreground leading-relaxed">
                                         {plan.description}
                                     </p>
                                 </div>
 
-                                <ul className="space-y-3 mb-8 flex-1">
+                                <ul className="space-y-3 mb-6 flex-1">
                                     {plan.features.map((feature, i) => (
                                         <li key={i} className="flex items-start gap-2 text-sm">
                                             <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />

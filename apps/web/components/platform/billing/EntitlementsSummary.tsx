@@ -35,7 +35,7 @@ function MetricProgress({
     icon: React.ElementType,
     metrics: EntitlementMetrics
 }) {
-    const percentage = metrics.unlimited
+    const percentage = metrics.unlimited || metrics.limit === 0
         ? 0
         : Math.min(Math.round((metrics.used / metrics.limit) * 100), 100);
 

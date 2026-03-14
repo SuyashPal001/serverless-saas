@@ -111,7 +111,7 @@ export function MembersList() {
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium text-foreground">
-                                            {member.userName || member.userEmail || "Unknown"}
+                                            {member.userName || member.userEmail || "Unknown-invitee"}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
                                             {member.userEmail}
