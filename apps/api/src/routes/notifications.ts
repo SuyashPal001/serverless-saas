@@ -10,7 +10,7 @@ export const notificationsRoutes = new Hono<AppEnv>();
 notificationsRoutes.get('/inbox', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('notifications:read')) {
@@ -52,7 +52,7 @@ notificationsRoutes.get('/inbox', async (c) => {
 notificationsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
 
     // Optional filter — unread only
     const unreadOnly = c.req.query('unread') === 'true';
@@ -80,7 +80,7 @@ notificationsRoutes.get('/', async (c) => {
 notificationsRoutes.patch('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
 
     const notificationId = c.req.param('id');
 

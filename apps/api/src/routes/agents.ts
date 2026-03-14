@@ -46,7 +46,7 @@ agentsRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
-    const userId = requestContext?.user?.id;
+    const userId = c.get('userId') as string;
 
     if (!permissions.includes('agents:create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
