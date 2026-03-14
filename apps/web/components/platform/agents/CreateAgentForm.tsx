@@ -4,8 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
     Form,
     FormControl,
@@ -53,6 +54,15 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
         onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
             onSuccess(response.data);
+        },
+        onError: (err: any) => {
+            if (err instanceof ApiError && err.status === 403 && err.data?.code === 'AGENT_LIMIT_REACHED') {
+                toast.error(`Agent limit reached. Your plan allows ${err.data.limit} agent${err.data.limit === 1 ? '' : 's'} (${err.data.used} active).`);
+            } else if (err instanceof ApiError && err.status === 403) {
+                toast.error('You do not have permission to create agents.');
+            } else {
+                toast.error('Failed to create agent.');
+            }
         },
     });
 
