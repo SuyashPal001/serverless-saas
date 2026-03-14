@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "@/lib/auth";
-import { decodeTenantClaims } from "@/lib/tenant";
+import { signUp } from "@/lib/auth";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,66 +18,45 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-const loginSchema = z.object({
-    email: z.string().email({ message: "Invalid email address" }),
-    password: z.string().min(8, { message: "Password must be at least 8 characters" }),
+const signupSchema = z.object({
+    name: z.string().min(1, { message: 'Name is required' }),
+    email: z.string().email({ message: 'Invalid email address' }),
+    password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+    confirmPassword: z.string(),
+}).refine(d => d.password === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
 });
 
-type LoginSchema = z.infer<typeof loginSchema>;
+type SignupSchema = z.infer<typeof signupSchema>;
 
-export default function LoginPage() {
+export default function SignupPage() {
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    const form = useForm<LoginSchema>({
-        resolver: zodResolver(loginSchema),
-        defaultValues: { email: "", password: "" },
+    const form = useForm<SignupSchema>({
+        resolver: zodResolver(signupSchema),
+        defaultValues: {
+            name: "",
+            email: "",
+            password: "",
+            confirmPassword: "",
+        },
     });
 
-    async function onSubmit(data: LoginSchema) {
+    async function onSubmit(data: SignupSchema) {
         setIsLoading(true);
         setError(null);
 
         try {
-            // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
-            const { idToken, refreshToken } = await signIn(data.email, data.password);
+            await signUp(data.name, data.email, data.password);
 
-            // 2. Fetch user profile to get the tenant slug
-            // Note: We pass the idToken directly in the header since the cookie isn't set yet.
-            const profileRes = await fetch(`/api/proxy/api/v1/auth/me`, {
-                headers: {
-                    Authorization: `Bearer ${idToken}`,
-                },
-            });
-
-            if (!profileRes.ok) throw new Error("Failed to fetch user profile");
-            const profile = await profileRes.json();
-            const slug = profile.slug;
-
-            // 3. POST idToken to Next.js API route to set httpOnly cookie
-            const res = await fetch("/api/auth/session", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    token: idToken,
-                    refreshToken
-                }),
-            });
-
-            if (!res.ok) throw new Error("Failed to create secure session");
-
-            // 4. Redirect to the tenant dashboard using the slug
-            const targetPath = slug
-                ? `/${slug}/dashboard`
-                : "/onboarding";
-
-            router.push(targetPath);
-            router.refresh();
-
+            // On success, redirect to verification page
+            router.push(`/auth/verify?email=${encodeURIComponent(data.email)}`);
         } catch (err: any) {
-            console.error("Login error:", err);
-            setError(err.message || "Invalid email or password. Please try again.");
+            console.error("Signup error:", err);
+            setError(err.message || "Failed to create account. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -88,8 +66,8 @@ export default function LoginPage() {
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                 <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Platform</h1>
-                    <p className="text-sm text-muted-foreground">Sign in to your account</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Create an account</h1>
+                    <p className="text-sm text-muted-foreground">Enter your details to get started</p>
                 </div>
 
                 {error && (
@@ -100,6 +78,19 @@ export default function LoginPage() {
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Name</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="John Doe" disabled={isLoading} {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                         <FormField
                             control={form.control}
                             name="email"
@@ -126,15 +117,28 @@ export default function LoginPage() {
                                 </FormItem>
                             )}
                         />
+                        <FormField
+                            control={form.control}
+                            name="confirmPassword"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Confirm Password</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="••••••••" type="password" disabled={isLoading} {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                         <Button type="submit" className="w-full" disabled={isLoading}>
-                            {isLoading ? "Signing in..." : "Sign in"}
+                            {isLoading ? "Creating account..." : "Sign up"}
                         </Button>
                     </form>
                 </Form>
 
                 <p className="text-center text-sm text-muted-foreground">
-                    Don't have an account?{' '}
-                    <a href="/auth/signup" className="text-primary hover:underline">Sign up</a>
+                    Already have an account?{' '}
+                    <a href="/auth/login" className="text-primary hover:underline">Sign in</a>
                 </p>
             </div>
         </div>

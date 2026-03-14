@@ -30,6 +30,16 @@ async function request<T>(
         } catch {
             errorData = { message: 'An unknown error occurred' };
         }
+
+        // Detect plan-gated 403s and fire upgrade prompt event
+        if (response.status === 403 && errorData.code === 'FEATURE_NOT_ENTITLED') {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('plan-gate', {
+                    detail: { feature: errorData.feature }
+                }));
+            }
+        }
+
         throw new ApiError(response.status, errorData);
     }
 

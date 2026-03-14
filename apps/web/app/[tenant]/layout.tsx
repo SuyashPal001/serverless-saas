@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { decodeTenantClaims } from "@/lib/tenant";
 import { TenantProvider } from "./tenant-provider";
+import { UpgradePromptProvider } from "@/components/platform/UpgradePromptProvider";
 
 export default async function TenantLayout({
     children,
@@ -55,9 +56,11 @@ export default async function TenantLayout({
 
     return (
         <TenantProvider claims={claims}>
-            <div className="tenant-context-wrapper" data-tenant={tenant}>
-                {children}
-            </div>
+            <UpgradePromptProvider>
+                <div className="tenant-context-wrapper" data-tenant={tenant}>
+                    {children}
+                </div>
+            </UpgradePromptProvider>
         </TenantProvider>
     );
 }

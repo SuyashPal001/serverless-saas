@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { LogOut, User } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
@@ -7,7 +8,8 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
 export function Topbar() {
-    const { tenantId, plan, email, name } = useTenant()
+    const router = useRouter()
+    const { tenantId, slug, plan, email, name } = useTenant()
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -30,12 +32,15 @@ export function Topbar() {
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-tight">
                     {tenantId}
                 </h2>
-                <div className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border tracking-widest",
-                    currentPlanColor
-                )}>
+                <button
+                    onClick={() => router.push(`/${slug}/dashboard/billing`)}
+                    className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border tracking-widest transition-opacity hover:opacity-80 cursor-pointer",
+                        currentPlanColor
+                    )}
+                >
                     {plan || "Free"}
-                </div>
+                </button>
             </div>
 
             <div className="flex items-center gap-6">

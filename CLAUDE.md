@@ -311,3 +311,146 @@ if (can(permissions, 'members', 'create')) { ... }
 - Client permission checks are UX only — API always enforces server-side
 - Dark mode throughout
 - No heavy chart libraries — simple data display only
+# Claude Code Handoff — March 14, 2026
+
+## Context
+Frontend (`apps/web`) is wired to the live backend. Phase 1 integration testing is complete. Auth, tenant resolution, permissions, and most dashboard pages are working with real data.
+
+Read `CLAUDE.md` first — it has the full project structure, middleware chain, and frontend rules. The section "Frontend Integration (apps/web)" at the bottom is the most relevant.
+
+---
+
+## Auth + Onboarding Files — Already Implemented
+
+These files are written and type-checked. Do not rewrite them:
+
+| File | Status |
+|---|---|
+| `apps/web/app/api/auth/session/route.ts` | ✅ Stores both `platform_token` and `platform_refresh_token` as httpOnly cookies |
+| `apps/web/app/auth/login/page.tsx` | ✅ Passes `refreshToken` to session endpoint |
+| `apps/web/app/onboarding/page.tsx` | ✅ Full onboarding flow — create tenant, refresh JWT, redirect |
+| `apps/web/app/api/auth/refresh/route.ts` | ✅ Server-side token exchange — reads `platform_refresh_token` cookie, returns new idToken |
+
+---
+
+## What Was Fixed This Session
+
+| Fix | File(s) touched |
+|---|---|
+| CORS misconfiguration | `apps/api/src/app.ts` (Hono cors middleware) |
+| Routes using `c.get('tenantId')` instead of `requestContext` | Multiple route files |
+| Permissions not in TenantContext | `apps/web/app/[tenant]/dashboard/layout.tsx` — now fetches `/auth/me` server-side |
+| `audit_log:read` permission check failing | Fixed in layout permissions fetch |
+| Entitlements route shape | `apps/api/src/routes/entitlements.ts` |
+| Roles response key (`data` → `roles`) | `apps/api/src/routes/roles.ts` |
+| Billing date formatting | `apps/web/app/[tenant]/dashboard/billing/page.tsx` |
+| Members name fallback | `apps/web/app/[tenant]/dashboard/settings/members/page.tsx` |
+| `.env.local` created | `apps/web/.env.local` (not committed) |
+
+---
+
+## Immediate Next Step — Verify Before Starting New Work
+
+**Roles page** may not be rendering system roles yet. Before building anything new:
+1. Restart dev server: `pnpm --filter @serverless-saas/web dev`
+2. Navigate to `/{slug}/dashboard/settings/roles`
+3. Confirm system roles (owner, admin, member) appear
+
+If they don't appear, check the browser network tab — the issue will be in the API response shape or a missing permission.
+
+---
+
+## Task 1 — Onboarding Page (highest priority)
+
+**What:** New users with no tenant land at `/onboarding`. This route currently returns 404.
+
+**File to create:** `apps/web/app/onboarding/page.tsx`
+
+**Flow:**
+1. User arrives (JWT has empty `custom:tenantId` — see ADR-026)
+2. Single form field: workspace name
+3. Submit → `POST /api/v1/onboarding/complete` with `{ workspaceName: string }`
+4. Backend returns `{ tenantId, slug, message }`
+5. Trigger Cognito token refresh to get new JWT with tenantId stamped:
+   ```
+   POST https://cognito-idp.ap-south-1.amazonaws.com/
+   X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth
+   Content-Type: application/x-amz-json-1.1
+
+   {
+     "AuthFlow": "REFRESH_TOKEN_AUTH",
+     "AuthParameters": { "REFRESH_TOKEN": "<refresh_token>" },
+     "ClientId": "o8m606564m72f8uh2np6m0odl"
+   }
+   ```
+6. Set new `platform_token` httpOnly cookie via `POST /api/auth/session`
+7. Redirect to `/{slug}/dashboard`
+
+**Where the refresh token lives:** It should be stored at login time. Check `apps/web/app/api/auth/session/route.ts` and `lib/auth.ts` to confirm where the refresh token is persisted (likely a separate httpOnly cookie set at login). If it isn't being stored, that needs to be fixed first.
+
+**Rules:** No aws-amplify. Direct fetch to Cognito only. Form via React Hook Form + Zod. Dark mode card layout matching `/auth/login`.
+
+---
+
+## Task 2 — Dashboard Home Overview
+
+**File:** `apps/web/app/[tenant]/dashboard/page.tsx`
+
+**What to show:**
+- Current plan badge (from `useTenant().plan`)
+- Member count — fetch `GET /api/v1/members` and show count
+- Recent audit entries — fetch `GET /api/v1/audit` (last 5 entries)
+- No charts — simple stat cards and a clean list
+
+**Pattern:** Use TanStack Query for all data fetching. Reference the members page for the fetch pattern.
+
+---
+
+## Task 3 — Write Operations
+
+Do these one at a time. Review the plan before approving each Antigravity/AI run.
+
+**3a. Invite member**
+- Location: members page (`/dashboard/settings/members`)
+- `POST /api/v1/members/invite` with `{ email, roleId }`
+- Get available roles from existing roles query for the dropdown
+- Permission gate: only render invite button if `can(permissions, 'members', 'create')`
+
+**3b. Generate API key**
+- Location: API keys page (`/dashboard/api-keys`)
+- `POST /api/v1/api-keys` with `{ name, type }`
+- Show the raw key in a modal once — it will never be shown again
+- Permission gate: `can(permissions, 'api_keys', 'create')`
+
+**3c. Create agent**
+- Location: agents page (`/dashboard/agents`)
+- `POST /api/v1/agents` — check `apps/api/src/routes/agents.ts` for exact request body shape before building the form
+
+---
+
+## Key Facts for Claude Code
+
+**Backend is live at:**
+`https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com`
+
+**All frontend API calls go through the proxy route:**
+`apps/web/app/api/proxy/[...path]/route.ts`
+Read this file before adding any new API calls to understand how it forwards requests.
+
+**Auth/me response shape (confirmed working):**
+```json
+{
+  "userId": "...",
+  "tenantId": "...",
+  "slug": "test-workspace",
+  "status": "active",
+  "permissions": ["members:create", "members:read", ...46 total],
+  "needsOnboarding": false
+}
+```
+
+**Permission string format:** `resource:action` with underscores for multi-word resources (e.g., `api_keys:create`, `audit_log:read`, `agent_workflows:read`)
+
+**Do not commit `.env.local`** — already in `.gitignore`, but double-check before any git operations.
+
+**Git workflow:** All changes to `develop` branch only. Never push to `main`.

@@ -58,3 +58,28 @@ export async function signOut() {
         window.location.href = '/auth/login';
     }
 }
+
+export async function signUp(name: string, email: string, password: string) {
+    const data = await cognitoRequest('SignUp', {
+        ClientId: CLIENT_ID,
+        Username: email,
+        Password: password,
+        UserAttributes: [{ Name: 'name', Value: name }],
+    });
+    return data;
+}
+
+export async function confirmSignUp(email: string, code: string) {
+    await cognitoRequest('ConfirmSignUp', {
+        ClientId: CLIENT_ID,
+        Username: email,
+        ConfirmationCode: code,
+    });
+}
+
+export async function resendConfirmationCode(email: string) {
+    await cognitoRequest('ResendConfirmationCode', {
+        ClientId: CLIENT_ID,
+        Username: email,
+    });
+}
