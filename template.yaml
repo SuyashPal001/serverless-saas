@@ -65,6 +65,7 @@ Resources:
           EVENTBRIDGE_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          FROM_EMAIL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/ses/from-email}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
     Metadata:
       BuildMethod: makefile
