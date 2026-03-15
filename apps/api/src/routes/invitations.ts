@@ -147,6 +147,8 @@ memberInviteRoutes.post('/invite', async (c) => {
 
     const { email, roleId } = result.data;
 
+    console.log('INVITE_CONTEXT:', JSON.stringify({ userId, tenantId, email: result.data.email, roleId: result.data.roleId }));
+
     // Check invitee is not already an active member of this tenant
     const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
