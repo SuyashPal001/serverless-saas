@@ -167,13 +167,14 @@ memberInviteRoutes.post('/invite', async (c) => {
     }
 
     // Check for existing pending invitation
-    const existingInvitation = await db.query.invitationTokens.findFirst({
-        where: and(
+    const [existingInvitation] = await db.select({ id: invitationTokens.id })
+        .from(invitationTokens)
+        .where(and(
             eq(invitationTokens.email, email),
             eq(invitationTokens.tenantId, tenantId),
             eq(invitationTokens.status, 'pending'),
-        ),
-    });
+        ))
+        .limit(1);
     if (existingInvitation) {
         return c.json({ error: 'A pending invitation already exists for this email', code: 'INVITATION_PENDING' }, 409);
     }
