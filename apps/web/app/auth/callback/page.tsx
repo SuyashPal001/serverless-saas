@@ -48,26 +48,25 @@ function CallbackContent() {
         const sessionResponse = await fetch("/api/auth/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: idToken }),
+          body: JSON.stringify({ token: idToken, refreshToken: tokens.refresh_token }),
         });
 
         if (!sessionResponse.ok) {
           throw new Error("Failed to create session on the server");
         }
 
-        // 3. Decode JWT claims
-        const payloadBase64 = idToken.split(".")[1];
-        const payloadJson = atob(payloadBase64);
-        const claims = JSON.parse(payloadJson);
+        // 3. Fetch user profile to get slug and onboarding status
+        const profileRes = await fetch(`/api/proxy/api/v1/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        });
+        if (!profileRes.ok) throw new Error("Failed to fetch user profile");
+        const profile = await profileRes.json();
 
-        const tenantSlug = claims["custom:tenantSlug"];
-
-        // 4. Wait for browser to commit the cookie before navigating
-        await new Promise(resolve => setTimeout(resolve, 200));
-
-        // 5. Hard redirect — forces full page load so cookie is read fresh
-        if (tenantSlug) {
-          window.location.href = `/${tenantSlug}/dashboard`;
+        // 4. Hard redirect — forces full page load so cookie is read fresh
+        if (profile.slug && !profile.needsOnboarding) {
+          window.location.href = `/${profile.slug}/dashboard`;
         } else {
           window.location.href = "/onboarding";
         }
