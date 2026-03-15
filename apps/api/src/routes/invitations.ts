@@ -132,6 +132,8 @@ memberInviteRoutes.post('/invite', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
+    console.log('INVITE_DEBUG tenantId:', tenantId, 'userId:', userId);
+
     if (!permissions.includes('members:create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
@@ -186,6 +188,8 @@ memberInviteRoutes.post('/invite', async (c) => {
     });
     const tenantName = tenant?.name ?? 'the workspace';
 
+    console.log('INVITE_DEBUG tenant:', tenant);
+
     // Create membership with status 'invited' — userId null if invitee has no account yet
     const [membership] = await db.insert(memberships).values({
         userId: existingUser?.id ?? null,
@@ -196,6 +200,8 @@ memberInviteRoutes.post('/invite', async (c) => {
         invitedBy: userId,
         invitedAt: new Date(),
     }).returning();
+
+    console.log('INVITE_DEBUG membership:', membership);
 
     // Generate token — raw token sent via email only, never stored or returned in response
     const rawToken = randomBytes(32).toString('hex');
@@ -212,6 +218,8 @@ memberInviteRoutes.post('/invite', async (c) => {
         status: 'pending',
         expiresAt,
     }).returning();
+
+    console.log('INVITE_DEBUG token:', token);
 
     const appUrl = process.env.APP_URL ?? '';
     try {
