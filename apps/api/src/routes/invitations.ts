@@ -101,9 +101,7 @@ invitationsPublicRoutes.post('/:token/accept', async (c) => {
     }
 
     // Verify the authenticated user's email matches the invitation email
-    const acceptingUser = await db.query.users.findFirst({
-        where: eq(users.id, userId),
-    });
+    const [acceptingUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
     if (!acceptingUser) {
         return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
@@ -132,8 +130,6 @@ memberInviteRoutes.post('/invite', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    console.log('INVITE_DEBUG tenantId:', tenantId, 'userId:', userId);
-
     if (!permissions.includes('members:create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
@@ -151,18 +147,14 @@ memberInviteRoutes.post('/invite', async (c) => {
     const { email, roleId } = result.data;
 
     // Check invitee is not already an active member of this tenant
-    const existingUser = await db.query.users.findFirst({
-        where: eq(users.email, email),
-    });
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
     if (existingUser) {
-        const existingMembership = await db.query.memberships.findFirst({
-            where: and(
-                eq(memberships.userId, existingUser.id),
-                eq(memberships.tenantId, tenantId),
-                eq(memberships.status, 'active'),
-            ),
-        });
+        const [existingMembership] = await db.select({ id: memberships.id }).from(memberships).where(and(
+            eq(memberships.userId, existingUser.id),
+            eq(memberships.tenantId, tenantId),
+            eq(memberships.status, 'active'),
+        )).limit(1);
         if (existingMembership) {
             return c.json({ error: 'User is already an active member of this tenant', code: 'ALREADY_MEMBER' }, 409);
         }
@@ -182,13 +174,8 @@ memberInviteRoutes.post('/invite', async (c) => {
     }
 
     // Fetch tenant name for email — name is not stored in requestContext.tenant (ADR-013 cache shape)
-    const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.id, tenantId),
-        columns: { name: true },
-    });
+    const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     const tenantName = tenant?.name ?? 'the workspace';
-
-    console.log('INVITE_DEBUG tenant:', tenant);
 
     // Create membership with status 'invited' — userId null if invitee has no account yet
     const [membership] = await db.insert(memberships).values({
@@ -200,8 +187,6 @@ memberInviteRoutes.post('/invite', async (c) => {
         invitedBy: userId,
         invitedAt: new Date(),
     }).returning();
-
-    console.log('INVITE_DEBUG membership:', membership);
 
     // Generate token — raw token sent via email only, never stored or returned in response
     const rawToken = randomBytes(32).toString('hex');
@@ -218,8 +203,6 @@ memberInviteRoutes.post('/invite', async (c) => {
         status: 'pending',
         expiresAt,
     }).returning();
-
-    console.log('INVITE_DEBUG token:', token);
 
     const appUrl = process.env.APP_URL ?? '';
     try {
