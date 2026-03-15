@@ -45,6 +45,11 @@ app.route('/health', healthRoutes);
 
 const api = new Hono<AppEnv>();
 
+// ── Public routes — no auth middleware ───────────────────────────────────────
+api.route('/auth', authPublicRoutes);
+api.route('/onboarding', onboardingRoutes);
+api.route('/invitations', invitationsPublicRoutes);
+
 // ── Middleware chain ──────────────────────────────────────────────────────────
 
 // Step 1: JWT extraction
@@ -55,11 +60,6 @@ api.use('*', userUpsertMiddleware);
 
 // Step 3: API key auth
 api.use('*', apiKeyAuthMiddleware);
-
-// ── Public routes — registered BEFORE secure middleware ───────────────────────
-api.route('/auth', authPublicRoutes);
-api.route('/onboarding', onboardingRoutes);
-api.route('/invitations', invitationsPublicRoutes);
 
 // ── Secure middleware — runs for all routes below ─────────────────────────────
 
