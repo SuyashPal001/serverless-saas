@@ -147,11 +147,11 @@ memberInviteRoutes.post('/invite', async (c) => {
 
     const { email, roleId } = result.data;
 
-    console.log('INVITE_CONTEXT:', JSON.stringify({ userId, tenantId, email: result.data.email, roleId: result.data.roleId }));
-
+    console.log('S1');
     // Check invitee is not already an active member of this tenant
     const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
+    console.log('S2');
     if (existingUser) {
         const [existingMembership] = await db.select({ id: memberships.id }).from(memberships).where(and(
             eq(memberships.userId, existingUser.id),
@@ -163,6 +163,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         }
     }
 
+    console.log('S3');
     // Check for existing pending invitation
     const [existingInvitation] = await db.select({ id: invitationTokens.id })
         .from(invitationTokens)
@@ -176,10 +177,12 @@ memberInviteRoutes.post('/invite', async (c) => {
         return c.json({ error: 'A pending invitation already exists for this email', code: 'INVITATION_PENDING' }, 409);
     }
 
+    console.log('S4');
     // Fetch tenant name for email — name is not stored in requestContext.tenant (ADR-013 cache shape)
     const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     const tenantName = tenant?.name ?? 'the workspace';
 
+    console.log('S5');
     // Create membership with status 'invited' — userId null if invitee has no account yet
     const [membership] = await db.insert(memberships).values({
         userId: existingUser?.id ?? null,
@@ -191,6 +194,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         invitedAt: new Date(),
     }).returning();
 
+    console.log('S6');
     // Generate token — raw token sent via email only, never stored or returned in response
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = hashToken(rawToken);
@@ -207,6 +211,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         expiresAt,
     }).returning();
 
+    console.log('S7');
     const appUrl = process.env.APP_URL ?? '';
     try {
         await sendEmail({
