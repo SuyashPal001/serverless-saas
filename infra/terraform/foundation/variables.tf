@@ -147,3 +147,11 @@ variable "database_url" {
   type        = string
   sensitive   = true
 }
+
+# -------------------------------------------------------
+# SES
+# -------------------------------------------------------
+variable "ses_from_domain" {
+  description = "SES sending subdomain (e.g. mail.saas.fitnearn.com)"
+  type        = string
+}

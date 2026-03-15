@@ -90,3 +90,21 @@ output "ssm_prefix" {
   description = "SSM parameter store prefix for this environment."
   value       = "/${var.project}/${var.environment}"
 }
+
+# -------------------------------------------------------
+# SES
+# -------------------------------------------------------
+output "ses_verification_token" {
+  description = "TXT record value for SES domain verification."
+  value       = module.ses.verification_token
+}
+
+output "ses_dkim_tokens" {
+  description = "List of 3 DKIM tokens for Route 53 CNAME records."
+  value       = module.ses.dkim_tokens
+}
+
+output "ses_mail_from_domain" {
+  description = "MAIL FROM domain for bounce handling."
+  value       = module.ses.mail_from_domain
+}

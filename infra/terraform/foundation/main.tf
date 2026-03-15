@@ -44,7 +44,7 @@ module "cognito" {
       allowed_oauth_scopes         = ["email", "openid", "profile"]
       callback_urls                = ["http://localhost:3000/auth/callback"]
       logout_urls                  = ["http://localhost:3000"]
-      supported_identity_providers = ["COGNITO"]
+      supported_identity_providers = ["COGNITO","Google"]
       read_attributes              = ["email", "name", "custom:tenantId", "custom:role", "custom:plan"]
       write_attributes             = ["email", "name"]
       generate_secret              = false
@@ -52,6 +52,22 @@ module "cognito" {
   }
 
   email_configuration = null
+  identity_providers = {
+    google = {
+      provider_name = "Google"
+      provider_type = "Google"
+      provider_details = {
+        client_id        = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_id"]
+        client_secret    = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_secret"]
+        authorize_scopes = "email openid profile"
+      }
+      attribute_mapping = {
+        email    = "email"
+        name     = "name"
+        username = "sub"
+      }
+    }
+  }
   tags                = {}
 }
 
@@ -273,6 +289,14 @@ module "iam" {
             Resource = module.cognito.user_pool_arn
           }]
         })
+        ses_send = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+            Resource = module.ses.domain_identity_arn
+          }]
+        })
       }
     }
 
@@ -462,4 +486,33 @@ resource "aws_secretsmanager_secret_version" "cache" {
     url   = var.upstash_redis_rest_url
     token = var.upstash_redis_rest_token
   })
+}
+
+# -------------------------------------------------------
+# Module: SES — Sending domain
+# -------------------------------------------------------
+module "ses" {
+  source      = "../modules/messaging/aws/ses"
+  domain      = var.ses_from_domain
+  environment = var.environment
+  project     = var.project
+}
+
+resource "aws_ssm_parameter" "ses_from_email" {
+  name  = "${local.ssm_prefix}/ses/from-email"
+  type  = "String"
+  value = "mail@${var.ses_from_domain}"
+}
+
+resource "aws_ssm_parameter" "ses_domain_identity_arn" {
+  name  = "${local.ssm_prefix}/ses/domain-identity-arn"
+  type  = "String"
+  value = module.ses.domain_identity_arn
+}
+
+# -------------------------------------------------------
+# Data: Google OAuth credentials from Secrets Manager
+# -------------------------------------------------------
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id = "${var.project}/${var.environment}/google-oauth"
 }
