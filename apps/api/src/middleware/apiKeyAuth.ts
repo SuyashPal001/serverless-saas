@@ -11,8 +11,7 @@ import type { AppEnv } from '../types';
 export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     const authHeader = c.req.header('Authorization');
     if (!authHeader) {
-        console.log('401 reason: missing authorization header', { path: c.req.path });
-        return c.json({ error: 'Missing Authorization header' }, 401);
+        return next(); // No auth header — let downstream middleware handle it
     }
 
     const token = authHeader.replace('Bearer ', '').trim();
