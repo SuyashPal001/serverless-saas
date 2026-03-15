@@ -1,151 +1,192 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { confirmSignIn, type ConfirmSignInInput } from "aws-amplify/auth";
-
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
-const inviteSchema = z.object({
-    password: z.string().min(8, { message: "Password must be at least 8 characters" }),
-    confirmPassword: z.string()
-}).refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-});
+interface InviteDetails {
+    tenantName: string;
+    tenantSlug: string;
+    roleName: string;
+    inviterName: string;
+    email: string;
+    expiresAt: string;
+}
 
-type InviteSchema = z.infer<typeof inviteSchema>;
+interface UserProfile {
+    email: string;
+    name: string;
+}
 
 export default function InvitePage() {
     const router = useRouter();
+    const params = useParams();
+    const token = params.token as string;
+
+    const [invite, setInvite] = useState<InviteDetails | null>(null);
+    const [user, setUser] = useState<UserProfile | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isAccepting, setIsAccepting] = useState(false);
 
-    const form = useForm<InviteSchema>({
-        resolver: zodResolver(inviteSchema),
-        defaultValues: {
-            password: "",
-            confirmPassword: "",
-        },
-    });
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                // 1. Fetch invite details
+                const inviteRes = await fetch(`/api/proxy/api/v1/invitations/${token}`);
+                if (!inviteRes.ok) {
+                    const data = await inviteRes.json();
+                    throw new Error(data.error || "Invalid or expired invitation");
+                }
+                const inviteData = await inviteRes.json();
+                setInvite(inviteData);
 
-    async function onSubmit(data: InviteSchema) {
-        setIsLoading(true);
+                // 2. Fetch auth status
+                const profileRes = await fetch("/api/proxy/api/v1/auth/me");
+                if (profileRes.ok) {
+                    const profileData = await profileRes.json();
+                    setUser(profileData);
+                }
+            } catch (err: any) {
+                console.error("Fetch Error:", err);
+                setError(err.message || "Failed to load invitation details");
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        if (token) {
+            fetchData();
+        }
+    }, [token]);
+
+    async function handleAccept() {
+        setIsAccepting(true);
         setError(null);
 
         try {
-            // TODO: Implement custom Cognito invite/new-password challenge 
-            // since aws-amplify has been replaced with direct fetch calls in lib/auth.ts
-            throw new Error("Invite flow needs to be updated for the new custom Cognito implementation.");
-
-            /*
-            const confirmInput: ConfirmSignInInput = {
-                challengeResponse: data.password,
-            };
-
-            const authResult = await confirmSignIn(confirmInput);
-
-            if (!authResult.isSignedIn) {
-                throw new Error("Additional steps required after setting password.");
-            }
-
-            const { getAccessToken } = await import("@/lib/auth");
-            const token = await getAccessToken();
-
-            if (!token) {
-                throw new Error("Password set, but no token was retrieved.");
-            }
-
-            // POST raw token to generate session
-            const res = await fetch("/api/auth/session", {
+            const res = await fetch(`/api/proxy/api/v1/invitations/${token}/accept`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token }),
             });
 
             if (!res.ok) {
-                throw new Error("Failed to create secure session");
+                const data = await res.json();
+                if (data.code === "EMAIL_MISMATCH") {
+                    throw new Error(`You're signed in as ${user?.email} but this invite was sent to ${invite?.email}. Please sign in with the correct account.`);
+                }
+                throw new Error(data.error || "Failed to accept invitation");
             }
 
-            const { decodeTenantClaims } = await import("@/lib/tenant");
-            const claims = decodeTenantClaims(token);
+            const data = await res.json();
 
-            const targetPath = claims?.tenantId
-                ? `/${claims.tenantId}/dashboard`
-                : "/dashboard";
-
-            router.push(targetPath);
+            // Clear session and redirect to login to get fresh JWT claims
+            await fetch("/api/auth/session", { method: "DELETE" });
+            
+            router.push(`/auth/login?invited=true&slug=${data.tenantSlug}`);
             router.refresh();
-            */
-
         } catch (err: any) {
-            console.error("Invite Error:", err);
-            setError(err.message || "Failed to set password. Please try again.");
+            console.error("Accept Error:", err);
+            setError(err.message || "An error occurred while accepting the invitation");
         } finally {
-            setIsLoading(false);
+            setIsAccepting(false);
         }
     }
 
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                <p className="text-muted-foreground">Loading invitation details...</p>
+            </div>
+        );
+    }
+
+    if (error && !invite) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+                <Card className="w-full max-w-md">
+                    <CardHeader>
+                        <CardTitle className="text-destructive">Invitation Error</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">{error}</p>
+                    </CardContent>
+                    <CardFooter className="justify-center">
+                        <Button variant="outline" onClick={() => router.push("/auth/login")}>
+                            Back to login
+                        </Button>
+                    </CardFooter>
+                </Card>
+            </div>
+        );
+    }
+
+    const isLoggedIn = !!user;
+
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
-                <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Complete Setup</h1>
-                    <p className="text-sm text-muted-foreground">Set your password to accept the invite</p>
-                </div>
+            <Card className="w-full max-w-md p-2 border border-border bg-card shadow-sm">
+                <CardHeader className="text-center space-y-1">
+                    <CardTitle className="text-2xl font-bold">Join the Team</CardTitle>
+                    <CardDescription>
+                        You've been invited to join <strong>{invite?.tenantName}</strong>
+                    </CardDescription>
+                </CardHeader>
 
-                {error && (
-                    <div className="p-3 text-sm font-medium text-destructive bg-destructive/10 rounded-md">
-                        {error}
+                <CardContent className="space-y-4">
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Invited by:</span>
+                            <span className="font-medium text-foreground">{invite?.inviterName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Role:</span>
+                            <span className="font-medium text-foreground">{invite?.roleName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Sent to:</span>
+                            <span className="font-medium text-foreground">{invite?.email}</span>
+                        </div>
                     </div>
-                )}
 
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                        <FormField
-                            control={form.control}
-                            name="password"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>New Password</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="••••••••" type="password" disabled={isLoading} {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="confirmPassword"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Confirm Password</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="••••••••" type="password" disabled={isLoading} {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <Button type="submit" className="w-full" disabled={isLoading}>
-                            {isLoading ? "Saving..." : "Set Password"}
+                    {error && (
+                        <div className="p-3 text-sm font-medium text-destructive bg-destructive/10 rounded-md">
+                            {error}
+                        </div>
+                    )}
+                </CardContent>
+
+                <CardFooter className="flex flex-col space-y-2">
+                    {isLoggedIn ? (
+                        <Button 
+                            className="w-full" 
+                            onClick={handleAccept} 
+                            disabled={isAccepting}
+                        >
+                            {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Accept Invitation
                         </Button>
-                    </form>
-                </Form>
-            </div>
+                    ) : (
+                        <>
+                            <Button 
+                                className="w-full" 
+                                onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
+                            >
+                                Sign in to accept
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                className="w-full"
+                                onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
+                            >
+                                Sign up to accept
+                            </Button>
+                        </>
+                    )}
+                </CardFooter>
+            </Card>
         </div>
     );
 }

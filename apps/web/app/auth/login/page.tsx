@@ -34,12 +34,16 @@ function LoginPageContent() {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Show success message if redirected from onboarding
+    // Show success message if redirected from onboarding or invitation
     useEffect(() => {
         const onboarded = searchParams.get('onboarded');
+        const invited = searchParams.get('invited');
         const slug = searchParams.get('slug');
+
         if (onboarded === 'true' && slug) {
             setSuccessMessage(`Workspace created successfully! Please log in to access ${slug}.`);
+        } else if (invited === 'true' && slug) {
+            setSuccessMessage(`Invitation accepted! Please log in again to access ${slug}.`);
         }
     }, [searchParams]);
 
@@ -80,10 +84,11 @@ function LoginPageContent() {
 
             if (!res.ok) throw new Error("Failed to create secure session");
 
-            // 4. Redirect to the tenant dashboard using the slug
-            const targetPath = slug
-                ? `/${slug}/dashboard`
-                : "/onboarding";
+            // 4. Redirect to the tenant dashboard using the slug or the provided redirect param
+            const redirectParam = searchParams.get('redirect');
+            const targetPath = redirectParam 
+                ? redirectParam 
+                : (slug ? `/${slug}/dashboard` : "/onboarding");
 
             router.push(targetPath);
             router.refresh();
