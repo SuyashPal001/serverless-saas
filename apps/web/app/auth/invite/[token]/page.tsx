@@ -83,7 +83,7 @@ export default function InvitePage() {
 
             // Clear session and redirect to login to get fresh JWT claims
             await fetch("/api/auth/session", { method: "DELETE" });
-            
+
             router.push(`/auth/login?invited=true&slug=${data.tenantSlug}`);
             router.refresh();
         } catch (err: any) {
@@ -160,9 +160,9 @@ export default function InvitePage() {
 
                 <CardFooter className="flex flex-col space-y-2">
                     {isLoggedIn ? (
-                        <Button 
-                            className="w-full" 
-                            onClick={handleAccept} 
+                        <Button
+                            className="w-full"
+                            onClick={handleAccept}
                             disabled={isAccepting}
                         >
                             {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -170,18 +170,11 @@ export default function InvitePage() {
                         </Button>
                     ) : (
                         <>
-                            <Button 
-                                className="w-full" 
-                                onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
-                            >
-                                Sign in to accept
-                            </Button>
-                            <Button 
-                                variant="outline" 
+                            <Button
                                 className="w-full"
                                 onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
                             >
-                                Sign up to accept
+                                Sign in to accept
                             </Button>
                         </>
                     )}
