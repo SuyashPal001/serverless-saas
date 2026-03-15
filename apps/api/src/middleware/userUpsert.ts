@@ -26,7 +26,12 @@ export const userUpsertMiddleware = async (c: Context, next: Next) => {
     const email = jwtPayload.email as string;
     const name = jwtPayload.name as string | undefined;
 
-    if (!cognitoId || !email) {
+    console.log('UPSERT CLAIMS:', JSON.stringify({
+        cognitoId, email, name,
+        allKeys: Object.keys(jwtPayload)
+    }));
+
+    if (!cognitoId) {
         console.log('401 reason: invalid jwt payload', { path: c.req.path, hasCognitoId: !!cognitoId, hasEmail: !!email });
         return c.json({ error: 'Invalid JWT payload' }, 401);
     }

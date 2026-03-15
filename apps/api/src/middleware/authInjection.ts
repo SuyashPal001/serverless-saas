@@ -46,7 +46,7 @@ export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) 
             const { payload } = await jwtVerify(token, JWKS);
             c.set('jwtPayload', payload as Record<string, string>);
         } catch (error) {
-            console.error('Local JWT validation failed:', error);
+            console.error('JWKS validation failed:', error);
         }
     }
 
