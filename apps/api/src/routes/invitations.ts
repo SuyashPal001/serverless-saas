@@ -134,6 +134,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
+    try {
     const schema = z.object({
         email: z.string().email(),
         roleId: z.string().uuid(),
@@ -231,4 +232,8 @@ memberInviteRoutes.post('/invite', async (c) => {
     }
 
     return c.json({ success: true, invitationId: token.id }, 201);
+    } catch (err) {
+        console.error('INVITE_ERROR:', err instanceof Error ? err.message : err, err instanceof Error ? err.stack : '');
+        throw err;
+    }
 });
