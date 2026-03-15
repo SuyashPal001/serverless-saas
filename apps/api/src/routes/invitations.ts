@@ -210,11 +210,13 @@ memberInviteRoutes.post('/invite', async (c) => {
     }).returning();
 
     const appUrl = process.env.APP_URL ?? '';
+    const inviteUrl = `${appUrl}/auth/invite/${rawToken}`;
+    console.log('INVITE_URL_DEBUG', { appUrl, inviteUrl, appUrlLength: appUrl.length, appUrlCharCodes: [...appUrl].map(c => c.charCodeAt(0)) });
     try {
         await sendEmail({
             to: email,
             subject: `You've been invited to ${tenantName}`,
-            html: `<p>You've been invited to join <strong>${tenantName}</strong>.</p><p><a href="${appUrl}/auth/invite/${rawToken}">Click here to accept your invitation</a></p><p>This invitation expires in 7 days.</p>`,
+            html: `<p>You've been invited to join <strong>${tenantName}</strong>.</p><p><a href="${inviteUrl}">Click here to accept your invitation</a></p><p>This invitation expires in 7 days.</p>`,
         });
     } catch (emailErr) {
         console.error('Invitation email send failed:', emailErr);
