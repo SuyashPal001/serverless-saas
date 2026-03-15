@@ -139,113 +139,101 @@ memberInviteRoutes.post('/invite', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    try {
-        const schema = z.object({
-            email: z.string().email(),
-            roleId: z.string().uuid(),
-        });
+    const schema = z.object({
+        email: z.string().email(),
+        roleId: z.string().uuid(),
+    });
 
-        const result = schema.safeParse(await c.req.json());
-        if (!result.success) {
-            return c.json({ error: result.error.errors[0].message }, 400);
-        }
-
-        const { email, roleId } = result.data;
-
-        console.log('S1');
-        // Check invitee is not already an active member of this tenant
-        const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-
-        console.log('S2');
-        if (existingUser) {
-            const [existingMembership] = await db.select({ id: memberships.id }).from(memberships).where(and(
-                eq(memberships.userId, existingUser.id),
-                eq(memberships.tenantId, tenantId),
-                eq(memberships.status, 'active'),
-            )).limit(1);
-            if (existingMembership) {
-                return c.json({ error: 'User is already an active member of this tenant', code: 'ALREADY_MEMBER' }, 409);
-            }
-        }
-
-        console.log('S3');
-        // Check for existing pending invitation
-        const [existingInvitation] = await db.select({ id: invitationTokens.id })
-            .from(invitationTokens)
-            .where(and(
-                eq(invitationTokens.email, email),
-                eq(invitationTokens.tenantId, tenantId),
-                eq(invitationTokens.status, 'pending'),
-            ))
-            .limit(1);
-        if (existingInvitation) {
-            return c.json({ error: 'A pending invitation already exists for this email', code: 'INVITATION_PENDING' }, 409);
-        }
-
-        console.log('S4');
-        // Fetch tenant name for email — name is not stored in requestContext.tenant (ADR-013 cache shape)
-        const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-        const tenantName = tenant?.name ?? 'the workspace';
-
-        console.log('S5');
-        // Create membership with status 'invited' — userId null if invitee has no account yet
-        const [membership] = await db.insert(memberships).values({
-            userId: existingUser?.id ?? null,
-            tenantId,
-            roleId,
-            memberType: 'human',
-            status: 'invited',
-            invitedBy: userId,
-            invitedAt: new Date(),
-        }).returning();
-
-        console.log('S6');
-        // Generate token — raw token sent via email only, never stored or returned in response
-        const rawToken = randomBytes(32).toString('hex');
-        const tokenHash = hashToken(rawToken);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        const [token] = await db.insert(invitationTokens).values({
-            tenantId,
-            membershipId: membership.id,
-            email,
-            tokenHash,
-            roleId,
-            invitedBy: userId,
-            status: 'pending',
-            expiresAt,
-        }).returning();
-
-        console.log('S7');
-        const appUrl = process.env.APP_URL ?? '';
-        try {
-            await sendEmail({
-                to: email,
-                subject: `You've been invited to ${tenantName}`,
-                html: `<p>You've been invited to join <strong>${tenantName}</strong>.</p><p><a href="${appUrl}/auth/invite/${rawToken}">Click here to accept your invitation</a></p><p>This invitation expires in 7 days.</p>`,
-            });
-        } catch (emailErr) {
-            console.error('Invitation email send failed:', emailErr);
-        }
-
-        try {
-            await db.insert(auditLog).values({
-                tenantId,
-                actorId: userId,
-                actorType: 'human',
-                action: 'member_invited',
-                resource: 'membership',
-                resourceId: membership.id,
-                metadata: { email, roleId },
-                traceId: c.get('traceId') ?? '',
-            });
-        } catch (auditErr) {
-            console.error('Audit log write failed:', auditErr);
-        }
-
-        return c.json({ success: true, invitationId: token.id }, 201);
-    } catch (err) {
-        console.error('INVITE_ERROR:', err instanceof Error ? err.message : err, err instanceof Error ? err.stack : '');
-        throw err;
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
     }
+
+    const { email, roleId } = result.data;
+
+    // Check invitee is not already an active member of this tenant
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+    if (existingUser) {
+        const [existingMembership] = await db.select({ id: memberships.id }).from(memberships).where(and(
+            eq(memberships.userId, existingUser.id),
+            eq(memberships.tenantId, tenantId),
+            eq(memberships.status, 'active'),
+        )).limit(1);
+        if (existingMembership) {
+            return c.json({ error: 'User is already an active member of this tenant', code: 'ALREADY_MEMBER' }, 409);
+        }
+    }
+
+    // Check for existing pending invitation
+    const [existingInvitation] = await db.select({ id: invitationTokens.id })
+        .from(invitationTokens)
+        .where(and(
+            eq(invitationTokens.email, email),
+            eq(invitationTokens.tenantId, tenantId),
+            eq(invitationTokens.status, 'pending'),
+        ))
+        .limit(1);
+    if (existingInvitation) {
+        return c.json({ error: 'A pending invitation already exists for this email', code: 'INVITATION_PENDING' }, 409);
+    }
+
+    // Fetch tenant name for email — name is not stored in requestContext.tenant (ADR-013 cache shape)
+    const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const tenantName = tenant?.name ?? 'the workspace';
+
+    // Create membership with status 'invited' — userId null if invitee has no account yet
+    const [membership] = await db.insert(memberships).values({
+        userId: existingUser?.id ?? null,
+        tenantId,
+        roleId,
+        memberType: 'human',
+        status: 'invited',
+        invitedBy: userId,
+        invitedAt: new Date(),
+    }).returning();
+
+    // Generate token — raw token sent via email only, never stored or returned in response
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const [token] = await db.insert(invitationTokens).values({
+        tenantId,
+        membershipId: membership.id,
+        email,
+        tokenHash,
+        roleId,
+        invitedBy: userId,
+        status: 'pending',
+        expiresAt,
+    }).returning();
+
+    const appUrl = process.env.APP_URL ?? '';
+    try {
+        await sendEmail({
+            to: email,
+            subject: `You've been invited to ${tenantName}`,
+            html: `<p>You've been invited to join <strong>${tenantName}</strong>.</p><p><a href="${appUrl}/auth/invite/${rawToken}">Click here to accept your invitation</a></p><p>This invitation expires in 7 days.</p>`,
+        });
+    } catch (emailErr) {
+        console.error('Invitation email send failed:', emailErr);
+    }
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId,
+            actorType: 'human',
+            action: 'member_invited',
+            resource: 'membership',
+            resourceId: membership.id,
+            metadata: { email, roleId },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
+    return c.json({ success: true, invitationId: token.id }, 201);
 });
