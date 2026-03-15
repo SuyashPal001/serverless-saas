@@ -47,7 +47,6 @@ const api = new Hono<AppEnv>();
 
 // ── Public routes — no auth middleware ───────────────────────────────────────
 api.route('/auth', authPublicRoutes);
-api.route('/onboarding', onboardingRoutes);
 api.route('/invitations', invitationsPublicRoutes);
 
 // ── Middleware chain ──────────────────────────────────────────────────────────
@@ -57,6 +56,9 @@ api.use('*', authInjectionMiddleware);
 
 // Step 2: User upsert
 api.use('*', userUpsertMiddleware);
+
+// Onboarding — needs auth + upsert, tenantResolution handles empty tenantId
+api.route('/onboarding', onboardingRoutes);
 
 // Step 3: API key auth
 api.use('*', apiKeyAuthMiddleware);
