@@ -12,6 +12,7 @@ import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
 import { authRoutes, authPublicRoutes } from './routes/auth';
+import { invitationsPublicRoutes, memberInviteRoutes } from './routes/invitations';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
 import { apiKeysRoutes } from './routes/api-keys';
@@ -58,6 +59,7 @@ api.use('*', apiKeyAuthMiddleware);
 // ── Public routes — registered BEFORE secure middleware ───────────────────────
 api.route('/auth', authPublicRoutes);
 api.route('/onboarding', onboardingRoutes);
+api.route('/invitations', invitationsPublicRoutes);
 
 // ── Secure middleware — runs for all routes below ─────────────────────────────
 
@@ -79,6 +81,7 @@ api.use('*', queryScopeMiddleware);
 // ── Secure routes ─────────────────────────────────────────────────────────────
 api.route('/auth', authRoutes);
 api.route('/members', membersRoutes);
+api.route('/members', memberInviteRoutes);
 api.route('/roles', rolesRoutes);
 api.route('/api-keys', apiKeysRoutes);
 api.route('/agents', agentsRoutes);
