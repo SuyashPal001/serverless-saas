@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { users } from '@serverless-saas/database/schema/auth';
 
@@ -36,19 +37,28 @@ export const userUpsertMiddleware = async (c: Context, next: Next) => {
         return c.json({ error: 'Invalid JWT payload' }, 401);
     }
 
-    const [user] = await db.insert(users)
-        .values({
-            cognitoId: cognitoId,
-            email: email,
-            name: name || ""
-        })
-        .onConflictDoUpdate({
-            target: users.cognitoId,
-            set: { email, name: name || "", updatedAt: new Date() },
-        })
-        .returning();
-
-    c.set('userId', user.id);
+    try {
+        const [user] = await db.insert(users)
+            .values({ cognitoId, email, name: name || "" })
+            .onConflictDoUpdate({
+                target: users.cognitoId,
+                set: { email, name: name || "", updatedAt: new Date() },
+            })
+            .returning();
+        c.set('userId', user.id);
+    } catch (error: any) {
+        if (error?.code === '23505' && error?.constraint === 'users_email_unique') {
+            // Same email, different cognitoId — user switched auth method (e.g., email → Google OAuth)
+            // Update the existing row to point to the new cognitoId
+            const [user] = await db.update(users)
+                .set({ cognitoId, name: name || "", updatedAt: new Date() })
+                .where(eq(users.email, email))
+                .returning();
+            c.set('userId', user.id);
+        } else {
+            throw error;
+        }
+    }
 
     await next();
 };
