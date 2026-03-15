@@ -45,10 +45,36 @@ export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) 
     // Security: secure routes are protected downstream by tenantResolutionMiddleware
     if (JWKS) {
         try {
+            console.log('JWKS_VALIDATION_ATTEMPTING', { tokenPrefix: token.substring(0, 20) + '...', jwksUri });
             const { payload } = await jwtVerify(token, JWKS);
             c.set('jwtPayload', payload as Record<string, string>);
         } catch (error) {
-            console.error('JWKS validation failed:', error);
+            console.error('JWKS_VALIDATION_FAILED', {
+                errorMessage: error instanceof Error ? error.message : String(error),
+                errorName: error instanceof Error ? error.name : 'unknown',
+                errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined,
+            });
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const header = JSON.parse(Buffer.from(parts[0], 'base64').toString('utf8'));
+                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+                    console.error('JWKS_TOKEN_DETAILS', {
+                        header_alg: header.alg,
+                        header_kid: header.kid,
+                        payload_iss: payload.iss,
+                        payload_aud: payload.aud,
+                        payload_client_id: payload.client_id,
+                        payload_token_use: payload.token_use,
+                        payload_sub: payload.sub?.substring(0, 20) + '...',
+                        payload_exp: payload.exp,
+                        now: Math.floor(Date.now() / 1000),
+                        expired: payload.exp ? payload.exp < Math.floor(Date.now() / 1000) : 'no_exp',
+                    });
+                }
+            } catch (decodeErr) {
+                console.error('JWKS_TOKEN_DECODE_FAILED', decodeErr);
+            }
             // Fallback: decode without verification
             // The token was already verified by Cognito at issuance
             // This path only runs on public routes where API GW didn't validate
@@ -62,6 +88,7 @@ export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) 
             }
         }
     } else {
+        console.log('JWKS_NOT_CONFIGURED', { path: c.req.path });
         // No JWKS configured — decode without verification
         // This handles production public routes where COGNITO_JWKS_URI may not help
         try {
