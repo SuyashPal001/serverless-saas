@@ -17,6 +17,7 @@ export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) 
     // claims via event.requestContext.authorizer.jwt.claims (HTTP API v2)
     const claims = (c.env?.event?.requestContext as any)?.authorizer?.jwt?.claims;
     if (claims) {
+        console.log('JWT CLAIMS:', JSON.stringify(claims));  // TEMP DEBUG
         c.set('jwtPayload', claims as Record<string, string>);
         return next();
     }
@@ -28,6 +29,7 @@ export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) 
 
     const authHeader = c.req.header('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
+        console.log('AUTH INJECTION: no Bearer token, skipping');  // TEMP DEBUG
         return next();
     }
 
