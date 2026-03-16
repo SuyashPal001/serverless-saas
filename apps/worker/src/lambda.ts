@@ -1,12 +1,11 @@
 import type { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
+import { route } from './router';
 
 /**
  * Foundation Worker Lambda — SQS consumer
  *
  * Uses partial batch failure reporting — failed messages return to queue
  * for retry without blocking successfully processed messages.
- *
- * TODO: implement job router once foundation packages are ready.
  */
 export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
   const failures: SQSBatchItemFailure[] = [];
@@ -21,7 +20,7 @@ export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
         tenantId: body?.tenantId ?? 'unknown',
       });
 
-      // TODO: route to job handler by body.type
+      await route(body);
     } catch (err) {
       console.error('Worker failed to process message', {
         messageId: record.messageId,
