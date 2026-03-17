@@ -1,22 +1,21 @@
 import { sendEmail } from '@serverless-saas/notifications';
 
-interface EmailSendEvent {
-  type: 'email.send';
+interface EmailPayload {
   to: string;
   subject: string;
-  htmlBody: string;
-  textBody?: string;
+  html: string;
+  text?: string;
   tenantId?: string;
 }
 
 export async function handleEmail(body: Record<string, unknown>): Promise<void> {
-  const event = body as unknown as EmailSendEvent;
+  const payload = body.payload as EmailPayload;
 
   await sendEmail({
-    to: event.to,
-    subject: event.subject,
-    html: event.htmlBody,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html,
   });
 
-  console.log('Direct email sent', { to: event.to, subject: event.subject, tenantId: event.tenantId });
+  console.log('Direct email sent', { to: payload.to, subject: payload.subject, tenantId: payload.tenantId });
 }
