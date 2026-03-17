@@ -199,6 +199,11 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    onboarding = {
+      route_key       = "POST /api/v1/onboarding/complete"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     }
 
   tags = {}

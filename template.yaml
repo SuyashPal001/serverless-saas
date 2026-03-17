@@ -27,7 +27,9 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /serverless-saas/dev/iam/foundation-pretoken-role-arn
 
-
+  FoundationWebSocketRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/foundation-websocket-role-arn
 
 Globals:
   Function:
@@ -110,6 +112,30 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+
+# ─────────────────────────────────────────────
+  # WebSocket Lambda — handles $connect, $disconnect, $default
+  # ─────────────────────────────────────────────
+  FoundationWebSocketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-foundation-websocket-${EnvironmentName}"
+      Description: Foundation WebSocket — connection management
+      CodeUri: apps/api/
+      Handler: websocket.handler
+      Timeout: 29
+      MemorySize: 256
+      Role: !Ref FoundationWebSocketRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: websocket
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          WS_TOKEN_SECRET_SSM_PATH: !Sub "/${ProjectName}/${EnvironmentName}/ws-token-secret"
+    Metadata:
+      BuildMethod: makefile
+
+
     Metadata:
       BuildMethod: makefile
 
@@ -128,3 +154,8 @@ Outputs:
     Value: !GetAtt FoundationPretokenFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationPretokenLambdaArn"
+
+  FoundationWebSocketLambdaArn:
+    Value: !GetAtt FoundationWebSocketFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationWebSocketLambdaArn"
