@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, desc, sql, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { notificationJobs } from '@serverless-saas/database/schema/notifications';
 import {
     db,
     notificationInbox,
@@ -360,4 +361,84 @@ notificationsRoutes.get('/workflows/:id', async (c) => {
             templateName: s.templateName ?? null,
         })),
     });
+});
+
+// POST /notifications/test-fire — 
+notificationsRoutes.post('/test-fire', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const userId = c.get('userId') as string;
+
+    if (!tenantId || !userId) {
+        return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    try {
+        const workflowId = crypto.randomUUID();
+        const stepId = crypto.randomUUID();
+        const jobId = crypto.randomUUID();
+        const inboxId = crypto.randomUUID();
+
+        // Create workflow
+        await db.insert(notificationWorkflows).values({
+            id: workflowId,
+            tenantId,
+            messageType: 'test.notification',
+            critical: false,
+            status: 'active',
+            createdBy: userId,
+        });
+
+        // Create workflow step
+        await db.insert(notificationWorkflowSteps).values({
+            id: stepId,
+            workflowId,
+            tenantId,
+            order: 1,
+            type: 'channel',
+            config: { channel: 'in_app' },
+        });
+
+        // Create job
+        await db.insert(notificationJobs).values({
+            id: jobId,
+            workflowId,
+            stepId,
+            tenantId,
+            recipientId: userId,
+            recipientType: 'human',
+            scheduledAt: new Date(),
+            executedAt: new Date(),
+            status: 'completed',
+            retryCount: 0,
+            payload: { event: 'test.notification', tenantId, data: {} },
+            stepContext: {},
+        });
+
+        // Create inbox entry
+        const [inboxEntry] = await db.insert(notificationInbox).values({
+            id: inboxId,
+            tenantId,
+            userId,
+            jobId,
+            workflowId,
+            messageType: 'test.notification',
+            title: 'Test Notification',
+            body: 'This is a real test notification fired from the API.',
+            read: false,
+            archived: false,
+        }).returning();
+
+        // Push via WebSocket if user is connected
+        const { pushToConnectedClients } = await import('@serverless-saas/cache');
+        await pushToConnectedClients(tenantId, userId, {
+            type: 'notification',
+            ...inboxEntry,
+        });
+
+        return c.json({ success: true, inboxEntry });
+    } catch (error) {
+        console.error('test-fire error:', error);
+        return c.json({ error: 'Failed to fire test notification' }, 500);
+    }
 });
