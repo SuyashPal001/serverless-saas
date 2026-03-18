@@ -10,6 +10,10 @@ export type CacheClient = {
   exists: (...keys: string[]) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
   incr: (key: string) => Promise<number>;
+  sadd: (key: string, ...members: (string | number)[]) => Promise<number>;
+  srem: (key: string, ...members: (string | number)[]) => Promise<number>;
+  sismember: (key: string, member: string) => Promise<number>;
+  scan: (cursor: any, ...args: any[]) => Promise<[any, any[]]>;
 };
 
 let instance: CacheClient | null = null;
@@ -28,6 +32,10 @@ const createUpstashClient = (url: string, token: string): CacheClient => {
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
     incr: (key) => client.incr(key),
+    sadd: (key, ...members) => client.sadd(key, ...(members as [string, ...string[]])),
+    srem: (key, ...members) => client.srem(key, ...members),
+    sismember: (key, member) => client.sismember(key, member),
+    scan: (cursor, ...args) => client.scan(cursor, ...(args as [])),
   };
 };
 
@@ -44,6 +52,10 @@ const createIoRedisClient = (url: string): CacheClient => {
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
     incr: (key) => client.incr(key),
+    sadd: (key, ...members) => client.sadd(key, ...members),
+    srem: (key, ...members) => client.srem(key, ...members),
+    sismember: (key, member) => client.sismember(key, member),
+    scan: (cursor, ...args) => client.scan(cursor, ...args) as any,
   };
 };
 
