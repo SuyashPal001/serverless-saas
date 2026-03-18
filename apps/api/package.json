@@ -10,6 +10,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.0.0",
+    "@aws-sdk/client-ssm": "^3.1011.0",
     "@hono/node-server": "^1.13.0",
     "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/cache": "workspace:*",
@@ -19,7 +21,6 @@
     "@serverless-saas/logger": "workspace:*",
     "@serverless-saas/notifications": "workspace:*",
     "@serverless-saas/permissions": "workspace:*",
-    "@aws-sdk/client-ses": "^3.0.0",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
     "drizzle-orm": "^0.36.4",

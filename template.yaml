@@ -112,6 +112,8 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+    Metadata:
+      BuildMethod: makefile
 
 # ─────────────────────────────────────────────
   # WebSocket Lambda — handles $connect, $disconnect, $default
@@ -132,10 +134,6 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           WS_TOKEN_SECRET_SSM_PATH: !Sub "/${ProjectName}/${EnvironmentName}/ws-token-secret"
-    Metadata:
-      BuildMethod: makefile
-
-
     Metadata:
       BuildMethod: makefile
 
