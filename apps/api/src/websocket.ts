@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResult } from 'aws-lambda';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { jwtVerify } from 'jose';
-import { getCacheClient } from '@serverless-saas/cache';
+import { getCacheClient, pushToConnection } from '@serverless-saas/cache';
 
 // Module-level cache for the SSM parameter
 let wsTokenSecret: Uint8Array | undefined;
@@ -49,7 +49,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
                 return await handleDisconnect(connectionId);
 
             case '$default':
-                return handleDefault(event);
+                return await handleDefault(event, connectionId);
 
             default:
                 console.log('Unknown route key:', routeKey);
@@ -132,11 +132,12 @@ async function handleDisconnect(connectionId: string): Promise<APIGatewayProxyRe
     return { statusCode: 200, body: 'Disconnected.' };
 }
 
-function handleDefault(event: any): APIGatewayProxyResult {
+async function handleDefault(event: any, connectionId: string): Promise<APIGatewayProxyResult> {
     try {
         if (event.body) {
             const body = JSON.parse(event.body);
             if (body.action === 'ping') {
+                await pushToConnection(connectionId, { type: 'pong' });
                 return { statusCode: 200, body: 'pong' };
             }
         }

@@ -7,6 +7,7 @@ import {
   users,
 } from '@serverless-saas/database';
 import { sendEmail } from '@serverless-saas/notifications';
+import { pushToConnectedClients } from '@serverless-saas/cache';
 import { renderTemplate } from './template';
 
 interface DeliverEmailParams {
@@ -94,7 +95,7 @@ export async function deliverInApp(db: DB, params: DeliverInAppParams): Promise<
   const title = renderTemplate(template.subject ?? messageType, data);
   const body = renderTemplate(template.body, data);
 
-  await db.insert(notificationInbox).values({
+  const [inboxEntry] = await db.insert(notificationInbox).values({
     tenantId,
     userId: recipientId,
     jobId,
@@ -103,7 +104,15 @@ export async function deliverInApp(db: DB, params: DeliverInAppParams): Promise<
     title,
     body,
     metadata: data,
-  });
+  }).returning();
+
+  // Push to connected clients
+  if (inboxEntry) {
+    await pushToConnectedClients(tenantId, recipientId, { 
+      type: 'notification', 
+      ...inboxEntry 
+    });
+  }
 
   const trackingToken = crypto.randomUUID();
 
