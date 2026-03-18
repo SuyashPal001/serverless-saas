@@ -7,6 +7,13 @@ locals {
 }
 
 # -------------------------------------------------------
+# Data: WebSocket Lambda (deployed by SAM)
+# -------------------------------------------------------
+data "aws_lambda_function" "websocket" {
+  function_name = "serverless-saas-foundation-websocket-dev"
+}
+
+# -------------------------------------------------------
 # Module: Cognito
 # -------------------------------------------------------
 module "cognito" {
@@ -210,6 +217,72 @@ module "api_gateway" {
 }
 
 # -------------------------------------------------------
+# API Gateway: WebSocket API
+# -------------------------------------------------------
+resource "aws_apigatewayv2_api" "ws_api" {
+  name                         = "serverless-saas-websocket-dev"
+  protocol_type                = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+resource "aws_apigatewayv2_integration" "ws_lambda" {
+  api_id           = aws_apigatewayv2_api.ws_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = data.aws_lambda_function.websocket.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "connect" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$connect"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "disconnect" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$disconnect"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_stage" "ws_dev" {
+  api_id      = aws_apigatewayv2_api.ws_api.id
+  name        = "dev"
+  auto_deploy = true
+}
+
+# -------------------------------------------------------
+# Lambda Permissions for WebSocket API
+# -------------------------------------------------------
+resource "aws_lambda_permission" "allow_ws_connect" {
+  statement_id  = "AllowAPIGatewayWSConnect"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_ws_disconnect" {
+  statement_id  = "AllowAPIGatewayWSDisconnect"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_ws_default" {
+  statement_id  = "AllowAPIGatewayWSDefault"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
+}
+
+# -------------------------------------------------------
 # Module: Event Source Mapping — SQS → Worker Lambda
 # -------------------------------------------------------
 module "esm" {
@@ -401,6 +474,49 @@ module "iam" {
         })
       }
     }
+
+    foundation_websocket = {
+      name        = "${local.name_prefix}-foundation-websocket-role"
+      description = "Execution role for foundation WebSocket Lambda"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        manage_connections = jsonencode({
+            Version = "2012-10-17"
+            Statement = [{
+                Effect = "Allow"
+                Action = "execute-api:ManageConnections"
+                Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
+            }]
+        })
+      }
+    }
   }
 
   tags = {}
@@ -487,6 +603,26 @@ resource "aws_ssm_parameter" "ws_token_secret" {
   value = var.ws_token_secret
 }
 
+# -------------------------------------------------------
+# SSM Bridge: WebSocket API
+# -------------------------------------------------------
+resource "aws_ssm_parameter" "ws_api_id" {
+  name  = "/${var.project}/${var.environment}/api-gateway/ws-api-id"
+  type  = "String"
+  value = aws_apigatewayv2_api.ws_api.id
+}
+
+resource "aws_ssm_parameter" "ws_api_endpoint" {
+  name  = "/${var.project}/${var.environment}/api-gateway/ws-api-endpoint"
+  type  = "String"
+  value = aws_apigatewayv2_stage.ws_dev.invoke_url
+}
+
+resource "aws_ssm_parameter" "iam_foundation_websocket_role_arn" {
+  name  = "/${var.project}/${var.environment}/iam/foundation-websocket-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["foundation_websocket"]
+}
 
 resource "aws_secretsmanager_secret" "database" {
   name = "${var.project}/${var.environment}/database"
