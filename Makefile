@@ -21,3 +21,18 @@ build-FoundationWebSocketFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
 	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
 	  $(ESBUILD_FLAGS)
+
+build-FoundationWebSocketFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
+	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
+	  $(ESBUILD_FLAGS)
+
+build-FoundationWebSocketFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
+	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
+	  $(ESBUILD_FLAGS)
+
+build-FoundationWebSocketFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
+	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
+	  $(ESBUILD_FLAGS)
