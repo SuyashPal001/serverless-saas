@@ -26,8 +26,8 @@ async function getWsApiEndpoint(): Promise<string> {
     if (!endpoint) {
       throw new Error(`SSM parameter is empty: ${endpointParamName}`);
     }
-    wsApiEndpoint = endpoint;
-    return endpoint;
+    wsApiEndpoint = endpoint.replace('wss://', 'https://');
+    return wsApiEndpoint;
   } catch (error) {
     console.error('Failed to fetch WebSocket API endpoint from SSM:', error);
     throw new Error('Could not load WebSocket API endpoint.');
@@ -58,13 +58,11 @@ export async function pushToConnection(
     await client.send(command);
     return true;
   } catch (error) {
-    // Gracefully handle stale connections
     if (error instanceof GoneException) {
       console.log(`Stale connection found: ${connectionId}`);
       return false;
     }
     console.error(`Failed to push to connection ${connectionId}:`, error);
-    // For other errors, we might not want to treat the connection as stale
     return false;
   }
 }
@@ -88,7 +86,6 @@ export async function pushToConnectedClients(
     const pushPromises = connectionIds.map(async (connectionId) => {
       const success = await pushToConnection(connectionId, payload);
       if (!success) {
-        // If push fails (e.g., GoneException), remove stale connection
         console.log(`Removing stale connection ${connectionId} from ${redisKey}`);
         await cache.srem(redisKey, connectionId);
       }
@@ -97,6 +94,5 @@ export async function pushToConnectedClients(
     await Promise.all(pushPromises);
   } catch (error) {
     console.error(`Failed to push to clients for user ${userId}:`, error);
-    // Do not re-throw to avoid breaking the calling process
   }
 }
