@@ -481,6 +481,12 @@ resource "aws_ssm_parameter" "iam_foundation_pretoken_role_arn" {
   value = module.iam.role_arns["foundation_pretoken"]
 }
 
+resource "aws_ssm_parameter" "ws_token_secret" {
+  name  = "${local.ssm_prefix}/ws-token-secret"
+  type  = "SecureString"
+  value = var.ws_token_secret
+}
+
 
 resource "aws_secretsmanager_secret" "database" {
   name = "${var.project}/${var.environment}/database"

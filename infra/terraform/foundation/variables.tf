@@ -140,10 +140,16 @@ variable "upstash_redis_rest_token" {
   sensitive   = true
 }
 
-# Upstash Redis
 # Neon PostgreSQL
 variable "database_url" {
   description = "Neon PostgreSQL connection string"
+  type        = string
+  sensitive   = true
+}
+
+# Websocket Token
+variable "ws_token_secret" {
+  description = "Secret for signing WebSocket tokens"
   type        = string
   sensitive   = true
 }
