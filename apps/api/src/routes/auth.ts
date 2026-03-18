@@ -16,33 +16,33 @@ export const authPublicRoutes = new Hono<AppEnv>();
 let wsTokenSecret: Uint8Array | undefined;
 
 async function getWsTokenSecret(): Promise<Uint8Array> {
-  if (wsTokenSecret) {
-    return wsTokenSecret;
-  }
-
-  // NOTE: In a real app, this would come from an environment variable set by Terraform
-  const secretName = '/serverless-saas/dev/ws-token-secret';
-  
-  const ssm = new SSMClient({});
-
-  try {
-    const command = new GetParameterCommand({
-        Name: secretName,
-        WithDecryption: true,
-    });
-    const output = await ssm.send(command);
-
-    const secretValue = output.Parameter?.Value;
-    if (!secretValue) {
-      throw new Error('SSM parameter value for ws-token-secret is empty.');
+    if (wsTokenSecret) {
+        return wsTokenSecret;
     }
 
-    wsTokenSecret = new TextEncoder().encode(secretValue);
-    return wsTokenSecret;
-  } catch (error) {
-    console.error('Failed to fetch ws-token-secret from SSM:', error);
-    throw new Error('Could not load WebSocket token secret.');
-  }
+    // NOTE: In a real app, this would come from an environment variable set by Terraform
+    const secretName = '/serverless-saas/dev/ws-token-secret';
+
+    const ssm = new SSMClient({});
+
+    try {
+        const command = new GetParameterCommand({
+            Name: secretName,
+            WithDecryption: true,
+        });
+        const output = await ssm.send(command);
+
+        const secretValue = output.Parameter?.Value;
+        if (!secretValue) {
+            throw new Error('SSM parameter value for ws-token-secret is empty.');
+        }
+
+        wsTokenSecret = new TextEncoder().encode(secretValue);
+        return wsTokenSecret;
+    } catch (error) {
+        console.error('Failed to fetch ws-token-secret from SSM:', error);
+        throw new Error('Could not load WebSocket token secret.');
+    }
 }
 
 // POST /auth/login
@@ -95,27 +95,27 @@ authRoutes.get('/me', (c) => {
 
 authRoutes.get('/ws-token', async (c) => {
     const requestContext = c.get('requestContext') as any;
-    const userId = requestContext?.userId;
+    const userId = c.get('userId');
     const tenantId = requestContext?.tenant?.id;
-  
+
     if (!userId || !tenantId) {
-      return c.json({ error: 'User or tenant not found', code: 'UNAUTHORIZED' }, 401);
+        return c.json({ error: 'User or tenant not found', code: 'UNAUTHORIZED' }, 401);
     }
-  
+
     try {
-      const secret = await getWsTokenSecret();
-      const token = await new SignJWT({ userId, tenantId, type: 'ws' })
-        .setProtectedHeader({ alg: 'HS256' })
-        .setIssuedAt()
-        .setExpirationTime('5m')
-        .sign(secret);
-  
-      return c.json({ token });
+        const secret = await getWsTokenSecret();
+        const token = await new SignJWT({ userId, tenantId, type: 'ws' })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('5m')
+            .sign(secret);
+
+        return c.json({ token });
     } catch (error) {
-      console.error('Failed to generate ws-token:', error);
-      return c.json({ error: 'Failed to generate token', code: 'INTERNAL_ERROR' }, 500);
+        console.error('Failed to generate ws-token:', error);
+        return c.json({ error: 'Failed to generate token', code: 'INTERNAL_ERROR' }, 500);
     }
-  });
+});
 
 // POST /auth/logout
 authRoutes.post('/logout', async (c) => {
