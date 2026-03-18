@@ -16,6 +16,7 @@ import type {
 } from "@/components/platform/notifications/types";
 import { useNotifications } from "@/lib/notifications-context";
 import { can } from "@/lib/permissions";
+import { useNotificationsSocket, type NotificationInboxEntry } from "@/hooks/useNotificationsSocket";
 
 function relativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -42,6 +43,42 @@ export default function NotificationsPage() {
     const [page, setPage] = React.useState(1);
 
     const queryKey = ["notifications-inbox", tenantSlug, page] as const;
+
+    const onNotification = React.useCallback(
+        (notification: NotificationInboxEntry) => {
+            queryClient.setQueryData<NotificationsInboxResponse>(
+                queryKey,
+                (old) => {
+                    if (!old) return old;
+                    
+                    const newNotification: Notification = {
+                        id: notification.id,
+                        title: notification.title,
+                        body: notification.body,
+                        messageType: notification.messageType,
+                        read: notification.read,
+                        readAt: notification.readAt,
+                        createdAt: notification.createdAt,
+                    };
+
+                    return {
+                        ...old,
+                        notifications: [
+                            newNotification,
+                            ...old.notifications,
+                        ],
+                        unreadCount: old.unreadCount + 1,
+                    };
+                }
+            );
+        },
+        [queryClient, queryKey]
+    );
+
+    useNotificationsSocket({
+        tenantSlug,
+        onNotification,
+    });
 
     // Clear the unread badge in sidebar upon visiting this page
     React.useEffect(() => {
