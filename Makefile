@@ -17,20 +17,6 @@ build-FoundationWorkerFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/lambda.ts \
 	  --outfile=$(ARTIFACTS_DIR)/lambda.js \
 	  $(ESBUILD_FLAGS)
-build-FoundationWebSocketFunction:
-	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
-	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
-	  $(ESBUILD_FLAGS)
-
-build-FoundationWebSocketFunction:
-	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
-	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
-	  $(ESBUILD_FLAGS)
-
-build-FoundationWebSocketFunction:
-	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
-	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
-	  $(ESBUILD_FLAGS)
 
 build-FoundationWebSocketFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
