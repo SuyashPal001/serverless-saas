@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { can } from "@/lib/permissions";
+import { canDelete } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Shield, Users, MoreVertical } from "lucide-react";
@@ -37,7 +37,7 @@ export function RolesList() {
         queryFn: () => api.get<RolesResponse>("/api/v1/roles"),
     });
 
-    const canDeleteRoles = can(permissions, "roles", "delete");
+    const canDeleteRoles = canDelete(permissions, "roles");
 
     if (isLoading) {
         return (

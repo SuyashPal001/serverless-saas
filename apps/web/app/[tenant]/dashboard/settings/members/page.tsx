@@ -38,6 +38,8 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { MembersList } from "@/components/platform/members/MembersList";
+import { PermissionGate } from "@/components/platform/PermissionGate";
+
 
 const inviteSchema = z.object({
     email: z.string().email({ message: "Invalid email address" }),
@@ -197,15 +199,6 @@ function InviteMemberModal({ open, onOpenChange }: { open: boolean; onOpenChange
 export default function MembersPage() {
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
-    // Fetch permissions to check if user can invite members
-    const { data: authData } = useQuery<AuthData>({
-        queryKey: ["auth", "me"],
-        queryFn: () => api.get<AuthData>("/api/v1/auth/me"),
-    });
-
-    const permissions = authData?.permissions ?? [];
-    const canInviteMembers = can(permissions, "members", "create");
-
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -215,12 +208,12 @@ export default function MembersPage() {
                         Manage team members and their roles
                     </p>
                 </div>
-                {canInviteMembers && (
+                <PermissionGate resource="members" action="create" fallback={null}>
                     <Button onClick={() => setInviteModalOpen(true)}>
                         <UserPlus className="w-4 h-4 mr-2" />
                         Invite Member
                     </Button>
-                )}
+                </PermissionGate>
             </div>
 
             <MembersList />
@@ -232,3 +225,4 @@ export default function MembersPage() {
         </div>
     );
 }
+

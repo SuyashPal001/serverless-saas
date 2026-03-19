@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { can } from "@/lib/permissions";
+import { can, canUpdate } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -135,7 +135,7 @@ export function MembersList() {
         },
     });
 
-    const canUpdateUsers = can(permissions, "members", "update");
+    const canUpdateUsers = canUpdate(permissions, "members");
 
     if (isLoading) {
         return (

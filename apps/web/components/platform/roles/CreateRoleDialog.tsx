@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { can } from "@/lib/permissions";
+import { canCreate } from "@/lib/permissions";
 import {
     Dialog,
     DialogContent,
@@ -21,7 +21,7 @@ export function CreateRoleDialog() {
     const [open, setOpen] = useState(false);
     const [upgradeOpen, setUpgradeOpen] = useState(false);
 
-    if (!can(permissions, "roles", "create")) {
+    if (!canCreate(permissions, "roles")) {
         return null;
     }
 
