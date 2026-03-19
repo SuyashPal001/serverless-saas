@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { useNotifications } from "@/lib/notifications-context"
+import { canRead } from "@/lib/permissions"
 
 interface SidebarItemProps {
     href: string
@@ -71,19 +72,19 @@ function NotificationsItem({ href, unreadCount }: { href: string; unreadCount: n
 }
 
 export function Sidebar() {
-    const { tenantSlug, role } = useTenant()
+    const { tenantSlug, role, permissions = [] } = useTenant()
     const { unreadCount } = useNotifications()
 
     const base = `/${tenantSlug}/dashboard`
 
     const navItems = [
-        { href: `${base}`, label: "Dashboard", icon: LayoutDashboard },
-        { href: `${base}/settings/members`, label: "Members", icon: Users },
-        { href: `${base}/settings/roles`, label: "Roles", icon: Shield },
-        { href: `${base}/billing`, label: "Billing", icon: CreditCard },
-        { href: `${base}/api-keys`, label: "API Keys", icon: Key },
-        { href: `${base}/agents`, label: "Agents", icon: Bot },
-        { href: `${base}/audit`, label: "Audit Log", icon: FileText },
+        { href: `${base}`, label: "Dashboard", icon: LayoutDashboard, show: true },
+        { href: `${base}/settings/members`, label: "Members", icon: Users, show: canRead(permissions, "members") },
+        { href: `${base}/settings/roles`, label: "Roles", icon: Shield, show: canRead(permissions, "roles") },
+        { href: `${base}/billing`, label: "Billing", icon: CreditCard, show: canRead(permissions, "billing") },
+        { href: `${base}/api-keys`, label: "API Keys", icon: Key, show: canRead(permissions, "api_keys") },
+        { href: `${base}/agents`, label: "Agents", icon: Bot, show: canRead(permissions, "agents") },
+        { href: `${base}/audit`, label: "Audit Log", icon: FileText, show: canRead(permissions, "audit_log") },
     ]
 
     const opsItems = [
@@ -101,13 +102,16 @@ export function Sidebar() {
             </div>
 
             <nav className="flex-1 space-y-1">
-                {navItems.map((item) => (
-                    <SidebarItem key={item.href} {...item} />
+                {navItems.filter(item => item.show).map((item) => (
+                    <SidebarItem key={item.href} href={item.href} label={item.label} icon={item.icon} />
                 ))}
-                <NotificationsItem
-                    href={`${base}/notifications`}
-                    unreadCount={unreadCount}
-                />
+
+                {canRead(permissions, "notifications") && (
+                    <NotificationsItem
+                        href={`${base}/notifications`}
+                        unreadCount={unreadCount}
+                    />
+                )}
             </nav>
 
             {role === "platform_admin" && (
