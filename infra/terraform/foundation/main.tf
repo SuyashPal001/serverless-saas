@@ -385,6 +385,14 @@ module "iam" {
             Resource = module.ses.domain_identity_arn
           }]
         })
+        manage_connections = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = "execute-api:ManageConnections"
+            Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
+          }]
+        })
       }
     }
 
