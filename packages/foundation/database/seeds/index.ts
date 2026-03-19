@@ -7,7 +7,6 @@ import { seedPermissions } from './permissions';
 import { seedRolePermissions } from './role-permissions';
 import { seedFeatures } from './features';
 import { seedPlanEntitlements } from './plan-entitlements';
-import { seedNotificationTemplates } from './notification-templates';
 
 const client = postgres(process.env.DATABASE_URL!, { max: 1 });
 export const db = drizzle(client, { schema });
@@ -20,7 +19,6 @@ async function run() {
     await seedRolePermissions(db);
     await seedFeatures(db);
     await seedPlanEntitlements(db);
-    await seedNotificationTemplates(db);
 
     console.log('seed complete');
     await client.end();
