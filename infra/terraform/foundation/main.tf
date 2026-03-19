@@ -196,6 +196,11 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    check_email = {
+      route_key       = "GET /api/v1/auth/check-email"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     invitations_get = {
       route_key       = "GET /api/v1/invitations/{proxy+}"
       integration_key = "foundation_api"
