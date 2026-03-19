@@ -65,7 +65,8 @@ export function useNotificationsSocket(options: {
           try {
             const message = JSON.parse(event.data);
             if (message.type === 'notification') {
-              onNotification(message.data as NotificationInboxEntry);
+              const { type, ...notification } = message;
+              onNotification(notification as NotificationInboxEntry);
             } else if (message.type === 'pong') {
               // keepalive confirmed
             }

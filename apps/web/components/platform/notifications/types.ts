@@ -9,9 +9,9 @@ export interface Notification {
 }
 
 export interface NotificationsInboxResponse {
-    notifications: Notification[];
+    items: Notification[];
     total: number;
     page: number;
-    totalPages: number;
+    limit: number;
     unreadCount: number;
 }
