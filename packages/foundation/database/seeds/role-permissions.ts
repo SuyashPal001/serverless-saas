@@ -20,16 +20,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
     member: [
         'members:read',
-        'roles:read',
-        'api-keys:create',
-        'api-keys:read',
-        'api-keys:delete',
         'notifications:read',
         'notifications:update',
-        'audit_log:read',
         'tenant:read',
-        'agent-runs:read',
-        'integrations:read',
     ],
 
     'ops-agent': [
