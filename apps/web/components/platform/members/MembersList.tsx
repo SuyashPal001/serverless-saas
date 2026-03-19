@@ -93,9 +93,13 @@ export function MembersList() {
 
     const suspendMutation = useMutation({
         mutationFn: (memberId: string) => api.del(`/api/v1/members/${memberId}`),
-        onSuccess: () => {
+        onSuccess: (data: any) => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
-            toast.success("Member access updated");
+            if (data?.action === 'suspended') {
+                toast.success("Member suspended");
+            } else {
+                toast.success("Member access updated");
+            }
         },
         onError: (error) => {
             if (error instanceof ApiError && error.status === 403 && error.data?.code === 'SELF_SUSPEND_FORBIDDEN') {
@@ -109,9 +113,15 @@ export function MembersList() {
     const reactivateMutation = useMutation({
         mutationFn: (memberId: string) =>
             api.patch(`/api/v1/members/${memberId}/status`, { status: "active" }),
-        onSuccess: () => {
+        onSuccess: (data: any) => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
-            toast.success("Member reactivated");
+            if (data?.action === 'invite_resent') {
+                toast.success("Invitation resent successfully");
+            } else if (data?.action === 'suspended') {
+                toast.success("Member suspended");
+            } else {
+                toast.success("Member reactivated");
+            }
         },
     });
 
@@ -306,19 +316,33 @@ export function MembersList() {
                                 {member.status === 'suspended' ? (
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 px-2 shadow-none"
-                                            >
-                                                Suspended
-                                            </Button>
+                                            {member.joinedAt ? (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 px-2 shadow-none"
+                                                >
+                                                    Suspended
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 px-2 shadow-none"
+                                                >
+                                                    Revoked
+                                                </Button>
+                                            )}
                                         </AlertDialogTrigger>
                                         <AlertDialogContent>
                                             <AlertDialogHeader>
-                                                <AlertDialogTitle>Reactivate Member</AlertDialogTitle>
+                                                <AlertDialogTitle>
+                                                    {member.joinedAt ? "Reactivate Member" : "Resend Invitation"}
+                                                </AlertDialogTitle>
                                                 <AlertDialogDescription>
-                                                    This will restore access for {getDisplayName(member)}.
+                                                    {member.joinedAt 
+                                                        ? `This will restore access for ${getDisplayName(member)}.` 
+                                                        : "This will send a new invitation email to this member."}
                                                 </AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
@@ -330,7 +354,7 @@ export function MembersList() {
                                                     {reactivateMutation.isPending && (
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                                     )}
-                                                    Reactivate
+                                                    {member.joinedAt ? "Reactivate" : "Resend Invite"}
                                                 </AlertDialogAction>
                                             </AlertDialogFooter>
                                         </AlertDialogContent>
@@ -359,18 +383,18 @@ export function MembersList() {
                                                     disabled={suspendMutation.isPending || reactivateMutation.isPending}
                                                 >
                                                     {member.status === 'invited' ? 'Revoke invite' :
-                                                        member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                        member.status === 'suspended' ? (member.joinedAt ? 'Reactivate' : 'Resend Invite') : 'Suspend'}
                                                 </Button>
                                             </AlertDialogTrigger>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader>
                                                     <AlertDialogTitle>
                                                         {member.status === 'invited' ? 'Revoke Invitation' :
-                                                            member.status === 'suspended' ? 'Reactivate Member' : 'Suspend Member'}
+                                                            member.status === 'suspended' ? (member.joinedAt ? 'Reactivate Member' : 'Resend Invitation') : 'Suspend Member'}
                                                     </AlertDialogTitle>
                                                     <AlertDialogDescription>
                                                         {member.status === 'invited' ? 'This will revoke their invitation. They will no longer be able to join.' :
-                                                            member.status === 'suspended' ? 'This will restore their access.' :
+                                                            member.status === 'suspended' ? (member.joinedAt ? 'This will restore their access.' : 'This will send a new invitation email to this member.') :
                                                                 'This will suspend their access immediately. They will not be able to log in until reactivated.'}
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
@@ -387,7 +411,7 @@ export function MembersList() {
                                                         className={member.status === 'suspended' ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
                                                     >
                                                         {member.status === 'invited' ? 'Revoke' :
-                                                            member.status === 'suspended' ? 'Reactivate' : 'Suspend'}
+                                                            member.status === 'suspended' ? (member.joinedAt ? 'Reactivate' : 'Resend Invite') : 'Suspend'}
                                                     </AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>

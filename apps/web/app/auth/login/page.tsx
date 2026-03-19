@@ -168,7 +168,7 @@ function LoginPageContent() {
                     variant="outline"
                     type="button"
                     className="w-full"
-                    onClick={() => initiateGoogleSignIn()}
+                    onClick={() => initiateGoogleSignIn(searchParams.get('redirect') || undefined)}
                     disabled={isLoading}
                 >
                     <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">

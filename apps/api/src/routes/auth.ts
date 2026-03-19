@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { and, eq } from 'drizzle-orm';
-import { db, memberships, sessions, auditLog } from '@serverless-saas/database';
+import { and, eq, sql } from 'drizzle-orm';
+import { db, memberships, sessions, auditLog, users } from '@serverless-saas/database';
 import { getCacheClient } from '@serverless-saas/cache';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SignJWT } from 'jose';
+import { z } from 'zod';
 
 import { adminInitiateAuth } from '@serverless-saas/auth';
 
@@ -77,6 +78,27 @@ authPublicRoutes.post('/login', async (c) => {
         const message = err.message || 'Authentication failed';
         return c.json({ error: message, code }, 401);
     }
+});
+
+// GET /auth/check-email?email=xxx
+authPublicRoutes.get('/check-email', async (c) => {
+    const email = c.req.query('email');
+    
+    // Validate email
+    const schema = z.object({ email: z.string().email() });
+    const result = schema.safeParse({ email });
+    if (!result.success) {
+        return c.json({ error: 'Invalid email format' }, 400);
+    }
+    
+    // Check if user exists (case-insensitive)
+    const [user] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(sql`lower(${users.email})`, result.data.email.toLowerCase()))
+        .limit(1);
+    
+    return c.json({ exists: !!user });
 });
 
 authRoutes.get('/me', (c) => {

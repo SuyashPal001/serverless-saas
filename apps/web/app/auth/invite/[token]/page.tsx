@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
@@ -23,10 +23,13 @@ interface UserProfile {
 export default function InvitePage() {
     const router = useRouter();
     const params = useParams();
+    const searchParams = useSearchParams();
     const token = params.token as string;
+    const errorCode = searchParams.get("error");
 
     const [invite, setInvite] = useState<InviteDetails | null>(null);
     const [user, setUser] = useState<UserProfile | null>(null);
+    const [emailExists, setEmailExists] = useState<boolean | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAccepting, setIsAccepting] = useState(false);
@@ -43,15 +46,56 @@ export default function InvitePage() {
                 const inviteData = await inviteRes.json();
                 setInvite(inviteData);
 
-                // 2. Fetch auth status
+                // 2. Check if invited email has an existing account
+                try {
+                    const checkEmailRes = await fetch(`/api/proxy/api/v1/auth/check-email?email=${encodeURIComponent(inviteData.email)}`);
+                    if (checkEmailRes.ok) {
+                        const checkData = await checkEmailRes.json();
+                        setEmailExists(checkData.exists);
+                    }
+                } catch (e) {
+                    console.error("Failed to check email existence:", e);
+                }
+
+                // 3. Fetch auth status
+                let profileData = null;
                 const profileRes = await fetch("/api/proxy/api/v1/auth/me");
                 if (profileRes.ok) {
-                    const profileData = await profileRes.json();
+                    profileData = await profileRes.json();
                     setUser(profileData);
+                }
+
+                // 4. Handle OAuth callback errors
+                if (errorCode) {
+                    switch (errorCode) {
+                        case "EMAIL_MISMATCH":
+                            // Try to get the current user's email for a better error message,
+                            // but fallback gracefully if not available.
+                            const currentEmail = profileData?.email ? ` as ${profileData.email}` : "";
+                            setError(`You're signed in${currentEmail} but this invite was sent to ${inviteData.email}. Please sign out and sign in with the correct account.`);
+                            break;
+                        case "EXPIRED":
+                            setError("This invitation has expired.");
+                            break;
+                        case "REVOKED":
+                            setError("This invitation has been revoked.");
+                            break;
+                        case "ALREADY_ACCEPTED":
+                            setError("This invitation has already been accepted.");
+                            break;
+                        case "ACCEPT_FAILED":
+                            setError("Failed to accept invitation. Please try again.");
+                            break;
+                        default:
+                            setError("An error occurred while processing your invitation.");
+                    }
                 }
             } catch (err: any) {
                 console.error("Fetch Error:", err);
-                setError(err.message || "Failed to load invitation details");
+                // Only overwrite error if it's not an OAuth callback error being handled above
+                if (!errorCode) {
+                    setError(err.message || "Failed to load invitation details");
+                }
             } finally {
                 setIsLoading(false);
             }
@@ -60,7 +104,7 @@ export default function InvitePage() {
         if (token) {
             fetchData();
         }
-    }, [token]);
+    }, [token, errorCode]);
 
     async function handleAccept() {
         setIsAccepting(true);
@@ -124,6 +168,8 @@ export default function InvitePage() {
     }
 
     const isLoggedIn = !!user;
+    const isEmailMatch = isLoggedIn && user?.email?.toLowerCase() === invite?.email?.toLowerCase();
+    const isEmailMismatch = isLoggedIn && user?.email?.toLowerCase() !== invite?.email?.toLowerCase();
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
@@ -159,7 +205,7 @@ export default function InvitePage() {
                 </CardContent>
 
                 <CardFooter className="flex flex-col space-y-2">
-                    {isLoggedIn ? (
+                    {isLoggedIn && isEmailMatch && (
                         <Button
                             className="w-full"
                             onClick={handleAccept}
@@ -168,15 +214,28 @@ export default function InvitePage() {
                             {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Accept Invitation
                         </Button>
-                    ) : (
-                        <>
-                            <Button
-                                className="w-full"
-                                onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
-                            >
-                                Sign in to accept
-                            </Button>
-                        </>
+                    )}
+
+                    {isEmailMismatch && (
+                        <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={async () => {
+                                await fetch("/api/auth/session", { method: "DELETE" });
+                                router.refresh();
+                            }}
+                        >
+                            Sign out and use different account
+                        </Button>
+                    )}
+
+                    {!isLoggedIn && (
+                        <Button
+                            className="w-full"
+                            onClick={() => router.push(`/auth/login?redirect=/auth/invite/${token}`)}
+                        >
+                            {emailExists === false ? "Create account to accept" : "Sign in to accept"}
+                        </Button>
                     )}
                 </CardFooter>
             </Card>

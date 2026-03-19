@@ -55,7 +55,41 @@ function CallbackContent() {
           throw new Error("Failed to create session on the server");
         }
 
-        // 3. Fetch user profile to get slug and onboarding status
+        // 3. Check for invite redirect in sessionStorage
+        const authRedirect = sessionStorage.getItem("auth_redirect");
+        if (authRedirect) {
+          sessionStorage.removeItem("auth_redirect");
+          
+          if (authRedirect.startsWith("/auth/invite/")) {
+            const token = authRedirect.split("/").pop();
+            if (token) {
+              try {
+                const acceptRes = await fetch(`/api/proxy/api/v1/invitations/${token}/accept`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${idToken}`,
+                  },
+                });
+                
+                const acceptData = await acceptRes.json();
+                
+                if (acceptRes.ok) {
+                  window.location.href = `/${acceptData.tenantSlug}/dashboard`;
+                  return;
+                } else {
+                  window.location.href = `/auth/invite/${token}?error=${acceptData.code || "ACCEPT_FAILED"}`;
+                  return;
+                }
+              } catch (err) {
+                console.error("Failed to accept invite after OAuth:", err);
+                window.location.href = `/auth/invite/${token}?error=ACCEPT_FAILED`;
+                return;
+              }
+            }
+          }
+        }
+
+        // 4. Fetch user profile to get slug and onboarding status
         const profileRes = await fetch(`/api/proxy/api/v1/auth/me`, {
           headers: {
             Authorization: `Bearer ${idToken}`,
@@ -64,7 +98,7 @@ function CallbackContent() {
         if (!profileRes.ok) throw new Error("Failed to fetch user profile");
         const profile = await profileRes.json();
 
-        // 4. Hard redirect — forces full page load so cookie is read fresh
+        // 5. Hard redirect — forces full page load so cookie is read fresh
         if (profile.slug && !profile.needsOnboarding) {
           window.location.href = `/${profile.slug}/dashboard`;
         } else {
