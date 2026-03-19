@@ -89,7 +89,6 @@ async function handleConnect(event: any, connectionId: string): Promise<APIGatew
         return { statusCode: 200, body: 'Connected.' };
 
     } catch (error: any) {
-        // Log authentication errors without stack trace for cleaner logs
         if (error.code === 'ERR_JWS_INVALID' || error.code === 'ERR_JWT_EXPIRED') {
             console.log('Connect failed: Invalid or expired token', { error: error.message });
         } else {
@@ -102,13 +101,14 @@ async function handleConnect(event: any, connectionId: string): Promise<APIGatew
 async function handleDisconnect(connectionId: string): Promise<APIGatewayProxyResult> {
     try {
         const cache = getCacheClient();
-        let cursor: any = 0;
+        let cursor: number = 0;
 
-        // TODO: This scan is inefficient and expensive at scale.
-        // A reverse lookup table (connectionId -> userKey) would be better.
         do {
-            const [nextCursor, keys] = await cache.scan(cursor, 'MATCH', 'ws:tenant:*:user:*', 'COUNT', 100);
-            cursor = nextCursor;
+            const [nextCursor, keys] = await cache.scan(cursor, {
+                match: 'ws:tenant:*:user:*',
+                count: 100
+            });
+            cursor = Number(nextCursor);
 
             for (const key of keys) {
                 if (typeof key !== 'string') continue;
@@ -116,19 +116,17 @@ async function handleDisconnect(connectionId: string): Promise<APIGatewayProxyRe
                 if (isMember) {
                     await cache.srem(key, connectionId);
                     console.log('Client disconnected and removed from set:', { connectionId, key });
-                    // Found and removed, we can stop.
                     return { statusCode: 200, body: 'Disconnected.' };
                 }
             }
-        } while (cursor != 0 && cursor != '0');
+        } while (cursor !== 0);
 
-        console.log('Client disconnected, but was not found in any active set:', { connectionId });
+        console.log('Client disconnected, not found in any active set:', { connectionId });
 
     } catch (error) {
         console.error('Disconnect handler error:', error);
     }
 
-    // Always return 200 on disconnect to prevent noisy logs.
     return { statusCode: 200, body: 'Disconnected.' };
 }
 
@@ -146,6 +144,5 @@ async function handleDefault(event: any, connectionId: string): Promise<APIGatew
         console.error('Default handler error:', error);
     }
 
-    // Ignore other messages
     return { statusCode: 200, body: 'OK' };
 }
