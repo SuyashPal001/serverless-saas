@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { and, eq, sql } from 'drizzle-orm';
-import { db, memberships, sessions, auditLog, users } from '@serverless-saas/database';
+import { and, eq, isNull } from 'drizzle-orm';
+import { db, memberships, sessions, auditLog } from '@serverless-saas/database';
+import { users } from '@serverless-saas/database/schema';
 import { getCacheClient } from '@serverless-saas/cache';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SignJWT } from 'jose';
@@ -83,21 +84,30 @@ authPublicRoutes.post('/login', async (c) => {
 // GET /auth/check-email?email=xxx
 authPublicRoutes.get('/check-email', async (c) => {
     const email = c.req.query('email');
-    
-    // Validate email
-    const schema = z.object({ email: z.string().email() });
-    const result = schema.safeParse({ email });
+
+    if (!email) {
+        return c.json({ error: 'Email is required' }, 400);
+    }
+
+    // Validate email format
+    const emailSchema = z.string().email();
+    const result = emailSchema.safeParse(email);
     if (!result.success) {
         return c.json({ error: 'Invalid email format' }, 400);
     }
-    
-    // Check if user exists (case-insensitive)
+
+    // Check if user exists: SELECT id FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1
     const [user] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(sql`lower(${users.email})`, result.data.email.toLowerCase()))
+        .where(
+            and(
+                eq(users.email, result.data),
+                isNull(users.deletedAt)
+            )
+        )
         .limit(1);
-    
+
     return c.json({ exists: !!user });
 });
 
