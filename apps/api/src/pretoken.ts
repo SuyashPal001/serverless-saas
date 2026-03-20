@@ -8,7 +8,7 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 
 /**
  * Cognito Pre Token Generation Lambda
@@ -41,9 +41,11 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   // Step 1 — find user in our DB by cognitoId
   // User is created here via middleware upsert on first API call (Volca pattern, ADR-024)
   // If not found yet, stamp empty claims — do not throw
-  const user = await db.query.users.findFirst({
-    where: eq(users.cognitoId, cognitoId)
-  });
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.cognitoId, cognitoId))
+    .limit(1);
 
   console.log('[pretoken] step=1/user', { found: !!user, id: user?.id });
 
@@ -53,11 +55,18 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   }
 
   // Step 2 — find tenant membership for this user
-  // A user can belong to multiple tenants — we take the first active one
-  // Multi-tenant switching handled separately via clientMetadata in future
-  const membership = await db.query.memberships.findFirst({
-    where: eq(memberships.userId, user.id)
-  });
+  // We filter for active memberships and order by joinedAt DESC to get the most recent one.
+  const [membership] = await db
+    .select()
+    .from(memberships)
+    .where(
+      and(
+        eq(memberships.userId, user.id),
+        eq(memberships.status, 'active')
+      )
+    )
+    .orderBy(desc(memberships.joinedAt))
+    .limit(1);
 
   console.log('[pretoken] step=2/membership', {
     found: !!membership,
@@ -72,9 +81,11 @@ export const handler: PreTokenGenerationTriggerHandler = async (
 
   // Step 3 — resolve role name from roleId
   // We store roleId on membership, but the JWT needs the role name string
-  const role = await db.query.roles.findFirst({
-    where: eq(roles.id, membership.roleId)
-  });
+  const [role] = await db
+    .select()
+    .from(roles)
+    .where(eq(roles.id, membership.roleId))
+    .limit(1);
 
   console.log('[pretoken] step=3/role', { found: !!role, name: role?.name });
 
@@ -87,12 +98,16 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   // Plan drives feature gating across the entire platform (ADR entitlements)
   // IMPORTANT: newly created subscriptions default to 'trialing', not 'active'.
   // Filtering for 'active' only causes this step to always miss after onboarding.
-  const subscription = await db.query.subscriptions.findFirst({
-    where: and(
-      eq(subscriptions.tenantId, membership.tenantId),
-      inArray(subscriptions.status, ['active', 'trialing'])
+  const [subscription] = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.tenantId, membership.tenantId),
+        inArray(subscriptions.status, ['active', 'trialing'])
+      )
     )
-  });
+    .limit(1);
 
   console.log('[pretoken] step=4/subscription', {
     found: !!subscription,
