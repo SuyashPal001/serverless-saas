@@ -55,23 +55,45 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   }
 
   // Step 2 — find tenant membership for this user
-  // We filter for active memberships and order by joinedAt DESC to get the most recent one.
-  const [membership] = await db
-    .select()
-    .from(memberships)
-    .where(
-      and(
-        eq(memberships.userId, user.id),
-        eq(memberships.status, 'active')
+  // If clientMetadata.tenantId is present (e.g. workspace-switch flow), try that tenant first.
+  // Falls back to most recently joined active membership if not found or not provided.
+  const requestedTenantId = event.request.clientMetadata?.tenantId;
+
+  let membership: typeof memberships.$inferSelect | undefined;
+
+  if (requestedTenantId) {
+    [membership] = await db
+      .select()
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.userId, user.id),
+          eq(memberships.tenantId, requestedTenantId),
+          eq(memberships.status, 'active')
+        )
       )
-    )
-    .orderBy(desc(memberships.joinedAt))
-    .limit(1);
+      .limit(1);
+  }
+
+  if (!membership) {
+    [membership] = await db
+      .select()
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.userId, user.id),
+          eq(memberships.status, 'active')
+        )
+      )
+      .orderBy(desc(memberships.joinedAt))
+      .limit(1);
+  }
 
   console.log('[pretoken] step=2/membership', {
     found: !!membership,
     tenantId: membership?.tenantId,
     status: membership?.status,
+    requestedTenantId: requestedTenantId ?? null,
   });
 
   if (!membership) {

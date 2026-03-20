@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, desc } from 'drizzle-orm';
 import { db, memberships, sessions, auditLog } from '@serverless-saas/database';
-import { users } from '@serverless-saas/database/schema';
+import { users, tenants, roles } from '@serverless-saas/database/schema';
 import { getCacheClient } from '@serverless-saas/cache';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SignJWT } from 'jose';
@@ -123,6 +123,52 @@ authRoutes.get('/me', (c) => {
         permissions: requestContext?.permissions ?? [],
         needsOnboarding: requestContext?.needsOnboarding ?? false,
     });
+});
+
+// GET /auth/tenants
+authRoutes.get('/tenants', async (c) => {
+    const userId = c.get('userId');
+    const currentTenantId = c.get('tenantId');
+
+    if (!userId) {
+        return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const userMemberships = await db
+        .select({
+            tenantId: tenants.id,
+            name: tenants.name,
+            slug: tenants.slug,
+            role: roles.name,
+            joinedAt: memberships.joinedAt,
+        })
+        .from(memberships)
+        .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+        .innerJoin(roles, eq(memberships.roleId, roles.id))
+        .where(
+            and(
+                eq(memberships.userId, userId as string),
+                eq(memberships.status, 'active')
+            )
+        )
+        .orderBy(desc(memberships.joinedAt));
+
+    const result = userMemberships.map((m: { 
+        tenantId: string; 
+        name: string; 
+        slug: string; 
+        role: string; 
+        joinedAt: Date | null; 
+    }) => ({
+        tenantId: m.tenantId,
+        name: m.name,
+        slug: m.slug,
+        role: m.role,
+        joinedAt: m.joinedAt,
+        isCurrent: m.tenantId === currentTenantId,
+    }));
+
+    return c.json({ tenants: result });
 });
 
 authRoutes.get('/ws-token', async (c) => {
