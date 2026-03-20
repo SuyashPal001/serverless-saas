@@ -33,15 +33,17 @@ export async function signIn(email: string, password: string) {
     };
 }
 
-export async function refreshSession(refreshToken: string) {
-    const data = await cognitoRequest('InitiateAuth', {
+export async function refreshSession(refreshToken: string, clientMetadata?: Record<string, string>) {
+    const body: Record<string, unknown> = {
         AuthFlow: 'REFRESH_TOKEN_AUTH',
         ClientId: CLIENT_ID,
         AuthParameters: {
             REFRESH_TOKEN: refreshToken,
         },
-    });
+    };
+    if (clientMetadata) body.ClientMetadata = clientMetadata;
 
+    const data = await cognitoRequest('InitiateAuth', body);
     return {
         idToken: data.AuthenticationResult.IdToken,
         accessToken: data.AuthenticationResult.AccessToken,

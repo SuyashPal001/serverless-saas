@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "@/lib/auth";
+import { signIn, refreshSession } from "@/lib/auth";
 import { initiateGoogleSignIn } from "@/lib/auth-google";
 import { decodeTenantClaims } from "@/lib/tenant";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Form,
     FormControl,
@@ -19,6 +20,14 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+
+interface Workspace {
+    tenantId: string;
+    name: string;
+    slug: string;
+    role: string;
+    isCurrent: boolean;
+}
 
 const loginSchema = z.object({
     email: z.string().email({ message: "Invalid email address" }),
@@ -33,6 +42,8 @@ function LoginPageContent() {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
+    const [pendingTokens, setPendingTokens] = useState<{ idToken: string; refreshToken: string } | null>(null);
 
     // Show success message if redirected from onboarding or invitation
     useEffect(() => {
@@ -59,46 +70,120 @@ function LoginPageContent() {
         try {
             // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
             const { idToken, refreshToken } = await signIn(data.email, data.password);
-
-            // 2. Fetch user profile to get the tenant slug
-            // Note: We pass the idToken directly in the header since the cookie isn't set yet.
-            const profileRes = await fetch(`/api/proxy/api/v1/auth/me`, {
-                headers: {
-                    Authorization: `Bearer ${idToken}`,
-                },
-            });
-
-            if (!profileRes.ok) throw new Error("Failed to fetch user profile");
-            const profile = await profileRes.json();
-            const slug = profile.slug;
-
-            // 3. POST idToken to Next.js API route to set httpOnly cookie
-            const res = await fetch("/api/auth/session", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    token: idToken,
-                    refreshToken
-                }),
-            });
-
-            if (!res.ok) throw new Error("Failed to create secure session");
-
-            // 4. Redirect to the tenant dashboard using the slug or the provided redirect param
             const redirectParam = searchParams.get('redirect');
-            const targetPath = redirectParam 
-                ? redirectParam 
-                : (slug ? `/${slug}/dashboard` : "/onboarding");
 
-            router.push(targetPath);
-            router.refresh();
+            // 2. Fetch all workspaces this user belongs to
+            // Pass idToken directly — cookie isn't set yet
+            const tenantsRes = await fetch('/api/proxy/api/v1/auth/tenants', {
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+            if (!tenantsRes.ok) throw new Error('Failed to fetch workspaces');
+            const { tenants: workspaceList }: { tenants: Workspace[] } = await tenantsRes.json();
 
+            // 3. Skip picker if redirect param is present or user has only one workspace
+            if (redirectParam || workspaceList.length <= 1) {
+                const res = await fetch('/api/auth/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: idToken, refreshToken }),
+                });
+                if (!res.ok) throw new Error('Failed to create secure session');
+                const targetPath = redirectParam
+                    ?? (workspaceList[0]?.slug ? `/${workspaceList[0].slug}/dashboard` : '/onboarding');
+                router.push(targetPath);
+                router.refresh();
+                return;
+            }
+
+            // 4. Multiple workspaces — hold tokens and show picker
+            setPendingTokens({ idToken, refreshToken });
+            setWorkspaces(workspaceList);
         } catch (err: any) {
             console.error("Login error:", err);
             setError(err.message || "Invalid email or password. Please try again.");
         } finally {
             setIsLoading(false);
         }
+    }
+
+    async function handleWorkspaceSelect(workspace: Workspace) {
+        if (!pendingTokens) return;
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            let { idToken } = pendingTokens;
+            const { refreshToken } = pendingTokens;
+
+            // Picked a different workspace than what's in the JWT —
+            // refresh with clientMetadata so the pre-token lambda stamps the right tenantId
+            if (!workspace.isCurrent) {
+                const refreshed = await refreshSession(refreshToken, { tenantId: workspace.tenantId });
+                idToken = refreshed.idToken;
+            }
+
+            const res = await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: idToken, refreshToken }),
+            });
+            if (!res.ok) throw new Error('Failed to create secure session');
+
+            router.push(`/${workspace.slug}/dashboard`);
+            router.refresh();
+        } catch (err: any) {
+            console.error('Workspace select error:', err);
+            setError(err.message || 'Failed to select workspace. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    if (workspaces) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-background">
+                <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+                    <div className="text-center space-y-2">
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground">Choose a workspace</h1>
+                        <p className="text-sm text-muted-foreground">You belong to multiple workspaces</p>
+                    </div>
+
+                    {error && (
+                        <div className="p-3 text-sm font-medium text-destructive bg-destructive/10 rounded-md">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        {workspaces.map((ws) => (
+                            <Card
+                                key={ws.tenantId}
+                                className="cursor-pointer border border-border hover:border-primary transition-colors"
+                                onClick={() => !isLoading && handleWorkspaceSelect(ws)}
+                            >
+                                <CardHeader className="pb-1 pt-4 px-4">
+                                    <CardTitle className="text-base flex items-center justify-between">
+                                        <span>{ws.name}</span>
+                                        {ws.isCurrent && (
+                                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                                Current
+                                            </span>
+                                        )}
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="pb-4 px-4">
+                                    <p className="text-xs text-muted-foreground capitalize">{ws.role}</p>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+
+                    {isLoading && (
+                        <p className="text-center text-sm text-muted-foreground">Signing in...</p>
+                    )}
+                </div>
+            </div>
+        );
     }
 
     return (
