@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { LogOut, User, ChevronDown, Check } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
@@ -20,6 +20,8 @@ import {
 
 function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlanColor: string, plan: string, tenantSlug: string | undefined }) {
     const router = useRouter()
+    const pathname = usePathname()
+    const currentSlugFromUrl = pathname?.split('/')[1] || ''
     const [workspaces, setWorkspaces] = React.useState<any[]>([])
     const [isLoading, setIsLoading] = React.useState(true)
     const [isOpen, setIsOpen] = React.useState(false)
@@ -36,7 +38,7 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
     const currentWorkspace = workspaces.find(w => w.isCurrent) || workspaces.find(w => w.slug === tenantSlug)
 
     const handleSwitch = async (workspace: any) => {
-        if (workspace.slug === tenantSlug) {
+        if (workspace.slug === currentSlugFromUrl) {
             setIsOpen(false)
             return
         }
@@ -85,7 +87,7 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
                         >
                             <div className="flex items-center justify-between w-full">
                                 <span className="font-medium text-sm truncate">{workspace.name}</span>
-                                {(workspace.isCurrent || (tenantSlug && workspace.slug === tenantSlug)) && (
+                                {workspace.slug === currentSlugFromUrl && (
                                     <Check className="w-4 h-4 text-primary shrink-0 ml-2" />
                                 )}
                             </div>
