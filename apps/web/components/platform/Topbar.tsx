@@ -8,6 +8,7 @@ import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
+import { toast } from "sonner"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -52,8 +53,10 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
             router.push(`/${workspace.slug}/dashboard`);
             router.refresh();
             setIsOpen(false);
+            toast.success(`Switched to ${workspace.name}`);
         } catch (error) {
             console.error('Failed to switch workspace', error)
+            toast.error("Failed to switch workspace");
         }
     }
 
