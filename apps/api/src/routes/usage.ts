@@ -49,8 +49,8 @@ usageRoutes.get('/', async (c) => {
                 gte(usageRecords.recordedAt, startDate),
                 lte(usageRecords.recordedAt, endDate)
             ))
-            .groupBy(sql`${dateTrunc}`)
-            .orderBy(sql`${dateTrunc} ASC`);
+            .groupBy(dateTrunc)
+            .orderBy(dateTrunc);
 
         // Calculate total
         const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);

@@ -78,8 +78,9 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
     const endDate = endDateParam ? new Date(endDateParam) : now;
 
     try {
-        const truncFn = period === 'monthly' ? 'month' : 'day';
-        const dateTrunc = sql`date_trunc('${sql.raw(truncFn)}', ${usageRecords.recordedAt})`;
+        const dateTrunc = period === 'monthly'
+            ? sql`date_trunc('month', ${usageRecords.recordedAt})`
+            : sql`date_trunc('day', ${usageRecords.recordedAt})`;
 
         const aggregatedData = await db
             .select({
@@ -88,8 +89,8 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
             })
             .from(usageRecords)
             .where(and(
-                eq(usageRecords.tenantId, tenantId),
                 eq(usageRecords.apiKeyId, keyId),
+                eq(usageRecords.tenantId, tenantId),
                 gte(usageRecords.recordedAt, startDate),
                 lte(usageRecords.recordedAt, endDate)
             ))
