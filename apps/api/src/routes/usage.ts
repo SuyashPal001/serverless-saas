@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import { features } from '@serverless-saas/database/schema/entitlements';
@@ -29,28 +29,22 @@ usageRoutes.get('/', async (c) => {
     const endDate = endDateParam ? new Date(endDateParam) : now;
 
     try {
-        // Query to aggregate usage
-        // Note: Neon serverless HTTP driver + Drizzle requires specific syntax for complex groupings
-        // We'll use raw SQL snippets for date truncation
-        
-        const dateTrunc = period === 'monthly' 
-            ? sql`date_trunc('month', ${usageRecords.recordedAt})` 
-            : sql`date_trunc('day', ${usageRecords.recordedAt})`;
+        const truncFn = period === 'monthly' ? 'month' : 'day';
 
-        const aggregatedData = await db
-            .select({
-                date: sql<string>`${dateTrunc}::text`,
-                value: sql<number>`SUM(${usageRecords.quantity})::int`,
-            })
-            .from(usageRecords)
-            .where(and(
-                eq(usageRecords.tenantId, tenantId),
-                eq(usageRecords.metric, metric),
-                gte(usageRecords.recordedAt, startDate),
-                lte(usageRecords.recordedAt, endDate)
-            ))
-            .groupBy(dateTrunc)
-            .orderBy(dateTrunc);
+        const result = await db.execute(sql`
+            SELECT
+                DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)::text AS date,
+                SUM(quantity)::int AS value
+            FROM usage_records
+            WHERE tenant_id = ${tenantId}
+              AND metric = ${metric}
+              AND recorded_at >= ${startDate}
+              AND recorded_at <= ${endDate}
+            GROUP BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
+            ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
+        `);
+
+        const aggregatedData = (result.rows ?? result) as { date: string; value: number }[];
 
         // Calculate total
         const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);

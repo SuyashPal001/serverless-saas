@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db, apiKeys, auditLog, usageRecords } from '@serverless-saas/database';
+import { db, apiKeys, auditLog } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const apiKeysRoutes = new Hono<AppEnv>();
@@ -78,28 +78,26 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
     const endDate = endDateParam ? new Date(endDateParam) : now;
 
     try {
-        const dateTrunc = period === 'monthly'
-            ? sql`date_trunc('month', ${usageRecords.recordedAt})`
-            : sql`date_trunc('day', ${usageRecords.recordedAt})`;
+        const truncFn = period === 'monthly' ? 'month' : 'day';
 
-        const aggregatedData = await db
-            .select({
-                date: sql<string>`(${dateTrunc})::text`,
-                value: sql<number>`SUM(${usageRecords.quantity})::int`,
-            })
-            .from(usageRecords)
-            .where(and(
-                eq(usageRecords.apiKeyId, keyId),
-                eq(usageRecords.tenantId, tenantId),
-                gte(usageRecords.recordedAt, startDate),
-                lte(usageRecords.recordedAt, endDate)
-            ))
-            .groupBy(dateTrunc)
-            .orderBy(dateTrunc);
+        const result = await db.execute(sql`
+            SELECT
+                DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)::text AS date,
+                SUM(quantity)::int AS value
+            FROM usage_records
+            WHERE api_key_id = ${keyId}
+              AND tenant_id = ${tenantId}
+              AND recorded_at >= ${startDate}
+              AND recorded_at <= ${endDate}
+            GROUP BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
+            ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
+        `);
 
-        const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);
-        
-        const formattedData = aggregatedData.map((row: { date: string, value: number }) => ({
+        const aggregatedData = (result.rows ?? result) as { date: string; value: number }[];
+
+        const total = aggregatedData.reduce((sum, row) => sum + (row.value || 0), 0);
+
+        const formattedData = aggregatedData.map((row) => ({
             date: row.date.split(' ')[0],
             value: row.value || 0
         }));
