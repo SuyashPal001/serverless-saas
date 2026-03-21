@@ -16,6 +16,7 @@ export const webhookEndpoints = pgTable('webhook_endpoints', {
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at'),
 }, (t) => ({
   tenantIdx: index('webhook_endpoints_tenant_idx').on(t.tenantId),
 }));

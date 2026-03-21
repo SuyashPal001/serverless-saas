@@ -21,6 +21,7 @@ export const RESOURCES: Record<string, Action[]> = {
     entitlements: ['create', 'read', 'update', 'delete'],
     integrations: ['create', 'read', 'update', 'delete'],
     usage: ['read'],
+    webhooks: ['create', 'read', 'update', 'delete'],
 };
 
 export async function seedPermissions(db: typeof DB) {

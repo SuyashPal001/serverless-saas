@@ -24,6 +24,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'notifications:update',
         'tenant:read',
         'usage:read',
+        'webhooks:read',
     ],
 
     'ops-agent': [

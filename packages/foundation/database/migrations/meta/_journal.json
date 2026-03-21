@@ -36,6 +36,13 @@
       "when": 1774103775615,
       "tag": "0004_windy_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774119936575,
+      "tag": "0005_soft_pride",
+      "breakpoints": true
     }
   ]
 }

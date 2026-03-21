@@ -26,6 +26,7 @@ import { authInjectionMiddleware } from './middleware/authInjection';
 import { entitlementsRoutes } from './routes/entitlements';
 import { tenantsRoutes } from './routes/tenants';
 import { usageRoutes } from './routes/usage';
+import { webhooksRoutes } from './routes/webhooks';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { randomUUID } from 'crypto';
 
@@ -101,6 +102,7 @@ api.route('/billing', billingRoutes);
 api.route('/ops', opsRoutes);
 api.route('/entitlements', entitlementsRoutes);
 api.route('/usage', usageRoutes);
+api.route('/webhooks', webhooksRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', api);
