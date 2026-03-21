@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { and, eq, desc, isNull } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db, webhookEndpoints, webhookDeliveryLog, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { webhookEndpoints, webhookDeliveryLog } from '@serverless-saas/database/schema/webhooks';
+import { auditLog } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
 
 export const webhooksRoutes = new Hono<AppEnv>();
