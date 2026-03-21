@@ -17,23 +17,23 @@ webhooksRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.webhookEndpoints.findMany({
-        where: and(
+    const data = await db
+        .select({
+            id: webhookEndpoints.id,
+            url: webhookEndpoints.url,
+            events: webhookEndpoints.events,
+            status: webhookEndpoints.status,
+            description: webhookEndpoints.description,
+            createdAt: webhookEndpoints.createdAt,
+            updatedAt: webhookEndpoints.updatedAt,
+            // never return the secret here
+        })
+        .from(webhookEndpoints)
+        .where(and(
             eq(webhookEndpoints.tenantId, tenantId),
             isNull(webhookEndpoints.deletedAt)
-        ),
-        columns: {
-            id: true,
-            url: true,
-            events: true,
-            status: true,
-            description: true,
-            createdAt: true,
-            updatedAt: true,
-            // never return the secret here
-        },
-        orderBy: [desc(webhookEndpoints.createdAt)],
-    });
+        ))
+        .orderBy(desc(webhookEndpoints.createdAt));
 
     return c.json({ data });
 });
@@ -50,22 +50,23 @@ webhooksRoutes.get('/:id', async (c) => {
 
     const id = c.req.param('id');
 
-    const data = await db.query.webhookEndpoints.findFirst({
-        where: and(
+    const [data] = await db
+        .select({
+            id: webhookEndpoints.id,
+            url: webhookEndpoints.url,
+            events: webhookEndpoints.events,
+            status: webhookEndpoints.status,
+            description: webhookEndpoints.description,
+            createdAt: webhookEndpoints.createdAt,
+            updatedAt: webhookEndpoints.updatedAt,
+        })
+        .from(webhookEndpoints)
+        .where(and(
             eq(webhookEndpoints.id, id),
             eq(webhookEndpoints.tenantId, tenantId),
             isNull(webhookEndpoints.deletedAt)
-        ),
-        columns: {
-            id: true,
-            url: true,
-            events: true,
-            status: true,
-            description: true,
-            createdAt: true,
-            updatedAt: true,
-        }
-    });
+        ))
+        .limit(1);
 
     if (!data) {
         return c.json({ error: 'Webhook endpoint not found', code: 'NOT_FOUND' }, 404);
@@ -87,25 +88,28 @@ webhooksRoutes.get('/:id/deliveries', async (c) => {
     const id = c.req.param('id');
 
     // Verify endpoint belongs to tenant and exists
-    const endpoint = await db.query.webhookEndpoints.findFirst({
-        where: and(
+    const [endpoint] = await db
+        .select()
+        .from(webhookEndpoints)
+        .where(and(
             eq(webhookEndpoints.id, id),
             eq(webhookEndpoints.tenantId, tenantId)
-        ),
-    });
+        ))
+        .limit(1);
 
     if (!endpoint) {
         return c.json({ error: 'Webhook endpoint not found', code: 'NOT_FOUND' }, 404);
     }
 
-    const data = await db.query.webhookDeliveryLog.findMany({
-        where: and(
+    const data = await db
+        .select()
+        .from(webhookDeliveryLog)
+        .where(and(
             eq(webhookDeliveryLog.endpointId, id),
             eq(webhookDeliveryLog.tenantId, tenantId)
-        ),
-        orderBy: [desc(webhookDeliveryLog.createdAt)],
-        limit: 50,
-    });
+        ))
+        .orderBy(desc(webhookDeliveryLog.createdAt))
+        .limit(50);
 
     return c.json({ data });
 });
@@ -206,13 +210,15 @@ webhooksRoutes.patch('/:id', async (c) => {
     }
 
     // Check existence & ownership
-    const existing = await db.query.webhookEndpoints.findFirst({
-        where: and(
+    const [existing] = await db
+        .select()
+        .from(webhookEndpoints)
+        .where(and(
             eq(webhookEndpoints.id, id),
             eq(webhookEndpoints.tenantId, tenantId),
             isNull(webhookEndpoints.deletedAt)
-        ),
-    });
+        ))
+        .limit(1);
 
     if (!existing) {
         return c.json({ error: 'Webhook endpoint not found', code: 'NOT_FOUND' }, 404);
@@ -262,13 +268,15 @@ webhooksRoutes.delete('/:id', async (c) => {
 
     const id = c.req.param('id');
 
-    const existing = await db.query.webhookEndpoints.findFirst({
-        where: and(
+    const [existing] = await db
+        .select()
+        .from(webhookEndpoints)
+        .where(and(
             eq(webhookEndpoints.id, id),
             eq(webhookEndpoints.tenantId, tenantId),
             isNull(webhookEndpoints.deletedAt)
-        ),
-    });
+        ))
+        .limit(1);
 
     if (!existing) {
         return c.json({ error: 'Webhook endpoint not found', code: 'NOT_FOUND' }, 404);
