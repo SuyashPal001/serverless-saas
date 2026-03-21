@@ -78,13 +78,12 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
     const endDate = endDateParam ? new Date(endDateParam) : now;
 
     try {
-        const dateTrunc = period === 'monthly' 
-            ? sql`date_trunc('month', ${usageRecords.recordedAt})` 
-            : sql`date_trunc('day', ${usageRecords.recordedAt})`;
+        const truncFn = period === 'monthly' ? 'month' : 'day';
+        const dateTrunc = sql`date_trunc(${truncFn}, ${usageRecords.recordedAt})`;
 
         const aggregatedData = await db
             .select({
-                date: sql<string>`${dateTrunc}::text`,
+                date: sql<string>`(${dateTrunc})::text`,
                 value: sql<number>`SUM(${usageRecords.quantity})::int`,
             })
             .from(usageRecords)
@@ -94,8 +93,8 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
                 gte(usageRecords.recordedAt, startDate),
                 lte(usageRecords.recordedAt, endDate)
             ))
-            .groupBy(sql`${dateTrunc}`)
-            .orderBy(sql`${dateTrunc} ASC`);
+            .groupBy(dateTrunc)
+            .orderBy(dateTrunc);
 
         const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);
         
