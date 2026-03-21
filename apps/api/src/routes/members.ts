@@ -284,6 +284,14 @@ membersRoutes.delete('/:id', async (c) => {
         return c.json({ error: 'Cannot suspend your own membership', code: 'SELF_SUSPEND_FORBIDDEN' }, 403);
     }
 
+    // Revoke any pending invitation tokens so the invite link can no longer be accepted
+    await db.update(invitationTokens)
+        .set({ status: 'revoked', revokedAt: new Date(), revokedBy: userId })
+        .where(and(
+            eq(invitationTokens.membershipId, memberId),
+            eq(invitationTokens.status, 'pending')
+        ));
+
     // Soft delete — status: suspended, not a hard DELETE from DB
     const [removed] = await db
         .update(memberships)
