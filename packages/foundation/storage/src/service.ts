@@ -1,8 +1,24 @@
 import { db } from '@serverless-saas/database';
 import { files, storageProviders } from '@serverless-saas/database/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { S3StorageProvider } from './providers/s3';
 import type { StorageProvider, UploadUrlRequest, UploadUrlResponse } from './types';
+
+const ssm = new SSMClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+let cachedBucket: string | null = null;
+
+async function getBucketFromSSM(): Promise<string> {
+  if (cachedBucket) return cachedBucket;
+
+  const env = process.env.ENVIRONMENT || 'dev';
+  const paramName = `/serverless-saas/${env}/storage/bucket`;
+
+  const command = new GetParameterCommand({ Name: paramName });
+  const result = await ssm.send(command);
+  cachedBucket = result.Parameter?.Value || '';
+  return cachedBucket;
+}
 
 export class StorageService {
   private async resolveProvider(tenantId: string): Promise<StorageProvider> {
@@ -40,10 +56,11 @@ export class StorageService {
       });
     }
 
-    // Fallback to env vars
+    // Fallback: resolve bucket name from SSM
+    const bucket = await getBucketFromSSM();
     return new S3StorageProvider({
       region: process.env.AWS_REGION || 'ap-south-1',
-      bucket: process.env.STORAGE_BUCKET!,
+      bucket,
     });
   }
 
