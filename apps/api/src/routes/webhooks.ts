@@ -13,6 +13,8 @@ webhooksRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
+    console.log('GET /webhooks - tenantId:', tenantId, 'permissions:', permissions);
+
     if (!permissions.includes('webhooks:read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
@@ -34,6 +36,9 @@ webhooksRoutes.get('/', async (c) => {
             isNull(webhookEndpoints.deletedAt)
         ))
         .orderBy(desc(webhookEndpoints.createdAt));
+
+    console.log('GET /webhooks - result count:', data.length);
+    console.log('GET /webhooks - first result:', data[0]);
 
     return c.json({ data });
 });
