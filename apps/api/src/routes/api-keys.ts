@@ -79,7 +79,7 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
 
     try {
         const truncFn = period === 'monthly' ? 'month' : 'day';
-        const dateTrunc = sql`date_trunc(${truncFn}, ${usageRecords.recordedAt})`;
+        const dateTrunc = sql`date_trunc('${sql.raw(truncFn)}', ${usageRecords.recordedAt})`;
 
         const aggregatedData = await db
             .select({
