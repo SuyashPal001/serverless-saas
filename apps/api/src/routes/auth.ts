@@ -96,6 +96,25 @@ authPublicRoutes.get('/check-email', async (c) => {
         return c.json({ error: 'Invalid email format' }, 400);
     }
 
+    const validatedEmail = result.data;
+
+    const cacheClient = await getCacheClient();
+    const rateLimitKey = `ratelimit:check-email:${validatedEmail.toLowerCase()}`;
+    const count = await cacheClient.incr(rateLimitKey);
+
+    // Set expiry on first request
+    if (count === 1) {
+        await cacheClient.expire(rateLimitKey, 60);
+    }
+
+    if (count > 5) {
+        return c.json({ 
+            error: 'Too many requests. Please try again later.', 
+            code: 'RATE_LIMIT_EXCEEDED',
+            retryAfter: 60 
+        }, 429);
+    }
+
     // Check if user exists: SELECT id FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1
     const [user] = await db
         .select({ id: users.id })

@@ -3,6 +3,7 @@ import { handleStep } from './handlers/step';
 import { handleEmail } from './handlers/email';
 import { handleAudit } from './handlers/audit';
 import { handleCacheInvalidate } from './handlers/cache';
+import { handleWebhookDelivery } from './handlers/webhookDelivery';
 
 export async function route(body: Record<string, unknown>): Promise<void> {
   const type = body.type as string | undefined;
@@ -22,6 +23,9 @@ export async function route(body: Record<string, unknown>): Promise<void> {
       break;
     case 'cache.invalidate':
       await handleCacheInvalidate(body);
+      break;
+    case 'webhook.deliver':
+      await handleWebhookDelivery(body);
       break;
     default:
       console.log('Worker received unknown job type — skipping', { type });
