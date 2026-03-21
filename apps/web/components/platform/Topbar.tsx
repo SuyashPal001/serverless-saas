@@ -47,7 +47,7 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
             .finally(() => setIsLoading(false))
     }, [])
 
-    const currentWorkspace = workspaces.find(w => w.isCurrent) || workspaces.find(w => w.slug === tenantSlug)
+    const currentWorkspace = workspaces.find(w => w.slug === currentSlugFromUrl) || workspaces.find(w => w.slug === tenantSlug) || workspaces.find(w => w.isCurrent)
 
     const handleSwitch = async (workspace: any) => {
         if (workspace.slug === currentSlugFromUrl) {
