@@ -72,14 +72,11 @@ function InviteMemberModal({ open, onOpenChange }: { open: boolean; onOpenChange
     });
 
     // Fetch roles and filter out agent roles
-    const { data: roles, isLoading: rolesLoading } = useQuery<Role[]>({
+    const { data: rolesData, isLoading: rolesLoading } = useQuery<{ roles: Role[] }>({
         queryKey: ["roles", tenantId],
-        queryFn: async () => {
-            const response = await api.get<{ roles: Role[] }>("/api/v1/roles");
-            // Filter out agent roles - only show human roles for member invites
-            return response.roles.filter(role => !role.isAgentRole);
-        },
+        queryFn: () => api.get<{ roles: Role[] }>("/api/v1/roles"),
     });
+    const roles = rolesData?.roles?.filter(role => !role.isAgentRole) ?? [];
 
     const inviteMutation = useMutation({
         mutationFn: (data: InviteFormValues) =>
@@ -208,15 +205,9 @@ export default function MembersPage() {
                         Manage team members and their roles
                     </p>
                 </div>
-                <PermissionGate resource="members" action="create" fallback={null}>
-                    <Button onClick={() => setInviteModalOpen(true)}>
-                        <UserPlus className="w-4 h-4 mr-2" />
-                        Invite Member
-                    </Button>
-                </PermissionGate>
             </div>
 
-            <MembersList />
+            <MembersList onInviteClick={() => setInviteModalOpen(true)} />
 
             <InviteMemberModal
                 open={inviteModalOpen}

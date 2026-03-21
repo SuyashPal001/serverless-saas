@@ -35,6 +35,8 @@ export function RolesList() {
     const { data, isLoading, isError, error } = useQuery<RolesResponse>({
         queryKey: ["roles", tenantId],
         queryFn: () => api.get<RolesResponse>("/api/v1/roles"),
+        enabled: !!tenantId,
+        staleTime: 0,
     });
 
     const canDeleteRoles = canDelete(permissions, "roles");

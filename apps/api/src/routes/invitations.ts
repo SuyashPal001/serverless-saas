@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
@@ -8,6 +8,7 @@ import { memberships, tenants } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { invitationTokens } from '@serverless-saas/database/schema/invitations';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { features } from '@serverless-saas/database/schema/entitlements';
 import { sendEmail } from '@serverless-saas/notifications';
 import type { AppEnv } from '../types';
 
@@ -133,6 +134,7 @@ memberInviteRoutes.post('/invite', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
     const userId = c.get('userId') as string;
 
     if (!permissions.includes('members:create')) {
@@ -150,6 +152,47 @@ memberInviteRoutes.post('/invite', async (c) => {
     }
 
     const { email, roleId } = result.data;
+
+    // Check seat entitlements
+    console.log('[invite] entitlements check:', {
+        hasEntitlements: !!entitlements,
+        entitlements,
+        requestContextKeys: Object.keys(requestContext || {}),
+    });
+
+    if (entitlements) {
+        const seatsFeature = await db.query.features.findFirst({
+            where: eq(features.key, 'seats'),
+        });
+
+        console.log('[invite] seats feature lookup:', {
+            seatsFeature,
+            seatsEntitlement: seatsFeature ? entitlements[seatsFeature.id] : null,
+        });
+
+        if (seatsFeature) {
+            const seatsEntitlement = entitlements[seatsFeature.id];
+            
+            if (seatsEntitlement && !seatsEntitlement.unlimited) {
+                const limit = seatsEntitlement.valueLimit ?? 0;
+                
+                const [countResult] = await db
+                    .select({ count: sql<number>`count(*)::int` })
+                    .from(memberships)
+                    .where(
+                        and(
+                            eq(memberships.tenantId, tenantId),
+                            inArray(memberships.status, ['active', 'invited']),
+                            eq(memberships.memberType, 'human')
+                        )
+                    );
+                
+                if (countResult.count >= limit) {
+                    return c.json({ error: 'Seat limit reached. Upgrade your plan.', code: 'FEATURE_NOT_ENTITLED', feature: 'seats' }, 403);
+                }
+            }
+        }
+    }
 
     // Check invitee is not already an active member of this tenant
     const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);

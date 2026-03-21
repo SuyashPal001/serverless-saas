@@ -46,7 +46,10 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PermissionGate } from "@/components/platform/PermissionGate";
+import Link from "next/link";
 
 interface Member {
     id: string;
@@ -69,9 +72,10 @@ interface Role {
     name: string;
 }
 
-export function MembersList() {
+export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
     const { tenantId, userId, permissions = [] } = useTenant();
     const queryClient = useQueryClient();
+    const [activeTab, setActiveTab] = useState<"humans" | "agents">("humans");
     const [selectedMemberForRole, setSelectedMemberForRole] = useState<Member | null>(null);
     const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 
@@ -83,13 +87,11 @@ export function MembersList() {
         },
     });
 
-    const { data: roles } = useQuery<Role[]>({
+    const { data: rolesData } = useQuery<{ roles: Role[] }>({
         queryKey: ["roles", tenantId],
-        queryFn: async () => {
-            const res = await api.get<{ roles: Role[] }>("/api/v1/roles");
-            return res.roles;
-        },
+        queryFn: () => api.get<{ roles: Role[] }>("/api/v1/roles"),
     });
+    const roles = rolesData?.roles ?? [];
 
     const suspendMutation = useMutation({
         mutationFn: (memberId: string) => api.del(`/api/v1/members/${memberId}`),
@@ -160,13 +162,13 @@ export function MembersList() {
         );
     }
 
-    if (!members || members.length === 0) {
-        return (
-            <div className="text-center py-10 bg-muted/20 rounded-md border border-dashed border-border">
-                <p className="text-muted-foreground">No members found.</p>
-            </div>
-        );
+    if (!members) {
+        return null;
     }
+
+    const humanMembers = members.filter(m => m.memberType === "human");
+    const agentMembers = members.filter(m => m.memberType === "agent");
+    const displayedMembers = activeTab === "humans" ? humanMembers : agentMembers;
 
     const getDisplayName = (member: Member): string => {
         if (member.memberType === "agent") {
@@ -196,8 +198,47 @@ export function MembersList() {
     };
 
     return (
-        <div className="rounded-md border border-border">
-            <Table>
+        <Tabs defaultValue="humans" value={activeTab} onValueChange={(v) => setActiveTab(v as "humans" | "agents")} className="space-y-4">
+            <div className="flex items-center justify-between mb-6">
+                <TabsList className="bg-transparent h-auto p-0 gap-2">
+                    <TabsTrigger 
+                        className="rounded-full px-4 py-1.5 text-sm font-medium border border-border bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:border-foreground data-[state=active]:shadow-none"
+                        value="humans"
+                    >
+                        Team Members ({humanMembers.length})
+                    </TabsTrigger>
+                    <TabsTrigger 
+                        className="rounded-full px-4 py-1.5 text-sm font-medium border border-border bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:border-foreground data-[state=active]:shadow-none"
+                        value="agents"
+                    >
+                        Agents ({agentMembers.length})
+                    </TabsTrigger>
+                </TabsList>
+                <div className="flex items-center">
+                    {activeTab === "humans" && onInviteClick && (
+                        <PermissionGate resource="members" action="create" fallback={null}>
+                            <Button onClick={onInviteClick} size="sm">
+                                <UserPlus className="w-4 h-4 mr-2" />
+                                Invite Member
+                            </Button>
+                        </PermissionGate>
+                    )}
+                    {activeTab === "agents" && (
+                        <Link href={`/${tenantId}/dashboard/agents`}>
+                            <Button variant="outline" size="sm">Manage Agents</Button>
+                        </Link>
+                    )}
+                </div>
+            </div>
+            
+            <TabsContent value={activeTab} className="m-0 border-none p-0 outline-none">
+                {displayedMembers.length === 0 ? (
+                    <div className="text-center py-10 bg-muted/20 rounded-md border border-dashed border-border mt-4">
+                        <p className="text-muted-foreground">No {activeTab === "humans" ? "team members" : "agents"} found.</p>
+                    </div>
+                ) : (
+                    <div className="rounded-md border border-border bg-card">
+                        <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead>Member</TableHead>
@@ -208,7 +249,7 @@ export function MembersList() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {members.map((member) => (
+                    {displayedMembers.map((member) => (
                         <TableRow key={member.id}>
                             <TableCell>
                                 <div className="flex items-center gap-3">
@@ -423,6 +464,9 @@ export function MembersList() {
                     ))}
                 </TableBody>
             </Table>
-        </div>
+                    </div>
+                )}
+            </TabsContent>
+        </Tabs>
     );
 }
