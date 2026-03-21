@@ -27,6 +27,7 @@ import { entitlementsRoutes } from './routes/entitlements';
 import { tenantsRoutes } from './routes/tenants';
 import { usageRoutes } from './routes/usage';
 import { webhooksRoutes } from './routes/webhooks';
+import { filesRoutes } from './routes/files';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { randomUUID } from 'crypto';
 
@@ -103,6 +104,7 @@ api.route('/ops', opsRoutes);
 api.route('/entitlements', entitlementsRoutes);
 api.route('/usage', usageRoutes);
 api.route('/webhooks', webhooksRoutes);
+api.route('/files', filesRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', api);

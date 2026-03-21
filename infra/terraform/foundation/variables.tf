@@ -161,3 +161,11 @@ variable "ses_from_domain" {
   description = "SES sending subdomain (e.g. mail.saas.fitnearn.com)"
   type        = string
 }
+
+# -------------------------------------------------------
+# Storage
+# -------------------------------------------------------
+variable "domain" {
+  description = "Root domain for the project (e.g. saas.fitnearn.com). Used for S3 CORS wildcard."
+  type        = string
+}

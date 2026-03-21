@@ -11,3 +11,4 @@ export * from './entitlements';
 export * from './relations';
 export * from './invitations';
 export * from './webhooks';
+export * from './storage';

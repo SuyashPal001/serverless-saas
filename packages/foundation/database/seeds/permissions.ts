@@ -22,6 +22,7 @@ export const RESOURCES: Record<string, Action[]> = {
     integrations: ['create', 'read', 'update', 'delete'],
     usage: ['read'],
     webhooks: ['create', 'read', 'update', 'delete'],
+    files: ['create', 'read', 'delete'],
 };
 
 export async function seedPermissions(db: typeof DB) {

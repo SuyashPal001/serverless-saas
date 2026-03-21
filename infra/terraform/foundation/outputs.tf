@@ -108,3 +108,11 @@ output "ses_mail_from_domain" {
   description = "MAIL FROM domain for bounce handling."
   value       = module.ses.mail_from_domain
 }
+
+# -------------------------------------------------------
+# Storage
+# -------------------------------------------------------
+output "storage_bucket_name" {
+  description = "S3 file storage bucket name."
+  value       = aws_s3_bucket.files.bucket
+}

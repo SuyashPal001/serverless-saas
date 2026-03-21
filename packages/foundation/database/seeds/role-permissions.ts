@@ -25,6 +25,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'tenant:read',
         'usage:read',
         'webhooks:read',
+        'files:read',
+        'files:create',
     ],
 
     'ops-agent': [

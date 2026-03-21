@@ -43,6 +43,13 @@
       "when": 1774119936575,
       "tag": "0005_soft_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774120835731,
+      "tag": "0006_robust_manta",
+      "breakpoints": true
     }
   ]
 }
