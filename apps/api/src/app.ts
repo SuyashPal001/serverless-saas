@@ -24,6 +24,7 @@ import { billingRoutes } from './routes/billing';
 import { opsRoutes } from './routes/ops';
 import { authInjectionMiddleware } from './middleware/authInjection';
 import { entitlementsRoutes } from './routes/entitlements';
+import { tenantsRoutes } from './routes/tenants';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -59,6 +60,7 @@ api.use('*', userUpsertMiddleware);
 // Onboarding — needs auth + upsert, tenantResolution handles empty tenantId
 api.route('/onboarding', onboardingRoutes);
 api.route('/invitations', invitationsPublicRoutes);
+api.route('/tenants', tenantsRoutes);
 
 // Step 3: API key auth
 api.use('*', apiKeyAuthMiddleware);

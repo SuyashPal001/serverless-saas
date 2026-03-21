@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { LogOut, User, ChevronDown, Check } from "lucide-react"
+import { LogOut, User, ChevronDown, Check, Plus } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
 import { toast } from "sonner"
 import {
     DropdownMenu,
@@ -17,6 +17,15 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 
 function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlanColor: string, plan: string, tenantSlug: string | undefined }) {
     const router = useRouter()
@@ -25,6 +34,9 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
     const [workspaces, setWorkspaces] = React.useState<any[]>([])
     const [isLoading, setIsLoading] = React.useState(true)
     const [isOpen, setIsOpen] = React.useState(false)
+    const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
+    const [newWorkspaceName, setNewWorkspaceName] = React.useState("")
+    const [isCreating, setIsCreating] = React.useState(false)
 
     React.useEffect(() => {
         api.get<{ tenants: any[] }>('/api/v1/auth/tenants')
@@ -62,6 +74,54 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
         }
     }
 
+    const handleCreateWorkspace = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!newWorkspaceName.trim()) return
+
+        setIsCreating(true)
+        try {
+            const res = await api.post<{ tenantId: string, slug: string }>('/api/proxy/api/v1/tenants', { name: newWorkspaceName })
+            toast.success("Workspace created")
+            
+            // Switch to it
+            await fetch('/api/auth/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenantId: res.tenantId }),
+            })
+
+            router.push(`/${res.slug}/dashboard`)
+            router.refresh()
+            setIsCreateModalOpen(false)
+            setNewWorkspaceName("")
+            setIsOpen(false)
+        } catch (error: any) {
+            console.error('Failed to create workspace', error)
+            
+            let errorData = null;
+            if (error instanceof ApiError) {
+                errorData = error.data;
+            } else if (error.response) {
+                errorData = await error.response.json().catch(() => null);
+            }
+            
+            if (error?.status === 403 || errorData?.code === 'FEATURE_NOT_ENTITLED') {
+                toast.error("Workspace limit reached. Upgrade to create more workspaces.", {
+                    action: {
+                        label: "Upgrade",
+                        onClick: () => router.push(`/${tenantSlug || currentSlugFromUrl}/dashboard/billing`)
+                    }
+                })
+            } else if (errorData?.code === 'CONFLICT') {
+                toast.error("You already have a workspace with this name.");
+            } else {
+                toast.error(errorData?.error || "Failed to create workspace. Please try again.");
+            }
+        } finally {
+            setIsCreating(false)
+        }
+    }
+
     const displaySlug = tenantSlug?.toUpperCase() || 'PLATFORM'
 
     return (
@@ -96,8 +156,55 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
                             </span>
                         </DropdownMenuItem>
                     ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        className="flex items-center gap-2 cursor-pointer py-2 px-3 text-muted-foreground"
+                        onSelect={(e) => {
+                            e.preventDefault();
+                            setIsOpen(false);
+                            setIsCreateModalOpen(true);
+                        }}
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span className="font-medium text-sm">Create Workspace</span>
+                    </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Create Workspace</DialogTitle>
+                        <DialogDescription>
+                            Create a new workspace to collaborate with your team.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleCreateWorkspace}>
+                        <div className="py-4">
+                            <Input
+                                placeholder="Workspace Name"
+                                value={newWorkspaceName}
+                                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                                disabled={isCreating}
+                                autoFocus
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                onClick={() => setIsCreateModalOpen(false)}
+                                disabled={isCreating}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isCreating || !newWorkspaceName.trim()}>
+                                {isCreating ? "Creating..." : "Create"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <button
                 onClick={() => tenantSlug && router.push(`/${tenantSlug}/dashboard/billing`)}
