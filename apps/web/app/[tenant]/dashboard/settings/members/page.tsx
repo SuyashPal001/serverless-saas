@@ -7,8 +7,9 @@ import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { UserPlus, AlertCircle } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
 
@@ -62,6 +63,9 @@ function InviteMemberModal({ open, onOpenChange }: { open: boolean; onOpenChange
     const { tenantId } = useTenant();
     const queryClient = useQueryClient();
     const [inlineError, setInlineError] = useState<string | null>(null);
+    const params = useParams<{ tenant: string }>();
+    const router = useRouter();
+    const tenantSlug = params?.tenant;
 
     const form = useForm<InviteFormValues>({
         resolver: zodResolver(inviteSchema),
@@ -88,8 +92,31 @@ function InviteMemberModal({ open, onOpenChange }: { open: boolean; onOpenChange
             onOpenChange(false);
             toast.success("Invitation sent successfully");
         },
-        onError: (error: Error) => {
-            setInlineError(error.message || "Failed to invite member");
+        onError: async (error: any) => {
+            let errorData = null;
+            if (error instanceof ApiError) {
+                errorData = error.data;
+            } else if (error.response) {
+                errorData = await error.response.json().catch(() => null);
+            }
+
+            if (errorData?.code === 'FEATURE_NOT_ENTITLED') {
+                toast.error("You've reached your plan's member limit. Upgrade to invite more team members.", {
+                    action: {
+                        label: "Upgrade",
+                        onClick: () => {
+                            onOpenChange(false);
+                            router.push(`/${tenantSlug}/dashboard/billing`);
+                        }
+                    }
+                });
+            } else if (errorData?.code === 'ALREADY_MEMBER') {
+                toast.error("This person is already a member of your workspace.");
+            } else if (errorData?.code === 'INVITATION_PENDING') {
+                toast.error("An invitation has already been sent to this email.");
+            } else {
+                toast.error(errorData?.error || "Failed to send invitation. Please try again.");
+            }
         },
     });
 

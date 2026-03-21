@@ -19,6 +19,7 @@ const FEATURES: {
         { key: 'mcp_integrations', name: 'MCP Integrations', type: 'boolean', unit: null, resetPeriod: null, metricKey: null },
         { key: 'audit_log', name: 'Audit Log', type: 'boolean', unit: null, resetPeriod: null, metricKey: null },
         { key: 'seats', name: 'Team Seats', type: 'limit', unit: 'seats', resetPeriod: null, metricKey: null },
+        { key: 'workspaces', name: 'Workspaces', type: 'limit', unit: 'workspaces', resetPeriod: null, metricKey: null },
         { key: 'agents', name: 'AI Agents', type: 'limit', unit: 'agents', resetPeriod: null, metricKey: null },
         { key: 'integrations', name: 'Integrations', type: 'limit', unit: 'integrations', resetPeriod: null, metricKey: null },
         { key: 'api_calls', name: 'API Calls', type: 'metered', unit: 'calls', resetPeriod: 'monthly', metricKey: 'api_calls' },

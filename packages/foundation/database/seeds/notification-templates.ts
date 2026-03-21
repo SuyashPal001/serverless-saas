@@ -1,6 +1,5 @@
 import { eq, and, isNull } from 'drizzle-orm';
-import { notificationTemplates } from '@serverless-saas/database/schema/notifications';
-import { users } from '@serverless-saas/database/schema/auth';
+import { notificationTemplates, users } from '../schema/index';
 import type { db as DB } from './index';
 
 const TEMPLATES: Array<{

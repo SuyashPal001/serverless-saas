@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { memberships, tenants } from '@serverless-saas/database/schema/tenancy';
@@ -42,6 +42,7 @@ membersRoutes.get('/', async (c) => {
                 agentId: memberships.agentId,
                 agentName: agents.name,
                 agentType: agents.type,
+                invitedEmail: sql<string | null>`(SELECT email FROM invitation_tokens WHERE membership_id = ${memberships.id} ORDER BY created_at DESC LIMIT 1)`,
             })
             .from(memberships)
             .leftJoin(users, and(eq(memberships.userId, users.id), isNull(users.deletedAt)))

@@ -65,6 +65,7 @@ interface Member {
     agentId: string | null;
     agentName: string | null;
     agentType: string | null;
+    invitedEmail: string | null;
 }
 
 interface Role {
@@ -174,10 +175,7 @@ export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
         if (member.memberType === "agent") {
             return member.agentName || "Unknown Agent";
         }
-        if (member.status === "invited" && !member.userName && !member.userEmail) {
-            return "Pending invite";
-        }
-        return member.userName || member.userEmail || "Unknown";
+        return member.userName || member.userEmail || member.invitedEmail || "Unknown";
     };
 
     const getInitials = (member: Member): string => {
@@ -187,7 +185,8 @@ export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
             return "AG";
         }
         if (member.userName) return member.userName.substring(0, 2).toUpperCase();
-        if (member.userEmail) return member.userEmail.substring(0, 2).toUpperCase();
+        const email = member.userEmail || member.invitedEmail;
+        if (email) return email.substring(0, 2).toUpperCase();
         return "??";
     };
 
@@ -275,7 +274,7 @@ export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
                                         <span className="text-xs text-muted-foreground">
                                             {member.memberType === "agent"
                                                 ? member.agentType ?? ""
-                                                : member.userEmail ?? ""}
+                                                : member.userEmail ?? member.invitedEmail ?? ""}
                                         </span>
                                     </div>
                                 </div>
