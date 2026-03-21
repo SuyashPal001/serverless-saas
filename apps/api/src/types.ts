@@ -15,6 +15,8 @@ export interface AppEnv {
     tenantId: string;
     apiKeyContext?: ApiKeyContext;
     userId?: string;
+    agentId?: string;
+    actorType?: 'human' | 'agent';
     traceId: string;
     startTime: number;
     jwtPayload?: Record<string, string>;

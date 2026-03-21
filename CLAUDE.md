@@ -454,3 +454,44 @@ Read this file before adding any new API calls to understand how it forwards req
 **Do not commit `.env.local`** — already in `.gitignore`, but double-check before any git operations.
 
 **Git workflow:** All changes to `develop` branch only. Never push to `main`.
+
+
+Add to end of "Architecture" section:
+markdown### Worker Lambda (apps/worker)
+
+SQS consumer with router pattern:
+```typescript
+// apps/worker/src/router.ts
+switch (body.type) {
+  case 'notification.fire': return handleNotification(message);
+  case 'webhook.deliver': return handleWebhookDelivery(message);
+  case 'usage.record': return handleUsageRecord(message);
+}
+```
+
+Handler files at `apps/worker/src/handlers/`.
+
+### Async Patterns
+
+Non-blocking operations use SQS:
+- Usage recording → `usage.record`
+- Webhook delivery → `webhook.deliver`
+- Notifications → `notification.fire`
+
+Fire from API routes:
+```typescript
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+
+const sqs = new SQSClient({});
+await sqs.send(new SendMessageCommand({
+  QueueUrl: process.env.SQS_PROCESSING_QUEUE_URL,
+  MessageBody: JSON.stringify({ type: 'usage.record', ... })
+}));
+```
+Update "What's Working" section:
+markdown### What's Working
+- All dashboard pages with real data ✅
+- Members, Roles, Billing, API Keys, Audit log ✅
+- Usage charts on billing page (frontend ready, backend in progress)
+- WebSocket real-time notifications ✅
+- Webhooks delivery ✅

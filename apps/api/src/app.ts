@@ -25,6 +25,8 @@ import { opsRoutes } from './routes/ops';
 import { authInjectionMiddleware } from './middleware/authInjection';
 import { entitlementsRoutes } from './routes/entitlements';
 import { tenantsRoutes } from './routes/tenants';
+import { usageRoutes } from './routes/usage';
+import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -82,6 +84,9 @@ api.use('*', permissionsMiddleware);
 // Step 8: Query scope
 api.use('*', queryScopeMiddleware);
 
+// Step 9: Usage Recording
+api.use('*', usageRecordingMiddleware);
+
 // ── Secure routes ─────────────────────────────────────────────────────────────
 api.route('/auth', authRoutes);
 api.route('/members', membersRoutes);
@@ -95,6 +100,7 @@ api.route('/audit-log', auditLogRoutes);
 api.route('/billing', billingRoutes);
 api.route('/ops', opsRoutes);
 api.route('/entitlements', entitlementsRoutes);
+api.route('/usage', usageRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', api);

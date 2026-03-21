@@ -98,6 +98,8 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         type: apiKey.type,
         permissions: resolvedPermissions,
     });
+    c.set('agentId', agent.id);
+    c.set('actorType', 'agent');
 
     // Non-blocking usage tracking — failure here must never block the request
     await db.transaction(async (tx: typeof db) => {

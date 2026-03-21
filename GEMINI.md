@@ -570,3 +570,32 @@ import { eq, and, or, isNull, desc, asc, sql } from 'drizzle-orm';
 // Zod
 import { z } from 'zod';
 ```
+
+Add to "Critical Rules — Never Violate" section:
+markdown### SQS Async Pattern
+- For non-blocking operations (usage recording, audit logs), send to SQS and let worker process
+- Use `c.executionCtx.waitUntil()` or fire-and-forget pattern — never block HTTP response
+- Guard SQS calls: `if (!process.env.SQS_PROCESSING_QUEUE_URL) return` for local dev
+
+### Worker Lambda
+- Router pattern at `apps/worker/src/router.ts` — switch on `message.type`
+- Handler files at `apps/worker/src/handlers/`
+- Existing types: `notification.fire`, `webhook.deliver`, `usage.record`
+Update "Current State" section:
+markdown### Completed
+- Steps 1–3: SES setup, Google OAuth/Cognito federation, invite flow ✅
+- Step 5: Worker Lambda + notification API routes (8 routes) ✅
+- Step 6: WebSocket real-time inbox ✅
+- Webhooks: schema + worker handler + fire helper ✅
+- Full auth flow, onboarding, billing, RBAC, audit log, agents, API keys ✅
+- Frontend dashboard: all 11 pages built ✅
+- Frontend permissions: PermissionGate, Sidebar gating ✅
+
+### In Progress
+- Usage metering pipeline (middleware + worker + endpoint + charts)
+
+### Pending
+- Billing integration (Razorpay)
+- Step 4: Dashboard home (parked)
+Add to "Permission Strings" table:
+markdown| `usage` | `read` |
