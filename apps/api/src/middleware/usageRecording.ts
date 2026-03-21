@@ -57,10 +57,7 @@ export const usageRecordingMiddleware = createMiddleware<AppEnv>(async (c, next)
         MessageBody: JSON.stringify(message),
     });
 
-    // Use waitUntil so Lambda does not freeze before SQS request completes
-    c.executionCtx.waitUntil(
-        sqs.send(command).catch(err => {
-            console.error('Failed to send usage record to SQS:', err);
-        })
-    );
+    void sqs.send(command).catch(err => {
+        console.error('Failed to send usage record to SQS:', err);
+    });
 });
