@@ -20,6 +20,7 @@ export const RESOURCES: Record<string, Action[]> = {
     tenant: ['read', 'update', 'delete'],
     entitlements: ['create', 'read', 'update', 'delete'],
     integrations: ['create', 'read', 'update', 'delete'],
+    usage: ['read'],
 };
 
 export async function seedPermissions(db: typeof DB) {
