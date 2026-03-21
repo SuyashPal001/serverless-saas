@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Key, Activity } from "lucide-react";
+import { AlertCircle, Key, Activity, BarChart3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { RevokeApiKeyAction } from "./RevokeApiKeyAction";
 import { DeleteApiKeyAction } from "./DeleteApiKeyAction";
+import { KeyUsageModal } from "./KeyUsageModal";
 import { cn } from "@/lib/utils";
 
 export interface ApiKey {
@@ -42,6 +45,7 @@ const keyPreview = (type: string) => {
 
 export function ApiKeysList() {
     const { tenantId, permissions = [] } = useTenant();
+    const [usageKey, setUsageKey] = useState<{ id: string, name: string } | null>(null);
 
     const { data, isLoading, isError, error } = useQuery<ApiKeysResponse>({
         queryKey: ["api-keys", tenantId],
@@ -157,6 +161,15 @@ export function ApiKeysList() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 text-muted-foreground opacity-70 hover:opacity-100" 
+                                            title="View Usage (Coming soon)"
+                                            onClick={() => setUsageKey({ id: key.id, name: key.name })}
+                                        >
+                                            <BarChart3 className="w-4 h-4" />
+                                        </Button>
                                         {!isRevoked && canRevokeKeys && (
                                             <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
                                         )}
@@ -168,6 +181,15 @@ export function ApiKeysList() {
                     })}
                 </TableBody>
             </Table>
+
+            {usageKey && (
+                <KeyUsageModal
+                    keyId={usageKey.id}
+                    keyName={usageKey.name}
+                    isOpen={!!usageKey}
+                    onClose={() => setUsageKey(null)}
+                />
+            )}
         </div>
     );
 }

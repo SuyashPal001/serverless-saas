@@ -28,6 +28,7 @@ export const usageRecordingMiddleware = createMiddleware<AppEnv>(async (c, next)
 
     const userId = c.get('userId');
     const agentId = c.get('agentId');
+    const apiKeyId = c.get('apiKeyId');
     const actorId = userId || agentId;
     const actorType = c.get('actorType') || 'human';
 
@@ -47,6 +48,7 @@ export const usageRecordingMiddleware = createMiddleware<AppEnv>(async (c, next)
         tenantId,
         actorId,
         actorType,
+        apiKeyId: apiKeyId || null,
         metric: 'api_calls',
         quantity: 1,
         recordedAt: new Date().toISOString(),

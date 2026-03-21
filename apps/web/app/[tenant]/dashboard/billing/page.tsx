@@ -1,6 +1,5 @@
 import { SubscriptionDetails } from "@/components/platform/billing/SubscriptionDetails";
 import { EntitlementsSummary } from "@/components/platform/billing/EntitlementsSummary";
-import { UsageSummary } from "@/components/platform/billing/UsageSummary";
 import { PermissionGate } from "@/components/platform/PermissionGate";
 
 export default async function BillingPage({
@@ -26,8 +25,6 @@ export default async function BillingPage({
                     <SubscriptionDetails />
                     <EntitlementsSummary />
                 </div>
-
-                <UsageSummary />
             </div>
         </PermissionGate>
     );

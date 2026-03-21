@@ -6,6 +6,7 @@ export interface UsageRecordEvent {
     tenantId: string;
     actorId: string;
     actorType: 'human' | 'agent';
+    apiKeyId?: string | null;
     metric: string;
     quantity: number;
     recordedAt: string;
@@ -25,6 +26,7 @@ export async function handleUsageRecord(body: Record<string, unknown>): Promise<
             tenantId: msg.tenantId,
             actorId: msg.actorId,
             actorType: msg.actorType || 'human',
+            apiKeyId: msg.apiKeyId || null,
             metric: msg.metric,
             quantity: msg.quantity?.toString() || '1',
             recordedAt: new Date(msg.recordedAt || Date.now()),
@@ -33,7 +35,8 @@ export async function handleUsageRecord(body: Record<string, unknown>): Promise<
         console.log('Successfully recorded usage', {
             tenantId: msg.tenantId,
             metric: msg.metric,
-            quantity: msg.quantity
+            quantity: msg.quantity,
+            apiKeyId: msg.apiKeyId || null
         });
     } catch (error) {
         console.error('Failed to insert usage record:', error);

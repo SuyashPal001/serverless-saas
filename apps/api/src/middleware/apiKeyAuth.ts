@@ -98,6 +98,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         type: apiKey.type,
         permissions: resolvedPermissions,
     });
+    c.set('apiKeyId', apiKey.id);
     c.set('agentId', agent.id);
     c.set('actorType', 'agent');
 

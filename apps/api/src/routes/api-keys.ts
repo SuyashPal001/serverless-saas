@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db, apiKeys, auditLog } from '@serverless-saas/database';
+import { db, apiKeys, auditLog, usageRecords } from '@serverless-saas/database';
 import type { AppEnv } from '../types';
 
 export const apiKeysRoutes = new Hono<AppEnv>();
@@ -44,6 +44,78 @@ apiKeysRoutes.get('/', async (c) => {
     });
 
     return c.json({ data });
+});
+
+// GET /api-keys/:id/usage — return usage for a specific API key
+apiKeysRoutes.get('/:id/usage', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('api_keys:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const keyId = c.req.param('id');
+    const period = c.req.query('period') === 'monthly' ? 'monthly' : 'daily';
+    const startDateParam = c.req.query('startDate');
+    const endDateParam = c.req.query('endDate');
+
+    const apiKey = await db.query.apiKeys.findFirst({
+        where: and(
+            eq(apiKeys.id, keyId),
+            eq(apiKeys.tenantId, tenantId)
+        ),
+        columns: { id: true, name: true }
+    });
+
+    if (!apiKey) {
+        return c.json({ error: 'API key not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const now = new Date();
+    const startDate = startDateParam ? new Date(startDateParam) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = endDateParam ? new Date(endDateParam) : now;
+
+    try {
+        const dateTrunc = period === 'monthly' 
+            ? sql`date_trunc('month', ${usageRecords.recordedAt})` 
+            : sql`date_trunc('day', ${usageRecords.recordedAt})`;
+
+        const aggregatedData = await db
+            .select({
+                date: sql<string>`${dateTrunc}::text`,
+                value: sql<number>`SUM(${usageRecords.quantity})::int`,
+            })
+            .from(usageRecords)
+            .where(and(
+                eq(usageRecords.tenantId, tenantId),
+                eq(usageRecords.apiKeyId, keyId),
+                gte(usageRecords.recordedAt, startDate),
+                lte(usageRecords.recordedAt, endDate)
+            ))
+            .groupBy(sql`${dateTrunc}`)
+            .orderBy(sql`${dateTrunc} ASC`);
+
+        const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);
+        
+        const formattedData = aggregatedData.map((row: { date: string, value: number }) => ({
+            date: row.date.split(' ')[0],
+            value: row.value || 0
+        }));
+
+        return c.json({
+            data: formattedData,
+            total,
+            keyId: apiKey.id,
+            keyName: apiKey.name,
+            period
+        });
+
+    } catch (error) {
+        console.error('Failed to fetch api key usage data:', error);
+        return c.json({ error: 'Internal error fetching usage', code: 'INTERNAL_ERROR' }, 500);
+    }
 });
 
 // POST /api-keys — create new key, return raw key ONCE

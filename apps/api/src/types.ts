@@ -14,6 +14,7 @@ export interface AppEnv {
     requestContext?: RequestContext;
     tenantId: string;
     apiKeyContext?: ApiKeyContext;
+    apiKeyId?: string;
     userId?: string;
     agentId?: string;
     actorType?: 'human' | 'agent';

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,6 +141,14 @@ export function EntitlementsSummary() {
                         icon={Bot}
                         metrics={entitlements.agents}
                     />
+                </div>
+                <div className="mt-6 pt-4 border-t border-border text-right">
+                    <Link 
+                        href={`/${tenantId}/dashboard/billing/usage`} 
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        View Details &rarr;
+                    </Link>
                 </div>
             </CardContent>
         </Card>
