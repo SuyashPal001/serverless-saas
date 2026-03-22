@@ -46,6 +46,7 @@ filesRoutes.post(
       resource: 'file',
       resourceId: result.fileId,
       metadata: { filename, contentType },
+      traceId: c.get('traceId') ?? '',
     });
 
     return c.json(result, 201);
@@ -81,6 +82,7 @@ filesRoutes.post(
       resource: 'file',
       resourceId: fileId,
       metadata: { size },
+      traceId: c.get('traceId') ?? '',
     });
 
     return c.json({ success: true });
@@ -144,6 +146,8 @@ filesRoutes.delete('/:id', async (c) => {
     action: 'file_deleted',
     resource: 'file',
     resourceId: fileId,
+    metadata: {},
+    traceId: c.get('traceId') ?? '',
   });
 
   return c.json({ success: true });
