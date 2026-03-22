@@ -25,7 +25,7 @@ export function WebhookPanel({ webhook, open, onOpenChange }: { webhook: any; op
     const deliveries = deliveriesResponse?.data || [];
 
     const toggleMutation = useMutation({
-        mutationFn: async (status: 'active' | 'disabled') => {
+        mutationFn: async (status: 'active' | 'inactive') => {
             return api.patch(`/api/proxy/api/v1/webhooks/${webhook.id}`, { status });
         },
         onSuccess: () => {
@@ -86,7 +86,7 @@ export function WebhookPanel({ webhook, open, onOpenChange }: { webhook: any; op
                                 variant="outline" 
                                 size="sm" 
                                 className="ml-auto"
-                                onClick={() => toggleMutation.mutate(isActive ? 'disabled' : 'active')}
+                                onClick={() => toggleMutation.mutate(isActive ? 'inactive' : 'active')}
                                 disabled={toggleMutation.isPending}
                             >
                                 {toggleMutation.isPending ? (

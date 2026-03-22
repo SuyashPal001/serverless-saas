@@ -57,7 +57,7 @@ export function CreateWebhookModal({ open, onOpenChange }: { open: boolean; onOp
             toast.success("Webhook endpoint deployed successfully.");
         },
         onError: (err: any) => {
-            toast.error(err.response?.data?.error || "Failed to create webhook. Verify the payload URL isn't localized or invalid.");
+            toast.error(err.data?.error || "Failed to create webhook. Verify the payload URL isn't localized or invalid.");
         }
     });
 

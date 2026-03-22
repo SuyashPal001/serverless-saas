@@ -151,6 +151,7 @@ export class StorageService {
       .from(files)
       .where(and(
         eq(files.tenantId, tenantId),
+        eq(files.status, 'uploaded'),
         isNull(files.deletedAt)
       ))
       .limit(limit)
