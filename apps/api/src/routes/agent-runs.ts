@@ -24,11 +24,12 @@ agentRunsRoutes.get('/', async (c) => {
         conditions.push(eq(agentWorkflowRuns.agentId, agentId));
     }
 
-    const data = await db.query.agentWorkflowRuns.findMany({
-        where: and(...conditions),
-        orderBy: desc(agentWorkflowRuns.startedAt),
-        limit: 50,
-    });
+    const data = await db
+        .select()
+        .from(agentWorkflowRuns)
+        .where(and(...conditions))
+        .orderBy(desc(agentWorkflowRuns.startedAt))
+        .limit(50);
 
     return c.json({ data });
 });
@@ -45,12 +46,11 @@ agentRunsRoutes.get('/:id', async (c) => {
 
     const runId = c.req.param('id');
 
-    const data = await db.query.agentWorkflowRuns.findFirst({
-        where: and(
-            eq(agentWorkflowRuns.id, runId),
-            eq(agentWorkflowRuns.tenantId, tenantId)
-        ),
-    });
+    const data = (await db
+        .select()
+        .from(agentWorkflowRuns)
+        .where(and(eq(agentWorkflowRuns.id, runId), eq(agentWorkflowRuns.tenantId, tenantId)))
+        .limit(1))[0];
 
     if (!data) {
         return c.json({ error: 'Run not found' }, 404);

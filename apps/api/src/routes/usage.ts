@@ -60,9 +60,7 @@ usageRoutes.get('/', async (c) => {
         const entitlementsMap = requestContext?.entitlements ?? {};
         
         // Find the feature by its metric key (assuming the feature key matches the metric)
-        const feature = await db.query.features.findFirst({
-            where: eq(features.key, metric)
-        });
+        const feature = (await db.select().from(features).where(eq(features.key, metric)).limit(1))[0];
 
         if (feature) {
             const entitlement = entitlementsMap[feature.id];

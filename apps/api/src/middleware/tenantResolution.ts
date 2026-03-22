@@ -52,9 +52,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     }
 
     // Cache miss — load from DB
-    const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.id, tenantId),
-    });
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
 
     if (!tenant) {
         console.log('404 reason: tenant not found', { tenantId, path: c.req.path });

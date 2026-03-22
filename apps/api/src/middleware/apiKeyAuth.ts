@@ -30,13 +30,13 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     // Hash before lookup — raw keys are never stored (ADR security principle)
     const keyHash = createHash('sha256').update(token).digest('hex');
 
-    const apiKey = await db.query.apiKeys.findFirst({
-        where: and(
+    const [apiKey] = await db.select().from(apiKeys).where(
+        and(
             eq(apiKeys.keyHash, keyHash),
             eq(apiKeys.status, 'active'),
             eq(apiKeys.type, 'agent')
-        ),
-    });
+        )
+    ).limit(1);
 
     if (!apiKey) {
         console.log('401 reason: invalid api key', { path: c.req.path, keyHash: keyHash.substring(0, 16) });
@@ -54,11 +54,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     }
 
     // Confirm agent is still active
-    const agent = await db.transaction(async (tx: typeof db) => {
-        return tx.query.agents.findFirst({
-            where: eq(agents.id, apiKey.agentId),
-        });
-    });
+    const [agent] = await db.select().from(agents).where(eq(agents.id, apiKey.agentId!)).limit(1);
 
     if (!agent || agent.status !== 'active') {
         console.log('401 reason: agent not active', { path: c.req.path, agentId: apiKey.agentId, agentStatus: agent?.status });
@@ -67,13 +63,13 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
 
     // Membership gives us the role — no membership means no access
     // 403 not 401: we know who it is, it just isn't permitted here
-    const membership = await db.query.memberships.findFirst({
-        where: and(
+    const [membership] = await db.select().from(memberships).where(
+        and(
             eq(memberships.agentId, agent.id),
             eq(memberships.tenantId, apiKey.tenantId),
             eq(memberships.status, 'active')
-        ),
-    });
+        )
+    ).limit(1);
 
     if (!membership) {
         console.log('403 reason: agent no active membership', { path: c.req.path, agentId: agent.id, tenantId: apiKey.tenantId });

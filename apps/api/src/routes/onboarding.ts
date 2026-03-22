@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db, roles, tenants, memberships, subscriptions, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { roles } from '@serverless-saas/database/schema/authorization';
+import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
+import { subscriptions } from '@serverless-saas/database/schema/billing';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, isNull, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
@@ -13,9 +17,7 @@ const generateSlug = (name: string) => {
 };
 
 const checkSlugAvailability = async (slug: string) => {
-    const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.slug, slug),
-    });
+    const tenant = (await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1))[0];
     return !tenant;
 };
 
@@ -46,9 +48,7 @@ onboardingRoutes.post('/complete', async (c) => {
     }
 
     // Step 4: Find owner role
-    const role = await db.query.roles.findFirst({
-        where: and(eq(roles.name, 'owner'), isNull(roles.tenantId)),
-    });
+    const role = (await db.select().from(roles).where(and(eq(roles.name, 'owner'), isNull(roles.tenantId))).limit(1))[0];
     if (!role) {
         return c.json({ error: 'System configuration error' }, 500);
     }

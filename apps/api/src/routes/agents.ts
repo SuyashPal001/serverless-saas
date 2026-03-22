@@ -2,7 +2,13 @@ import { Hono } from 'hono';
 import { and, eq, count } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db, agents, apiKeys, memberships, roles, auditLog, features } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { agents } from '@serverless-saas/database/schema/auth';
+import { apiKeys } from '@serverless-saas/database/schema/access';
+import { memberships } from '@serverless-saas/database/schema/tenancy';
+import { roles } from '@serverless-saas/database/schema/authorization';
+import { auditLog } from '@serverless-saas/database/schema/audit';
+import { features } from '@serverless-saas/database/schema/entitlements';
 import type { AppEnv } from '../types';
 
 export const agentsRoutes = new Hono<AppEnv>();
@@ -28,11 +34,9 @@ agentsRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.agents.findMany({
-        where: and(
-            eq(agents.tenantId, tenantId),
-        ),
-    });
+    const data = await db.select().from(agents).where(and(
+        eq(agents.tenantId, tenantId),
+    ));
 
     return c.json({ data });
 });
@@ -103,9 +107,7 @@ agentsRoutes.post('/', async (c) => {
     }
 
     // Agent role must be seeded — isAgentRole: true, minimum permissions
-    const agentRole = await db.query.roles.findFirst({
-        where: eq(roles.isAgentRole, true),
-    });
+    const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
 
     if (!agentRole) {
         return c.json({ error: 'Agent role not configured', code: 'AGENT_ROLE_MISSING' }, 500);
@@ -178,12 +180,10 @@ agentsRoutes.patch('/:id', async (c) => {
     const agentId = c.req.param('id');
 
     // Verify agent belongs to this tenant before updating
-    const existing = await db.query.agents.findFirst({
-        where: and(
-            eq(agents.id, agentId),
-            eq(agents.tenantId, tenantId)
-        ),
-    });
+    const existing = (await db.select().from(agents).where(and(
+        eq(agents.id, agentId),
+        eq(agents.tenantId, tenantId)
+    )).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'Agent not found' }, 404);
@@ -241,12 +241,10 @@ agentsRoutes.delete('/:id', async (c) => {
 
     const agentId = c.req.param('id');
 
-    const existing = await db.query.agents.findFirst({
-        where: and(
-            eq(agents.id, agentId),
-            eq(agents.tenantId, tenantId)
-        ),
-    });
+    const existing = (await db.select().from(agents).where(and(
+        eq(agents.id, agentId),
+        eq(agents.tenantId, tenantId)
+    )).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'Agent not found' }, 404);

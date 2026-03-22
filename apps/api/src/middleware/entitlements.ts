@@ -29,29 +29,29 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
 
     // Load active subscription to determine current plan
     // Default to 'free' if no subscription found — new tenants always get free tier
-    const subscription = await db.query.subscriptions.findFirst({
-        where: and(
+    const [subscription] = await db.select().from(subscriptions).where(
+        and(
             eq(subscriptions.tenantId, tenantId),
             eq(subscriptions.status, 'active')
-        ),
-    });
+        )
+    ).limit(1);
 
     const plan = subscription?.plan ?? 'free';
 
     // Load all feature entitlements for this plan
-    const planEntitlementRows = await db.query.planEntitlements.findMany({
-        where: eq(planEntitlements.plan, plan),
-    });
+    const planEntitlementRows = await db.select().from(planEntitlements).where(
+        eq(planEntitlements.plan, plan)
+    );
 
     // Load any tenant-specific overrides — "side deals" that override plan defaults
     // Only active overrides: not deleted, not revoked, not expired
-    const overrides = await db.query.tenantFeatureOverrides.findMany({
-        where: and(
+    const overrides = await db.select().from(tenantFeatureOverrides).where(
+        and(
             eq(tenantFeatureOverrides.tenantId, tenantId),
             isNull(tenantFeatureOverrides.deletedAt),
             isNull(tenantFeatureOverrides.revokedAt)
-        ),
-    });
+        )
+    );
 
     // Build resolved entitlements map: featureId → { enabled, valueLimit, unlimited }
     // Plan entitlements are the baseline — overrides replace them entirely

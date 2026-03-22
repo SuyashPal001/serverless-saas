@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { memberships, tenants } from '@serverless-saas/database/schema/tenancy';
+import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { invitationTokens } from '@serverless-saas/database/schema/invitations';
 import { users, agents } from '@serverless-saas/database/schema/auth';
 import { roles } from '@serverless-saas/database/schema/authorization';
@@ -269,12 +269,10 @@ membersRoutes.delete('/:id', async (c) => {
     const userId = c.get('userId');
 
     // Prevent self-suspension — look up the membership first
-    const target = await db.query.memberships.findFirst({
-        where: and(
-            eq(memberships.id, memberId),
-            eq(memberships.tenantId, tenantId)
-        ),
-    });
+    const target = (await db.select().from(memberships).where(and(
+        eq(memberships.id, memberId),
+        eq(memberships.tenantId, tenantId)
+    )).limit(1))[0];
 
     if (!target) {
         return c.json({ error: 'Member not found' }, 404);

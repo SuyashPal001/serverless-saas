@@ -161,9 +161,7 @@ memberInviteRoutes.post('/invite', async (c) => {
     });
 
     if (entitlements) {
-        const seatsFeature = await db.query.features.findFirst({
-            where: eq(features.key, 'seats'),
-        });
+        const seatsFeature = (await db.select().from(features).where(eq(features.key, 'seats')).limit(1))[0];
 
         console.log('[invite] seats feature lookup:', {
             seatsFeature,

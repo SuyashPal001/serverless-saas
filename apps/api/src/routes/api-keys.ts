@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { and, eq, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db, apiKeys, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { apiKeys } from '@serverless-saas/database/schema/access';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../types';
 
 export const apiKeysRoutes = new Hono<AppEnv>();
@@ -26,22 +28,19 @@ apiKeysRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.apiKeys.findMany({
-        where: and(
-            eq(apiKeys.tenantId, tenantId),
-            eq(apiKeys.status, 'active')
-        ),
-        columns: {
-            id: true,
-            name: true,
-            type: true,
-            status: true,
-            permissions: true,
-            lastUsedAt: true,
-            expiresAt: true,
-            createdAt: true,
-        },
-    });
+    const data = await db.select({
+        id: apiKeys.id,
+        name: apiKeys.name,
+        type: apiKeys.type,
+        status: apiKeys.status,
+        permissions: apiKeys.permissions,
+        lastUsedAt: apiKeys.lastUsedAt,
+        expiresAt: apiKeys.expiresAt,
+        createdAt: apiKeys.createdAt,
+    }).from(apiKeys).where(and(
+        eq(apiKeys.tenantId, tenantId),
+        eq(apiKeys.status, 'active')
+    ));
 
     return c.json({ data });
 });
@@ -61,13 +60,10 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
     const startDateParam = c.req.query('startDate');
     const endDateParam = c.req.query('endDate');
 
-    const apiKey = await db.query.apiKeys.findFirst({
-        where: and(
-            eq(apiKeys.id, keyId),
-            eq(apiKeys.tenantId, tenantId)
-        ),
-        columns: { id: true, name: true }
-    });
+    const apiKey = (await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(and(
+        eq(apiKeys.id, keyId),
+        eq(apiKeys.tenantId, tenantId)
+    )).limit(1))[0];
 
     if (!apiKey) {
         return c.json({ error: 'API key not found', code: 'NOT_FOUND' }, 404);
@@ -193,12 +189,10 @@ apiKeysRoutes.delete('/:id', async (c) => {
 
     const keyId = c.req.param('id');
 
-    const existing = await db.query.apiKeys.findFirst({
-        where: and(
-            eq(apiKeys.id, keyId),
-            eq(apiKeys.tenantId, tenantId)
-        ),
-    });
+    const existing = (await db.select().from(apiKeys).where(and(
+        eq(apiKeys.id, keyId),
+        eq(apiKeys.tenantId, tenantId)
+    )).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'API key not found' }, 404);

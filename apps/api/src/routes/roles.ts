@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { eq, isNull, or, and } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, memberships, roles, features, auditLog } from '@serverless-saas/database';
+import { db, features, auditLog } from '@serverless-saas/database';
+import { roles } from '@serverless-saas/database/schema/authorization';
+import { memberships } from '@serverless-saas/database/schema/tenancy';
 import type { AppEnv } from '../types';
 
 export const rolesRoutes = new Hono<AppEnv>();
@@ -16,12 +18,10 @@ rolesRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.roles.findMany({
-        where: or(
-            isNull(roles.tenantId),
-            eq(roles.tenantId, tenantId)
-        ),
-    });
+    const data = await db.select().from(roles).where(or(
+        isNull(roles.tenantId),
+        eq(roles.tenantId, tenantId)
+    ));
 
     return c.json({ roles: data });
 });
@@ -37,9 +37,7 @@ rolesRoutes.post('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const feature = await db.query.features.findFirst({
-        where: eq(features.key, 'custom_roles'),
-    });
+    const feature = (await db.select().from(features).where(eq(features.key, 'custom_roles')).limit(1))[0];
 
     if (!feature) {
         return c.json({ error: 'Feature configuration missing', code: 'FEATURE_NOT_FOUND' }, 500);
@@ -95,9 +93,7 @@ rolesRoutes.patch('/:id', async (c) => {
     }
     const roleId = c.req.param('id');
 
-    const existing = await db.query.roles.findFirst({
-        where: eq(roles.id, roleId)
-    });
+    const [existing] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!existing) {
         return c.json({ error: 'Role not found' }, 404);
     }
@@ -149,9 +145,7 @@ rolesRoutes.delete('/:id', async (c) => {
 
     const roleId = c.req.param('id');
 
-    const existing = await db.query.roles.findFirst({
-        where: eq(roles.id, roleId),
-    });
+    const [existing] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
 
     if (!existing) {
         return c.json({ error: 'Role not found' }, 404);
@@ -161,12 +155,12 @@ rolesRoutes.delete('/:id', async (c) => {
         return c.json({ error: 'Cannot delete a system role', code: 'SYSTEM_ROLE_IMMUTABLE' }, 403);
     }
 
-    const activeMemberships = await db.query.memberships.findMany({
-        where: and(
+    const activeMemberships = await db.select().from(memberships).where(
+        and(
             eq(memberships.roleId, roleId),
             eq(memberships.status, 'active')
-        ),
-    });
+        )
+    );
 
     if (activeMemberships.length > 0) {
         return c.json({

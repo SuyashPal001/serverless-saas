@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import { and, eq, ilike, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, tenants, tenantFeatureOverrides, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { tenantFeatureOverrides } from '@serverless-saas/database/schema/entitlements';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -27,12 +30,11 @@ opsRoutes.get('/tenants', async (c) => {
     if (search) conditions.push(ilike(tenants.name, `%${search}%`));
     if (status) conditions.push(eq(tenants.status, status as any));
 
-    const data = await db.query.tenants.findMany({
-        where: conditions.length > 0 ? and(...conditions) : undefined,
-        orderBy: desc(tenants.createdAt),
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-    });
+    const data = await db.select().from(tenants)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(tenants.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
 
     return c.json({ tenants: data, page, pageSize });
 });
@@ -54,9 +56,7 @@ opsRoutes.patch('/tenants/:id', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const existing = await db.query.tenants.findFirst({
-        where: eq(tenants.id, tenantId),
-    });
+    const existing = (await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'Tenant not found' }, 404);
@@ -94,15 +94,10 @@ opsRoutes.get('/overrides', async (c) => {
     const page = parseInt(c.req.query('page') ?? '1');
     const pageSize = parseInt(c.req.query('pageSize') ?? '20');
 
-    const data = await db.query.tenantFeatureOverrides.findMany({
-        where: and(
-            eq(tenantFeatureOverrides.deletedAt, null as any),
-            eq(tenantFeatureOverrides.revokedAt, null as any),
-        ),
-        orderBy: desc(tenantFeatureOverrides.createdAt),
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-    });
+    const data = await db.select().from(tenantFeatureOverrides).where(and(
+        eq(tenantFeatureOverrides.deletedAt, null as any),
+        eq(tenantFeatureOverrides.revokedAt, null as any),
+    )).orderBy(desc(tenantFeatureOverrides.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
 
     return c.json({ overrides: data, page, pageSize });
 });
@@ -169,9 +164,7 @@ opsRoutes.post('/overrides/:id/revoke', async (c) => {
     const overrideId = c.req.param('id');
     const userId = c.get('userId') as string;
 
-    const existing = await db.query.tenantFeatureOverrides.findFirst({
-        where: eq(tenantFeatureOverrides.id, overrideId),
-    });
+    const existing = (await db.select().from(tenantFeatureOverrides).where(eq(tenantFeatureOverrides.id, overrideId)).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'Override not found' }, 404);

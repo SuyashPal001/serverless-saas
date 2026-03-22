@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { and, eq, isNull, desc } from 'drizzle-orm';
-import { db, memberships, sessions, auditLog } from '@serverless-saas/database';
-import { users, tenants, roles } from '@serverless-saas/database/schema';
+import { db } from '@serverless-saas/database';
+import { users, sessions } from '@serverless-saas/database/schema/auth';
+import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
+import { roles } from '@serverless-saas/database/schema/authorization';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { getCacheClient } from '@serverless-saas/cache';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SignJWT } from 'jose';
@@ -274,13 +277,11 @@ authRoutes.post('/switch-tenant', async (c) => {
         return c.json({ error: 'tenantId is required' }, 400);
     }
 
-    const membership = await db.query.memberships.findFirst({
-        where: and(
-            eq(memberships.userId, userId),
-            eq(memberships.tenantId, targetTenantId),
-            eq(memberships.status, 'active')
-        ),
-    });
+    const membership = (await db.select().from(memberships).where(and(
+        eq(memberships.userId, userId),
+        eq(memberships.tenantId, targetTenantId),
+        eq(memberships.status, 'active')
+    )).limit(1))[0];
 
     if (!membership) {
         return c.json({ error: 'You do not belong to this tenant', code: 'TENANT_ACCESS_DENIED' }, 403);
@@ -303,5 +304,3 @@ authRoutes.post('/switch-tenant', async (c) => {
 
     return c.json({ success: true, targetTenantId });
 });
-
-

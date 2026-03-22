@@ -30,13 +30,13 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
     }
 
     // Load membership to get the user's roleId for this tenant
-    const membership = await db.query.memberships.findFirst({
-        where: and(
+    const [membership] = await db.select().from(memberships).where(
+        and(
             eq(memberships.userId, userId),
             eq(memberships.tenantId, tenantId),
             eq(memberships.status, 'active')
-        ),
-    });
+        )
+    ).limit(1);
 
     // No membership = pass through with no permissions set
     // Route handlers decide if a permission is required

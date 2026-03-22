@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db, features, roles, tenants, memberships, subscriptions, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { features } from '@serverless-saas/database/schema/entitlements';
+import { roles } from '@serverless-saas/database/schema/authorization';
+import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
+import { subscriptions } from '@serverless-saas/database/schema/billing';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, isNull, and, sql } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
@@ -13,9 +18,7 @@ const generateSlug = (name: string) => {
 };
 
 const checkSlugAvailability = async (slug: string) => {
-    const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.slug, slug),
-    });
+    const tenant = (await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1))[0];
     return !tenant;
 };
 
@@ -38,9 +41,7 @@ tenantsRoutes.post('/', async (c) => {
     const { name } = parsed.data;
 
     // 1. Check workspace entitlement
-    const feature = await db.query.features.findFirst({
-        where: eq(features.key, 'workspaces'),
-    });
+    const feature = (await db.select().from(features).where(eq(features.key, 'workspaces')).limit(1))[0];
 
     if (!feature) {
         return c.json({ error: 'Feature configuration missing', code: 'FEATURE_NOT_FOUND' }, 500);
@@ -86,9 +87,7 @@ tenantsRoutes.post('/', async (c) => {
     }
 
     // Find system owner role
-    const role = await db.query.roles.findFirst({
-        where: and(eq(roles.name, 'owner'), isNull(roles.tenantId)),
-    });
+    const role = (await db.select().from(roles).where(and(eq(roles.name, 'owner'), isNull(roles.tenantId))).limit(1))[0];
     if (!role) {
         return c.json({ error: 'System configuration error' }, 500);
     }

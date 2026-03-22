@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { db, subscriptions, invoices, auditLog } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database';
+import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../types';
 
 
@@ -18,12 +20,10 @@ billingRoutes.get('/subscription', async (c) => {
     }
 
     try {
-        const subscription = await db.query.subscriptions.findFirst({
-            where: and(
-                eq(subscriptions.tenantId, tenantId),
-                eq(subscriptions.status, 'active')
-            ),
-        });
+        const subscription = (await db.select().from(subscriptions).where(and(
+            eq(subscriptions.tenantId, tenantId),
+            eq(subscriptions.status, 'active')
+        )).limit(1))[0];
 
         return c.json({ subscription: subscription ?? null });
     } catch (err: any) {
@@ -44,12 +44,10 @@ billingRoutes.get('/plan', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.subscriptions.findFirst({
-        where: and(
-            eq(subscriptions.tenantId, tenantId),
-            eq(subscriptions.status, 'active')
-        ),
-    });
+    const data = (await db.select().from(subscriptions).where(and(
+        eq(subscriptions.tenantId, tenantId),
+        eq(subscriptions.status, 'active')
+    )).limit(1))[0];
 
     return c.json({ data: data ?? null });
 });
@@ -121,12 +119,10 @@ billingRoutes.post('/cancel', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const existing = await db.query.subscriptions.findFirst({
-        where: and(
-            eq(subscriptions.tenantId, tenantId),
-            eq(subscriptions.status, 'active')
-        ),
-    });
+    const existing = (await db.select().from(subscriptions).where(and(
+        eq(subscriptions.tenantId, tenantId),
+        eq(subscriptions.status, 'active')
+    )).limit(1))[0];
 
     if (!existing) {
         return c.json({ error: 'No active subscription found' }, 404);
@@ -165,11 +161,7 @@ billingRoutes.get('/invoices', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const data = await db.query.invoices.findMany({
-        where: eq(invoices.tenantId, tenantId),
-        orderBy: desc(invoices.createdAt),
-        limit: 50,
-    });
+    const data = await db.select().from(invoices).where(eq(invoices.tenantId, tenantId)).orderBy(desc(invoices.createdAt)).limit(50);
 
     return c.json({ data });
 });

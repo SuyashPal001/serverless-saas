@@ -32,9 +32,7 @@ entitlementsRoutes.get('/', async (c) => {
             });
         }
 
-        const featureRows = await db.query.features.findMany({
-            where: inArray(features.id, featureIds),
-        });
+        const featureRows = await db.select().from(features).where(inArray(features.id, featureIds));
 
         // Build map: key → entitlement data
         const entitlementsByKey: Record<string, any> = {};
