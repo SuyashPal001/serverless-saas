@@ -13,7 +13,10 @@ import {
     Bell,
     FileText,
     Building2,
-    Sliders
+    Sliders,
+    Webhook,
+    FolderOpen,
+    Plug
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
@@ -84,6 +87,9 @@ export function Sidebar() {
         { href: `${base}/billing`, label: "Billing", icon: CreditCard, show: canRead(permissions, "billing") },
         { href: `${base}/api-keys`, label: "API Keys", icon: Key, show: canRead(permissions, "api_keys") },
         { href: `${base}/agents`, label: "Agents", icon: Bot, show: canRead(permissions, "agents") },
+        { href: `${base}/webhooks`, label: "Webhooks", icon: Webhook, show: canRead(permissions, "webhooks") },
+        { href: `${base}/files`, label: "Files", icon: FolderOpen, show: canRead(permissions, "files") },
+        { href: `${base}/integrations`, label: "Integrations", icon: Plug, show: canRead(permissions, "integrations") },
         { href: `${base}/audit`, label: "Audit Log", icon: FileText, show: canRead(permissions, "audit_log") },
     ]
 

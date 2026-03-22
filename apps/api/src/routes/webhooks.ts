@@ -176,9 +176,9 @@ webhooksRoutes.post('/', async (c) => {
             traceId: c.get('traceId') ?? '',
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
-        // rawSecret returned ONCE here — it is not hashed in the DB because it's used to sign payloads (HMAC).
-        // The tenant should save it securely.
-        return c.json({ data: { ...created, secret: rawSecret } }, 201);
+        // rawSecret returned ONCE at the top level — not inside data — so the frontend can read res.secret directly.
+        // It is not hashed in the DB because it's used to sign payloads (HMAC). The tenant should save it securely.
+        return c.json({ data: created, secret: rawSecret }, 201);
     } catch (err: any) {
         console.error('Failed to create webhook:', err);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);

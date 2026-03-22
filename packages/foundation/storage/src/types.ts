@@ -9,6 +9,8 @@ export interface UploadUrlRequest {
   filename: string;
   contentType: string;
   uploadedBy: string;
+  /** User-space key (e.g. "documents/report.pdf"). Generated from filename if omitted. */
+  userKey?: string;
 }
 
 export interface UploadUrlResponse {

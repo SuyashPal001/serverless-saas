@@ -31,7 +31,7 @@ export function PermissionGate({
         if (fallback !== undefined) {
             return <>{fallback}</>;
         }
-        
+
         return (
             <div className="p-6">
                 <Alert variant="destructive">

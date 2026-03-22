@@ -10,16 +10,17 @@ const filesRoutes = new Hono<AppEnv>();
 
 // Get presigned upload URL
 filesRoutes.post(
-  '/upload-url',
+  '/upload',
   zValidator('json', z.object({
     filename: z.string().min(1).max(255),
     contentType: z.string().min(1).max(127),
+    key: z.string().max(512).optional(), // user-space key e.g. "documents/report.pdf"
   })),
   async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId');
-    const { filename, contentType } = c.req.valid('json');
+    const { filename, contentType, key: userKey } = c.req.valid('json');
 
     if (!userId) {
       return c.json({ error: 'Forbidden', message: 'Missing userId' }, 403);
@@ -35,9 +36,9 @@ filesRoutes.post(
       filename,
       contentType,
       uploadedBy: userId,
+      userKey,
     });
 
-    // Audit log
     await db.insert(auditLog).values({
       tenantId,
       actorId: userId,
@@ -49,7 +50,7 @@ filesRoutes.post(
       traceId: c.get('traceId') ?? '',
     });
 
-    return c.json(result, 201);
+    return c.json({ data: result }, 201);
   }
 );
 
@@ -73,7 +74,6 @@ filesRoutes.post(
 
     await storageService.confirmUpload(tenantId, fileId, size);
 
-    // Audit log
     await db.insert(auditLog).values({
       tenantId,
       actorId: userId,
@@ -89,8 +89,8 @@ filesRoutes.post(
   }
 );
 
-// Get presigned download URL
-filesRoutes.get('/:id', async (c) => {
+// Get presigned download URL — must be before /:id to avoid route shadowing
+filesRoutes.get('/:id/download', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
   const fileId = c.req.param('id');
@@ -102,8 +102,8 @@ filesRoutes.get('/:id', async (c) => {
 
   try {
     const downloadUrl = await storageService.getDownloadUrl(tenantId, fileId);
-    return c.json({ downloadUrl });
-  } catch (error) {
+    return c.json({ data: { downloadUrl } });
+  } catch {
     return c.json({ error: 'Not Found', message: 'File not found' }, 404);
   }
 });
@@ -121,7 +121,21 @@ filesRoutes.get('/', async (c) => {
   }
 
   const filesList = await storageService.listFiles(tenantId, limit, offset);
-  return c.json({ files: filesList });
+
+  // Map DB field names to the shape the frontend FileRecord interface expects
+  const data = filesList.map((f) => ({
+    id: f.id,
+    tenantId: f.tenantId,
+    key: f.key,
+    filename: f.name,
+    contentType: f.mimeType ?? '',
+    size: f.size ?? 0,
+    uploadedBy: f.uploadedBy ?? '',
+    createdAt: f.createdAt.toISOString(),
+    updatedAt: f.updatedAt.toISOString(),
+  }));
+
+  return c.json({ data });
 });
 
 // Delete file
@@ -138,7 +152,6 @@ filesRoutes.delete('/:id', async (c) => {
 
   await storageService.deleteFile(tenantId, fileId);
 
-  // Audit log
   await db.insert(auditLog).values({
     tenantId,
     actorId: userId,

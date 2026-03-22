@@ -17,7 +17,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         (notification: NotificationInboxEntry) => {
             // Check if we should ignore the notification
             setUnreadCount((prev) => prev + 1);
-            
+
             // Invalidate query to refresh inbox
             if (tenantSlug) {
                 queryClient.invalidateQueries({

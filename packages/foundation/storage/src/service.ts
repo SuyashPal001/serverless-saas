@@ -1,6 +1,7 @@
 import { db } from '@serverless-saas/database';
 import { files, storageProviders } from '@serverless-saas/database/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import type { InferSelectModel } from 'drizzle-orm';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { S3StorageProvider } from './providers/s3';
 import type { StorageProvider, UploadUrlRequest, UploadUrlResponse } from './types';
@@ -65,38 +66,34 @@ export class StorageService {
   }
 
   async getUploadUrl(request: UploadUrlRequest): Promise<UploadUrlResponse> {
-    const { tenantId, filename, contentType, uploadedBy } = request;
-    
+    const { tenantId, filename, contentType, uploadedBy, userKey } = request;
+
+    // User-space key (used for folder browsing): e.g. "documents/report.pdf"
+    // Full S3 key: tenants/{tenantId}/{userSpaceKey}
+    const userSpaceKey = userKey || filename;
+    const s3Key = `tenants/${tenantId}/${userSpaceKey}`;
+
     // Create file record with pending status
     const [file] = await db
       .insert(files)
       .values({
         tenantId,
         name: filename,
-        key: '', // Set after we generate it
+        key: userSpaceKey, // store user-space key so folder browser works
         mimeType: contentType,
         status: 'pending',
         uploadedBy,
       })
       .returning();
 
-    // Generate S3 key: tenantId/fileId/filename
-    const key = `${tenantId}/${file.id}/${filename}`;
-    
-    // Update file with key
-    await db
-      .update(files)
-      .set({ key })
-      .where(eq(files.id, file.id));
-
     // Get presigned URL
     const provider = await this.resolveProvider(tenantId);
-    const { url } = await provider.getUploadUrl(key, contentType);
+    const { url } = await provider.getUploadUrl(s3Key, contentType);
 
     return {
       fileId: file.id,
       uploadUrl: url,
-      key,
+      key: userSpaceKey,
       expiresIn: 3600,
     };
   }
@@ -130,7 +127,8 @@ export class StorageService {
     if (!file) throw new Error('File not found');
 
     const provider = await this.resolveProvider(tenantId);
-    return provider.getDownloadUrl(file.key);
+    const s3Key = `tenants/${tenantId}/${file.key}`;
+    return provider.getDownloadUrl(s3Key);
   }
 
   async deleteFile(tenantId: string, fileId: string): Promise<void> {
@@ -147,7 +145,7 @@ export class StorageService {
       ));
   }
 
-  async listFiles(tenantId: string, limit = 50, offset = 0) {
+  async listFiles(tenantId: string, limit = 50, offset = 0): Promise<InferSelectModel<typeof files>[]> {
     return db
       .select()
       .from(files)
