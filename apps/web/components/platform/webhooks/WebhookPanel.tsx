@@ -18,7 +18,7 @@ export function WebhookPanel({ webhook, open, onOpenChange }: { webhook: any; op
 
     const { data: deliveriesResponse, isLoading: isLoadingDeliveries } = useQuery({
         queryKey: ['webhooks', webhook.id, 'deliveries'],
-        queryFn: () => api.get<{ data: any[] }>(`/api/proxy/api/v1/webhooks/${webhook.id}/deliveries`),
+        queryFn: () => api.get<{ data: any[] }>(`/api/v1/webhooks/${webhook.id}/deliveries`),
         enabled: open
     });
 
@@ -26,7 +26,7 @@ export function WebhookPanel({ webhook, open, onOpenChange }: { webhook: any; op
 
     const toggleMutation = useMutation({
         mutationFn: async (status: 'active' | 'inactive') => {
-            return api.patch(`/api/proxy/api/v1/webhooks/${webhook.id}`, { status });
+            return api.patch(`/api/v1/webhooks/${webhook.id}`, { status });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['webhooks'] });
@@ -39,7 +39,7 @@ export function WebhookPanel({ webhook, open, onOpenChange }: { webhook: any; op
 
     const deleteMutation = useMutation({
         mutationFn: async () => {
-            return api.del(`/api/proxy/api/v1/webhooks/${webhook.id}`);
+            return api.del(`/api/v1/webhooks/${webhook.id}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['webhooks'] });

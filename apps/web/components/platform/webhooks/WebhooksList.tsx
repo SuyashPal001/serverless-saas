@@ -17,7 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 export function WebhooksList({ onSelectWebhook }: { onSelectWebhook: (wh: any) => void }) {
     const { data: response, isLoading } = useQuery({
         queryKey: ['webhooks'],
-        queryFn: () => api.get<{ data: any[] }>('/api/proxy/api/v1/webhooks')
+        queryFn: () => api.get<{ data: any[] }>('/api/v1/webhooks')
     });
 
     if (isLoading) {

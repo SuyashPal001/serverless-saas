@@ -64,13 +64,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         queryKey: ['files', prefix],
         queryFn: async () => {
             const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
-            return api.get<{ data: FileRecord[] }>(`/api/proxy/api/v1/files${params}`);
+            return api.get<{ data: FileRecord[] }>(`/api/v1/files${params}`);
         }
     });
 
     const deleteMutation = useMutation({
         mutationFn: async (fileId: string) => {
-            return api.del(`/api/proxy/api/v1/files/${fileId}`);
+            return api.del(`/api/v1/files/${fileId}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['files'] });
@@ -85,7 +85,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
     const downloadFile = async (fileId: string) => {
         try {
-            const res = await api.get<{ data: { downloadUrl: string } }>(`/api/proxy/api/v1/files/${fileId}/download`);
+            const res = await api.get<{ data: { downloadUrl: string } }>(`/api/v1/files/${fileId}/download`);
             window.open(res.data.downloadUrl, '_blank');
         } catch (error) {
             toast.error("Failed to get download URL");

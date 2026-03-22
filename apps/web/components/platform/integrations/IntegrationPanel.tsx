@@ -17,7 +17,7 @@ export function IntegrationPanel({ integration, open, onOpenChange }: { integrat
 
     const disconnectMutation = useMutation({
         mutationFn: async () => {
-            return api.del(`/api/proxy/api/v1/integrations/${integration.id}`);
+            return api.del(`/api/v1/integrations/${integration.id}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['integrations'] });

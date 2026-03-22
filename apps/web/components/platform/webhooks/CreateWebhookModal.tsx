@@ -35,7 +35,7 @@ export function CreateWebhookModal({ open, onOpenChange }: { open: boolean; onOp
 
     const { data: eventsData, isLoading: isLoadingEvents } = useQuery({
         queryKey: ['events'],
-        queryFn: () => api.get<{ data: Record<string, any[]> }>('/api/proxy/api/v1/events'),
+        queryFn: () => api.get<{ data: Record<string, any[]> }>('/api/v1/events'),
         enabled: open && !secret
     });
 
@@ -49,7 +49,7 @@ export function CreateWebhookModal({ open, onOpenChange }: { open: boolean; onOp
 
     const createMutation = useMutation({
         mutationFn: async (data: FormValues) => {
-            return api.post<{ data: any, secret: string }>('/api/proxy/api/v1/webhooks', data);
+            return api.post<{ data: any, secret: string }>('/api/v1/webhooks', data);
         },
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['webhooks'] });

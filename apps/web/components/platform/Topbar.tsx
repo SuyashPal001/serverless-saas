@@ -80,7 +80,7 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
 
         setIsCreating(true)
         try {
-            const res = await api.post<{ tenantId: string, slug: string }>('/api/proxy/api/v1/tenants', { name: newWorkspaceName })
+            const res = await api.post<{ tenantId: string, slug: string }>('/api/v1/tenants', { name: newWorkspaceName })
             toast.success("Workspace created")
             
             // Switch to it

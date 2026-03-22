@@ -61,7 +61,7 @@ export function CreateIntegrationModal({ open, onOpenChange }: { open: boolean; 
                 provider: data.provider,
                 config: data.config && data.config.trim() ? JSON.parse(data.config) : {}
             };
-            return api.post('/api/proxy/api/v1/integrations', payload);
+            return api.post('/api/v1/integrations', payload);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['integrations'] });
