@@ -35,6 +35,7 @@ import { filesRoutes } from './routes/files';
 import { eventsRoutes } from './routes/events';
 import { integrationsRoutes } from './routes/integrations';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
+import { widgetRoutes } from './routes/widget';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -54,10 +55,11 @@ app.onError(errorHandler);
 // Health routes — bypass all auth/tenant middleware
 app.route('/health', healthRoutes);
 
-const api = new Hono<AppEnv>();
+const publicApi = new Hono<AppEnv>();
+publicApi.route('/auth', authPublicRoutes);
+publicApi.route('/widget', widgetRoutes);
 
-// ── Public routes — no auth middleware ───────────────────────────────────────
-api.route('/auth', authPublicRoutes);
+const api = new Hono<AppEnv>();
 
 // ── Middleware chain ──────────────────────────────────────────────────────────
 
@@ -119,6 +121,7 @@ api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
+app.route('/api/v1', publicApi);
 app.route('/api/v1', api);
 
 export { app };

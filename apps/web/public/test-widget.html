@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Test Page</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .content {
+            text-align: center;
+            max-width: 600px;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h1>Customer Website Simulation</h1>
+        <p>This page simulates a customer's website where the chat widget is embedded.</p>
+        <p>You should see a floating chat bubble in the bottom-right corner.</p>
+    </div>
+
+    <!-- The Widget Script -->
+    <script 
+        src="/widget.js" 
+        data-tenant-id="fde7d67a-4526-4c2b-9dd5-825906f80093" 
+        data-agent-id="30db8f78-3983-4329-897e-fa719c3dd9f6"
+    ></script>
+</body>
+</html>

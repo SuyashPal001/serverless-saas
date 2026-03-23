@@ -13,6 +13,11 @@ const JWKS = jwksUri ? createRemoteJWKSet(new URL(jwksUri)) : null;
  * In local development, we validate the JWT ourselves using the Cognito JWKS endpoint.
  */
 export const authInjectionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
+    // Skip for public widget routes
+    if (c.req.path.includes('/api/v1/widget')) {
+        return next();
+    }
+
     // Production path: API Gateway JWT authorizer validates the token and passes
     // claims via event.requestContext.authorizer.jwt.claims (HTTP API v2)
     const claims = (c.env?.event?.requestContext as any)?.authorizer?.jwt?.claims;

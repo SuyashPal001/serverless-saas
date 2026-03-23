@@ -11,6 +11,7 @@ const ONBOARDING_ALLOWED_PATHS = [
     '/api/v1/onboarding/complete',
     '/api/v1/auth/me',
     '/api/v1/auth/check-email',
+    '/api/v1/widget',
 ];
 
 // 15 minutes — balances performance with freshness
