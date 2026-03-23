@@ -1,5 +1,8 @@
 import { eq, and, isNull } from 'drizzle-orm';
-import { notificationTemplates, users } from '../schema/index';
+import { notificationTemplates } from '../schema/notifications';
+import { users } from '../schema/auth';
+
+
 import type { db as DB } from './index';
 
 const TEMPLATES: Array<{

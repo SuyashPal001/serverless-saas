@@ -1,0 +1,170 @@
+import { Hono } from 'hono';
+import { and, eq, desc } from 'drizzle-orm';
+import { z } from 'zod';
+import { db } from '@serverless-saas/database';
+import { conversations } from '@serverless-saas/database/schema/conversations';
+import type { AppEnv } from '../types';
+
+export const conversationsRoutes = new Hono<AppEnv>();
+
+// GET /conversations — list conversations for tenant with optional filters
+conversationsRoutes.get('/', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const { agentId, status, userId } = c.req.query();
+
+    const filters = [eq(conversations.tenantId, tenantId)];
+    if (agentId) filters.push(eq(conversations.agentId, agentId));
+    if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
+    if (userId) filters.push(eq(conversations.userId, userId));
+
+    const data = await db
+        .select()
+        .from(conversations)
+        .where(and(...filters))
+        .orderBy(desc(conversations.createdAt));
+
+    return c.json({ data });
+});
+
+// POST /conversations — create new conversation
+conversationsRoutes.post('/', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({
+        agentId: z.string().uuid(),
+        userId: z.string().uuid().optional(),
+        externalUserId: z.string().optional(),
+        title: z.string().max(255).optional(),
+        metadata: z.record(z.unknown()).optional(),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [created] = await db.insert(conversations).values({
+        tenantId,
+        agentId: result.data.agentId,
+        userId: result.data.userId ?? null,
+        externalUserId: result.data.externalUserId ?? null,
+        title: result.data.title ?? null,
+        metadata: result.data.metadata ?? null,
+        status: 'active',
+        needsHuman: false,
+    }).returning();
+
+    return c.json({ data: created }, 201);
+});
+
+// GET /conversations/:id — get single conversation
+conversationsRoutes.get('/:id', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const id = c.req.param('id');
+
+    const [data] = await db
+        .select()
+        .from(conversations)
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
+
+    if (!data) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    return c.json({ data });
+});
+
+// PATCH /conversations/:id — update title, status, or needsHuman
+conversationsRoutes.patch('/:id', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const id = c.req.param('id');
+
+    const [existing] = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const schema = z.object({
+        title: z.string().max(255).optional(),
+        status: z.enum(['active', 'archived', 'escalated']).optional(),
+        needsHuman: z.boolean().optional(),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    if (Object.keys(result.data).length === 0) {
+        return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
+    }
+
+    const [updated] = await db.update(conversations)
+        .set({ ...result.data, updatedAt: new Date() })
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .returning();
+
+    return c.json({ data: updated });
+});
+
+// DELETE /conversations/:id — soft delete (archive)
+conversationsRoutes.delete('/:id', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:delete')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const id = c.req.param('id');
+
+    const [existing] = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db.update(conversations)
+        .set({ status: 'archived', updatedAt: new Date() })
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)));
+
+    return c.json({ success: true });
+});
