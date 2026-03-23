@@ -1,0 +1,15 @@
+{
+  "name": "@serverless-saas/ai",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.3.4"
+  }
+}

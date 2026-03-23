@@ -30,9 +30,9 @@ export function IntegrationsGrid() {
     if (integrations.length === 0) {
         return (
             <div className="py-6">
-                <EmptyState 
+                <EmptyState
                     icon={<Blocks className="w-12 h-12" />}
-                    title="No active integrations" 
+                    title="No active integrations"
                     description="Connect your workspace natively with powerful third-party providers or custom MCP servers."
                 />
             </div>
@@ -58,7 +58,7 @@ export function IntegrationsGrid() {
         <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {integrations.map((integration: any) => (
-                    <div 
+                    <div
                         key={integration.id}
                         onClick={() => setSelectedIntegration(integration)}
                         className="group bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-all cursor-pointer flex flex-col items-start gap-5 relative overflow-hidden shadow-sm hover:shadow-md"
@@ -71,12 +71,12 @@ export function IntegrationsGrid() {
                                 <MoreHorizontal className="w-5 h-5" />
                             </Button>
                         </div>
-                        
+
                         <div className="space-y-1.5 w-full">
                             <h3 className="font-bold text-zinc-100 text-lg truncate pr-2">{integration.name}</h3>
                             <p className="text-zinc-500 text-sm font-medium">{getProviderName(integration.provider)} Connection</p>
                         </div>
-                        
+
                         <div className="mt-1 w-full flex items-center justify-between border-t border-zinc-800/50 pt-5">
                             <StatusBadge status={integration.status} />
                             <span className="text-xs text-zinc-600 font-mono tracking-wide">
@@ -87,10 +87,10 @@ export function IntegrationsGrid() {
                 ))}
             </div>
 
-            <IntegrationPanel 
-                integration={selectedIntegration} 
-                open={!!selectedIntegration} 
-                onOpenChange={(open: boolean) => !open && setSelectedIntegration(null)} 
+            <IntegrationPanel
+                integration={selectedIntegration}
+                open={!!selectedIntegration}
+                onOpenChange={(open: boolean) => !open && setSelectedIntegration(null)}
             />
         </>
     );
