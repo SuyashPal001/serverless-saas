@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
+import { Agent, fetch as undiciFetch } from 'undici';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL!;
 
@@ -24,11 +24,15 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
         ? await req.text()
         : undefined;
 
+    const agent = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
+
     try {
-        const res = await fetch(url, {
+        const res = await undiciFetch(url, {
             method: req.method,
             headers,
             body,
+            dispatcher: agent,
+            // @ts-ignore
             signal: AbortSignal.timeout(15000),
         });
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { decodeTenantClaims } from "@/lib/tenant";
 import { TenantProvider } from "./tenant-provider";
 import { UpgradePromptProvider } from "@/components/platform/UpgradePromptProvider";
+import { Agent, fetch as undiciFetch } from 'undici';
 
 export default async function TenantLayout({
     children,
@@ -34,15 +35,16 @@ export default async function TenantLayout({
     // Fetch permissions from API server-side
     try {
         const apiBase = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiBase}/api/v1/auth/me`, {
+        const agent = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
+        const response = await undiciFetch(`${apiBase}/api/v1/auth/me`, {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
-            cache: 'no-store', // Don't cache permissions
+            dispatcher: agent,
         });
 
         if (response.ok) {
-            const profile = await response.json();
+            const profile = await response.json() as any;
             claims.permissions = profile.permissions || [];
         } else {
             // On failure, set empty array and continue
