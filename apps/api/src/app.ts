@@ -11,7 +11,7 @@ import { sessionValidationMiddleware } from './middleware/sessionValidation';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
-import { authRoutes, authPublicRoutes, authUserRoutes } from './routes/auth';
+import { authRoutes, authPublicRoutes, authUserRoutes, authTenantRoutes } from './routes/auth';
 import { invitationsPublicRoutes, memberInviteRoutes } from './routes/invitations';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
@@ -84,6 +84,9 @@ api.use('*', apiKeyAuthMiddleware);
 
 // Step 4: Tenant resolution
 api.use('*', tenantResolutionMiddleware);
+
+// Auth routes that need tenant context but NOT session validation (e.g. GET /auth/me at login)
+api.route('/auth', authTenantRoutes);
 
 // Step 5: Session validation
 api.use('*', sessionValidationMiddleware);
