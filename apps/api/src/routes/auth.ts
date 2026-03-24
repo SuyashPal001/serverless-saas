@@ -134,7 +134,7 @@ authPublicRoutes.get('/check-email', async (c) => {
     return c.json({ exists: !!user });
 });
 
-authRoutes.get('/me', (c) => {
+authUserRoutes.get('/me', (c) => {
     const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId');
 

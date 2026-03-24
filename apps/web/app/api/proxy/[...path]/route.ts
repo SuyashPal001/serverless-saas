@@ -17,6 +17,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Connection': 'close',
     };
     if (token) headers['Authorization'] = token;
 
@@ -24,18 +25,27 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
         ? await req.text()
         : undefined;
 
-    const res = await fetch(url, {
-        method: req.method,
-        headers,
-        body,
-    });
+    try {
+        const res = await fetch(url, {
+            method: req.method,
+            headers,
+            body,
+            signal: AbortSignal.timeout(15000),
+        });
 
-    const data = await res.text();
+        const data = await res.text();
 
-    return new NextResponse(data, {
-        status: res.status,
-        headers: { 'Content-Type': 'application/json' },
-    });
+        return new NextResponse(data, {
+            status: res.status,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    } catch (err: unknown) {
+        const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+        return NextResponse.json(
+            { error: isTimeout ? 'Upstream request timed out' : 'Proxy error' },
+            { status: isTimeout ? 504 : 502 }
+        );
+    }
 }
 
 export const GET = handler;
