@@ -37,10 +37,8 @@ export default async function TenantLayout({
         const response = await fetch(`${apiBase}/api/v1/auth/me`, {
             headers: {
                 Authorization: `Bearer ${token}`,
-                Connection: 'close',
             },
             cache: 'no-store', // Don't cache permissions
-            signal: AbortSignal.timeout(15000),
         });
 
         if (response.ok) {

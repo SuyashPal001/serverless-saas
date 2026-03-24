@@ -17,7 +17,6 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'Connection': 'close',
     };
     if (token) headers['Authorization'] = token;
 
