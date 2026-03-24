@@ -85,7 +85,7 @@ api.use('*', apiKeyAuthMiddleware);
 api.use('*', tenantResolutionMiddleware);
 
 // Step 5: Session validation — skipped for /auth/me and /auth/tenants (called pre-session at login)
-api.use('*', except(['/api/v1/auth/me', '/api/v1/auth/tenants'], sessionValidationMiddleware));
+api.use('*', except(['/auth/me', '/auth/tenants'], sessionValidationMiddleware));
 
 // Step 6: Entitlements
 api.use('*', entitlementsMiddleware);
