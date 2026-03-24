@@ -11,7 +11,8 @@ import { sessionValidationMiddleware } from './middleware/sessionValidation';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
-import { authRoutes, authPublicRoutes, authUserRoutes, authTenantRoutes } from './routes/auth';
+import { authRoutes, authPublicRoutes } from './routes/auth';
+import { except } from 'hono/combine';
 import { invitationsPublicRoutes, memberInviteRoutes } from './routes/invitations';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
@@ -74,8 +75,6 @@ api.use('*', userUpsertMiddleware);
 api.route('/onboarding', onboardingRoutes);
 api.route('/invitations', invitationsPublicRoutes);
 api.route('/tenants', tenantsRoutes);
-// Auth routes that only need JWT + user upsert (no session required)
-api.route('/auth', authUserRoutes);
 
 // Step 3: API key auth
 api.use('*', apiKeyAuthMiddleware);
@@ -85,11 +84,8 @@ api.use('*', apiKeyAuthMiddleware);
 // Step 4: Tenant resolution
 api.use('*', tenantResolutionMiddleware);
 
-// Auth routes that need tenant context but NOT session validation (e.g. GET /auth/me at login)
-api.route('/auth', authTenantRoutes);
-
-// Step 5: Session validation
-api.use('*', sessionValidationMiddleware);
+// Step 5: Session validation — skipped for /auth/me and /auth/tenants (called pre-session at login)
+api.use('*', except(['/api/v1/auth/me', '/api/v1/auth/tenants'], sessionValidationMiddleware));
 
 // Step 6: Entitlements
 api.use('*', entitlementsMiddleware);

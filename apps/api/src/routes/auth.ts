@@ -16,8 +16,6 @@ import { adminInitiateAuth } from '@serverless-saas/auth';
 
 export const authRoutes = new Hono<AppEnv>();
 export const authPublicRoutes = new Hono<AppEnv>();
-export const authUserRoutes = new Hono<AppEnv>();
-export const authTenantRoutes = new Hono<AppEnv>();
 
 // --- WebSocket Token ---
 let wsTokenSecret: Uint8Array | undefined;
@@ -135,7 +133,7 @@ authPublicRoutes.get('/check-email', async (c) => {
     return c.json({ exists: !!user });
 });
 
-authTenantRoutes.get('/me', (c) => {
+authRoutes.get('/me', (c) => {
     const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId');
 
@@ -150,8 +148,7 @@ authTenantRoutes.get('/me', (c) => {
 });
 
 // GET /auth/tenants
-// Mounted before tenantResolution + sessionValidation — only needs userId from authInjection
-authUserRoutes.get('/tenants', async (c) => {
+authRoutes.get('/tenants', async (c) => {
     const userId = c.get('userId');
     const currentTenantId = c.get('tenantId');
 
