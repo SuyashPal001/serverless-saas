@@ -599,3 +599,34 @@ markdown### Completed
 - Step 4: Dashboard home (parked)
 Add to "Permission Strings" table:
 markdown| `usage` | `read` |    
+
+## Auth Middleware — except() Pattern (March 24, 2026)
+
+- `GET /auth/me` and `GET /auth/tenants` must bypass `sessionValidationMiddleware`
+  (called before session exists at login time)
+- Fix pattern:
+```ts
+  import { except } from 'hono/combine';
+  api.use('*', except(['/auth/me', '/auth/tenants'], sessionValidationMiddleware));
+```
+- CRITICAL: paths in `except()` are RELATIVE to the router mount point.
+  Since `api` is mounted at `/api/v1`, use `/auth/me` NOT `/api/v1/auth/me`
+- These routes still run through `tenantResolutionMiddleware` + `permissionsMiddleware`
+  as normal — only `sessionValidationMiddleware` is skipped
+
+## NEXT_PUBLIC_API_URL — Local vs Lambda (March 24, 2026)
+
+- Local dev:  `NEXT_PUBLIC_API_URL=http://localhost:3001`
+  (requires `cd apps/api && pnpm dev` running separately)
+- Lambda:     `NEXT_PUBLIC_API_URL=https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com`
+- Default `.env.local` should point to Lambda unless actively developing the API locally
+- `.env.local.example` must document both options with comments
+
+## Agent Relay (March 25, 2026)
+- GCP VM relay: `wss://agent-saas.fitnearn.com`
+- Auth: Cognito Access Token via query param `?token=<access_token>` (platform_access_token cookie)
+- Protocol: OpenClaw (`delta`, `done`, `error`)
+- Message Format: `{ message: '...' }` (plain object)
+- Global Health: https://agent-saas.fitnearn.com/health  
+- Repo: Fit-earn-meditate/serverless-saas-agent-relay
+- VM: GCP open-claw, /opt/agent-relay

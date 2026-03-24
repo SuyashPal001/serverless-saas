@@ -43,7 +43,7 @@ function LoginPageContent() {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
-    const [pendingTokens, setPendingTokens] = useState<{ idToken: string; refreshToken: string } | null>(null);
+    const [pendingTokens, setPendingTokens] = useState<{ idToken: string; refreshToken: string; accessToken: string } | null>(null);
 
     // Show success message if redirected from onboarding or invitation
     useEffect(() => {
@@ -69,7 +69,7 @@ function LoginPageContent() {
 
         try {
             // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
-            const { idToken, refreshToken } = await signIn(data.email, data.password);
+            const { idToken, accessToken, refreshToken } = await signIn(data.email, data.password);
             const redirectParam = searchParams.get('redirect');
 
             // 2. Fetch all workspaces this user belongs to
@@ -85,7 +85,7 @@ function LoginPageContent() {
                 const res = await fetch('/api/auth/session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: idToken, refreshToken }),
+                    body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
                 });
                 if (!res.ok) throw new Error('Failed to create secure session');
                 const targetPath = redirectParam
@@ -96,7 +96,7 @@ function LoginPageContent() {
             }
 
             // 4. Multiple workspaces — hold tokens and show picker
-            setPendingTokens({ idToken, refreshToken });
+            setPendingTokens({ idToken, refreshToken, accessToken });
             setWorkspaces(workspaceList);
         } catch (err: any) {
             console.error("Login error:", err);
@@ -113,7 +113,7 @@ function LoginPageContent() {
 
         try {
             let { idToken } = pendingTokens;
-            const { refreshToken } = pendingTokens;
+            const { refreshToken, accessToken } = pendingTokens;
 
             // Picked a different workspace than what's in the JWT —
             // refresh with clientMetadata so the pre-token lambda stamps the right tenantId
@@ -125,7 +125,7 @@ function LoginPageContent() {
             const res = await fetch('/api/auth/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: idToken, refreshToken }),
+                body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
             });
             if (!res.ok) throw new Error('Failed to create secure session');
 

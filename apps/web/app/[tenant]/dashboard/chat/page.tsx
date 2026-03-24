@@ -70,7 +70,7 @@ export default function ChatPage() {
     const [eventError, setEventError] = useState<string | null>(null);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
 
-    useAgentEvents({
+    const agentEvents = useAgentEvents({
         conversationId: conversationId || '',
         onThinking: useCallback(() => {
             setIsThinking(true);
@@ -157,10 +157,11 @@ export default function ChatPage() {
                 return next;
             });
         }, []),
-        onError: useCallback((code: string, message: string, recoverable: boolean) => {
+        onError: useCallback((code: string, message: string | object, recoverable: boolean) => {
             setIsThinking(false);
-            setEventError(`[${code}] ${message}`);
-            toast.error(message);
+            const errorMsg = typeof message === 'string' ? message : (message as any)?.message || JSON.stringify(message);
+            setEventError(`[${code}] ${errorMsg}`);
+            toast.error(errorMsg);
         }, []),
         onCanvasUpdate: (action, data) => handleCanvasUpdate(action as CanvasAction, data as CanvasEventData),
         onSessionEnded: useCallback((reason: string) => {
@@ -171,6 +172,8 @@ export default function ChatPage() {
             // resetCanvas(); // Optional
         }, [conversationId, queryClient]),
     });
+
+    const { isConnected, sendMessage: sendWsMessage } = agentEvents;
 
     // Fetch messages
     const { data: messagesData, isLoading: isLoadingMessages, refetch: refetchMessages } = useQuery<MessagesResponse>({
@@ -192,7 +195,9 @@ export default function ChatPage() {
             toast.success("Conversation started");
         },
         onError: (error: any) => {
-            toast.error(error.data?.error || "Failed to start conversation");
+            const message = error.data?.error;
+            const errorMsg = typeof message === 'string' ? message : message?.message || "Failed to start conversation";
+            toast.error(errorMsg);
         }
     });
 
@@ -219,7 +224,9 @@ export default function ChatPage() {
         },
         onError: (error: any) => {
             setIsThinking(false);
-            toast.error(error.data?.error || "Failed to send message");
+            const message = error.data?.error;
+            const errorMsg = typeof message === 'string' ? message : message?.message || "Failed to send message";
+            toast.error(errorMsg);
             // Remove the optimistic message on error
             refetchMessages();
         }
@@ -238,7 +245,31 @@ export default function ChatPage() {
     };
 
     const handleSendMessage = (content: string) => {
-        sendMessage.mutate(content);
+        if (!content.trim()) return;
+
+        // 1. Optimistic update
+        queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+            const newMessage: Message = {
+                id: crypto.randomUUID(),
+                conversationId: conversationId!,
+                role: 'user',
+                content,
+                createdAt: new Date().toISOString()
+            };
+            return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
+        });
+
+        setIsThinking(true);
+        setEventError(null);
+
+        // 2. Send via WebSocket for real-time interaction
+        const sent = sendWsMessage(content);
+        if (!sent) {
+            toast.error("Failed to send message. Please check your connection.");
+            setIsThinking(false);
+            // Optionally refetch to restore state
+            queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+        }
     };
 
     return (
@@ -272,14 +303,14 @@ export default function ChatPage() {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <h2 className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-[400px]">
-                                                    {selectedConversation.title || `Chat with ${selectedConversation.agent?.name}`}
+                                                    {selectedConversation.title || (selectedConversation.agent?.name ? `Chat with ${selectedConversation.agent.name}` : "Chat with Agent")}
                                                 </h2>
                                                 <Badge variant={selectedConversation.status === 'active' ? "default" : "secondary"} className="text-[10px] h-4.5">
                                                     {selectedConversation.status}
                                                 </Badge>
                                             </div>
                                             <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <span>Agent: {selectedConversation.agent?.name} ({selectedConversation.agent?.type})</span>
+                                                <span>Agent: {selectedConversation.agent?.name || "Initializing..."} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}</span>
                                             </p>
                                         </div>
                                     </div>

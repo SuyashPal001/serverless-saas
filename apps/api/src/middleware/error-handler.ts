@@ -19,11 +19,8 @@ export const errorHandler: ErrorHandler<AppEnv> = (err, c) => {
   // Don't leak internal errors to client
   return c.json(
     {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
+      error: 'An unexpected error occurred',
+      code: 'INTERNAL_ERROR',
     },
     500,
   );

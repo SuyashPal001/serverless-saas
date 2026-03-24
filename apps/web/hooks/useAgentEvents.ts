@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { AgentEvent } from '@/types/agent-events';
 
@@ -50,74 +50,78 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       }
 
       try {
-        const response = await api.get<{ token: string }>('/api/v1/auth/ws-token');
-        const token = response.token;
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+        // Get Cognito access token from non-httpOnly cookie
+        const token = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('platform_access_token='))
+          ?.split('=')[1];
 
-        if (!wsUrl) {
-          console.error('NEXT_PUBLIC_WS_URL is not defined');
+        if (!token) {
+          console.error('No platform_access_token found in cookies');
           return;
         }
 
-        const socket = new WebSocket(`${wsUrl}?token=${token}`);
+        const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://agent-saas.fitnearn.com";
+
+        if (!wsUrl) {
+          console.error('NEXT_PUBLIC_AGENT_WS_URL is not defined');
+          return;
+        }
+
+        // Connect to GCP relay with Cognito access token
+        const socket = new WebSocket(`${wsUrl}/ws?token=${token}`);
         wsRef.current = socket;
 
         socket.onopen = () => {
           if (!isMounted) return;
-          console.log('WebSocket connected for agent events');
+          console.log('WebSocket connected to GCP relay');
           setIsConnected(true);
           retryCountRef.current = 0;
+          
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = setInterval(() => {
             if (socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ action: 'ping' }));
+              // Standard ping for GCP relay
+              socket.send(JSON.stringify({ type: 'ping' }));
             }
           }, 5 * 60 * 1000);
         };
 
         socket.onmessage = (eventMsg) => {
           try {
-            const data = JSON.parse(eventMsg.data);
-            if (data.type === 'pong') return;
-            if (data.type !== 'agent.event') return;
+            const event = JSON.parse(eventMsg.data);
 
-            const event = data.payload as AgentEvent;
-
-            // Track session
-            if (event.type === 'session.started') {
-              sessionIdRef.current = event.sessionId;
-            }
-
-            // Route to appropriate handler
+            // Handle OpenClaw relay protocol
             switch (event.type) {
-              case 'agent.thinking':
-                onThinking?.();
+              case 'session.started':
+                // Defensive handling as per instructions
+                console.log('Relay session started:', event.sessionId);
+                sessionIdRef.current = event.sessionId || null;
                 break;
-              case 'agent.message.delta':
-                onMessageDelta?.(event.delta, event.messageId);
+
+              case 'delta':
+                // Streaming chunk - relay diffs for us
+                // Note: relay protocol doesn't explicitly send messageId in delta yet,
+                // we use conversationId as a stable reference for the current stream
+                onMessageDelta?.(event.text, conversationId);
                 break;
-              case 'agent.message':
-                onMessageComplete?.(event.content, event.messageId);
+
+              case 'done':
+                // Stream complete - clear thinking/loading state
+                onMessageComplete?.('', conversationId);
                 break;
-              case 'tool.calling':
-                onToolCalling?.(event.toolName, event.toolCallId, event.arguments);
-                break;
-              case 'tool.result':
-                onToolResult?.(event.toolName, event.toolCallId, event.result, event.error);
-                break;
-              case 'canvas.update':
-                onCanvasUpdate?.(event.action, event.data as Record<string, unknown>);
-                break;
-              case 'approval.required':
-                onApprovalRequired?.(event.approvalId, event.action, event.description);
-                break;
+
               case 'error':
-                onError?.(event.code, event.message, event.recoverable);
+                // Error from relay
+                onError?.('RELAY_ERROR', event.message, false);
                 break;
-              case 'session.ended':
-                onSessionEnded?.(event.reason, event.usage as unknown as Record<string, unknown>);
-                sessionIdRef.current = null;
+
+              case 'pong':
+                // Keep-alive response
                 break;
+
+              default:
+                console.warn('Unknown event type from relay:', event.type);
             }
           } catch (err) {
             console.error('[useAgentEvents] Failed to parse message:', err);
@@ -172,8 +176,19 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     onSessionEnded,
   ]);
 
+  const sendMessage = useCallback((text: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      // Relay expects { message: '...' } as per instructions
+      wsRef.current.send(JSON.stringify({ message: text }));
+      return true;
+    }
+    console.error('WebSocket is not open. Cannot send message.');
+    return false;
+  }, []);
+
   return {
     isConnected,
     sessionId: sessionIdRef.current,
+    sendMessage,
   };
 }

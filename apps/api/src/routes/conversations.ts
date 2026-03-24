@@ -24,11 +24,13 @@ conversationsRoutes.get('/', async (c) => {
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
     if (userId) filters.push(eq(conversations.userId, userId));
 
-    const data = await db
-        .select()
-        .from(conversations)
-        .where(and(...filters))
-        .orderBy(desc(conversations.createdAt));
+    const data = await db.query.conversations.findMany({
+        where: and(...filters),
+        orderBy: [desc(conversations.createdAt)],
+        with: {
+            agent: true,
+        },
+    });
 
     return c.json({ data });
 });
@@ -82,11 +84,12 @@ conversationsRoutes.get('/:id', async (c) => {
 
     const id = c.req.param('id');
 
-    const [data] = await db
-        .select()
-        .from(conversations)
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
-        .limit(1);
+    const data = await db.query.conversations.findFirst({
+        where: and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)),
+        with: {
+            agent: true,
+        },
+    });
 
     if (!data) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
@@ -132,10 +135,16 @@ conversationsRoutes.patch('/:id', async (c) => {
         return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
     }
 
-    const [updated] = await db.update(conversations)
+    await db.update(conversations)
         .set({ ...result.data, updatedAt: new Date() })
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
-        .returning();
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)));
+
+    const updated = await db.query.conversations.findFirst({
+        where: and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)),
+        with: {
+            agent: true,
+        },
+    });
 
     return c.json({ data: updated });
 });

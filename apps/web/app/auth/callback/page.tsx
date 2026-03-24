@@ -43,12 +43,17 @@ function CallbackContent() {
 
         const tokens = await tokenResponse.json();
         const idToken = tokens.id_token;
+        const accessToken = tokens.access_token;
 
         // 2. Create session — sets platform_token httpOnly cookie
         const sessionResponse = await fetch("/api/auth/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: idToken, refreshToken: tokens.refresh_token }),
+          body: JSON.stringify({ 
+            token: idToken, 
+            accessToken,
+            refreshToken: tokens.refresh_token 
+          }),
         });
 
         if (!sessionResponse.ok) {
