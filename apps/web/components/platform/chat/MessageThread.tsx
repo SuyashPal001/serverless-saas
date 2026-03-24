@@ -6,13 +6,18 @@ import { Message } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
+import { ToolCallCard } from "./ToolCallCard";
+import { StreamingMessage } from "./StreamingMessage";
+
 interface MessageThreadProps {
     messages: Message[];
     isLoading?: boolean;
     isTyping?: boolean;
+    activeToolCalls?: Message["toolCalls"];
+    error?: string | null;
 }
 
-export function MessageThread({ messages, isLoading, isTyping }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom
@@ -54,15 +59,50 @@ export function MessageThread({ messages, isLoading, isTyping }: MessageThreadPr
 
                 {isTyping && (
                     <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
                             <Bot className="h-4 w-4" />
                         </div>
-                        <div className="bg-muted rounded-2xl px-4 py-2 mt-1">
+                        <div className="bg-muted rounded-2xl px-4 py-2 mt-1 border border-border/50">
                             <div className="flex gap-1 h-4 items-center">
                                 <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:-0.3s]" />
                                 <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:-0.15s]" />
                                 <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce" />
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeToolCalls && activeToolCalls.length > 0 && (
+                    <div className="flex items-start gap-3 mt-4">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                            <Bot className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 max-w-[80%] pt-1">
+                            <div className="flex items-center gap-2 text-muted-foreground mb-2 px-1">
+                                <span className="text-xs uppercase font-semibold tracking-wider">Using Tools</span>
+                            </div>
+                            <div className="space-y-2">
+                                {activeToolCalls.map(tool => (
+                                    <ToolCallCard
+                                        key={tool.id}
+                                        toolName={tool.toolName}
+                                        toolCallId={tool.id}
+                                        arguments={tool.arguments}
+                                        result={tool.result}
+                                        error={tool.error}
+                                        isLoading={tool.isLoading}
+                                        durationMs={tool.durationMs}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {error && (
+                    <div className="flex justify-center mt-6">
+                        <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm max-w-[80%] text-center">
+                            {error}
                         </div>
                     </div>
                 )}
@@ -100,7 +140,7 @@ function MessageItem({ message }: { message: Message }) {
             </div>
             
             <div className={cn(
-                "flex flex-col gap-1 max-w-[80%]",
+                "flex flex-col gap-1 w-full flex-1 max-w-[80%]",
                 isUser ? "items-end" : "items-start"
             )}>
                 <div className={cn(
@@ -109,9 +149,34 @@ function MessageItem({ message }: { message: Message }) {
                         ? "bg-primary text-primary-foreground rounded-tr-none" 
                         : "bg-muted text-foreground rounded-tl-none border border-border/50"
                 )}>
-                    <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                    {isAssistant && message.isStreaming ? (
+                        <StreamingMessage 
+                            isStreaming={true} 
+                            content={message.content} 
+                        />
+                    ) : (
+                        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                    )}
                 </div>
-                <span className="text-[10px] text-muted-foreground px-1">
+                
+                {message.toolCalls && message.toolCalls.length > 0 && (
+                    <div className="w-full mt-2 space-y-2">
+                        {message.toolCalls.map(tool => (
+                            <ToolCallCard
+                                key={tool.id}
+                                toolName={tool.toolName}
+                                toolCallId={tool.id}
+                                arguments={tool.arguments}
+                                result={tool.result}
+                                error={tool.error}
+                                isLoading={tool.isLoading}
+                                durationMs={tool.durationMs}
+                            />
+                        ))}
+                    </div>
+                )}
+                
+                <span className="text-[10px] text-muted-foreground px-1 mt-1">
                     {format(new Date(message.createdAt), 'h:mm a')}
                 </span>
             </div>

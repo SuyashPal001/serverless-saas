@@ -27,6 +27,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'webhooks:read',
         'files:read',
         'files:create',
+        'conversations:create',
+        'conversations:read',
+        'conversations:update',
+        'conversations:delete',
+        'messages:create',
+        'messages:read',
     ],
 
     'ops-agent': [

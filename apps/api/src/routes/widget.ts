@@ -133,11 +133,16 @@ widgetRoutes.post('/:tenantId/conversations/:conversationId/messages', async (c)
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
     }
 
+    // Widget conversations may have no authenticated user — use externalUserId as a fallback
+    // so the relay and bundler receive a non-null identifier.
+    const userId = conversation.userId ?? conversation.externalUserId ?? 'widget';
+
     try {
         const assistantMessage = await runMessageRelay(
             conversationId,
             tenantId,
             conversation.agentId,
+            userId,
             result.data.content,
         );
         return c.json({ data: assistantMessage }, 201);

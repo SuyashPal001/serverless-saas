@@ -50,6 +50,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
+    const userId = requestContext?.userId;
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('conversations:create')) {
@@ -74,6 +75,7 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
             conversationId,
             tenantId,
             conversation.agentId,
+            userId,
             result.data.content,
         );
         return c.json({ data: assistantMessage }, 201);

@@ -2,12 +2,24 @@ import { Agent } from "../agents/types";
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
+export interface ToolCall {
+    id: string;
+    toolName: string;
+    arguments?: Record<string, unknown>;
+    result?: unknown;
+    error?: string;
+    isLoading?: boolean;
+    durationMs?: number;
+}
+
 export interface Message {
     id: string;
     conversationId: string;
     role: MessageRole;
     content: string;
     createdAt: string;
+    toolCalls?: ToolCall[];
+    isStreaming?: boolean;
 }
 
 export interface Conversation {

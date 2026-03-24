@@ -11,7 +11,7 @@ import { sessionValidationMiddleware } from './middleware/sessionValidation';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
-import { authRoutes, authPublicRoutes } from './routes/auth';
+import { authRoutes, authPublicRoutes, authUserRoutes } from './routes/auth';
 import { invitationsPublicRoutes, memberInviteRoutes } from './routes/invitations';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
@@ -36,6 +36,7 @@ import { eventsRoutes } from './routes/events';
 import { integrationsRoutes } from './routes/integrations';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
+import { sessionsRoutes } from './routes/sessions';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -73,6 +74,8 @@ api.use('*', userUpsertMiddleware);
 api.route('/onboarding', onboardingRoutes);
 api.route('/invitations', invitationsPublicRoutes);
 api.route('/tenants', tenantsRoutes);
+// Auth routes that only need JWT + user upsert (no session required)
+api.route('/auth', authUserRoutes);
 
 // Step 3: API key auth
 api.use('*', apiKeyAuthMiddleware);
@@ -119,6 +122,7 @@ api.route('/files', filesRoutes);
 api.route('/integrations', integrationsRoutes);
 api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
+api.route('/sessions', sessionsRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);

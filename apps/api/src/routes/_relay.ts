@@ -1,10 +1,20 @@
-import { and, eq, asc, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { conversations, messages, agentSkills, agentPolicies } from '@serverless-saas/database/schema/conversations';
-import { agents } from '@serverless-saas/database/schema/auth';
-import { usageRecords } from '@serverless-saas/database/schema/billing';
-import { vertexAdapter } from '@serverless-saas/ai';
-import type { AgentMessage, AgentRunRequest } from '@serverless-saas/ai';
+import { conversations, messages } from '@serverless-saas/database/schema/conversations';
+import {
+    bundleAgentConfig,
+    getRuntime,
+    createEventHandler,
+    createSession,
+    touchSession,
+    endSession,
+    clearSession,
+    recordAgentUsage,
+    recordSessionStart,
+    type UsageContext,
+} from '@serverless-saas/ai';
+import type { AgentEvent } from '@serverless-saas/ai';
+import { pushToConnectedClients } from '@serverless-saas/cache';
 
 export class RelayError extends Error {
     constructor(
@@ -17,18 +27,47 @@ export class RelayError extends Error {
     }
 }
 
+function bundleErrorStatus(code: string): 400 | 404 | 500 {
+    if (code === 'AGENT_NOT_FOUND' || code === 'CONVERSATION_NOT_FOUND') return 404;
+    return 400;
+}
+
 /**
- * Core AI relay: saves the user message, calls the Vertex adapter, saves the
- * assistant response, meters tokens, and escalates needsHuman if signalled.
+ * Core AI relay: sends a user message through the agent runtime, streams events
+ * to the frontend via WebSocket, saves the assistant response, and meters tokens.
+ *
+ * Sessions are tracked in Redis for visibility and TTL management.
+ * Each Lambda invocation starts a fresh VM session (WebSocket connections
+ * are per-instance; cross-instance session reuse requires a proxy layer).
+ *
  * Throws RelayError on known failure modes; unknown errors propagate as-is.
  */
 export async function runMessageRelay(
     conversationId: string,
     tenantId: string,
     agentId: string,
+    userId: string,
     content: string,
 ): Promise<typeof messages.$inferSelect> {
-    // Save user message first so it is included in the history we send to the model
+    // 1. Bundle config — loads conversation history BEFORE saving the user message
+    //    so history and sendMessage don't contain the same message twice
+    const configResult = await bundleAgentConfig({
+        tenantId,
+        userId,
+        agentId,
+        conversationId,
+        historyLimit: 20,
+    });
+
+    if (!configResult.success) {
+        throw new RelayError(
+            configResult.error,
+            configResult.code,
+            bundleErrorStatus(configResult.code),
+        );
+    }
+
+    // 2. Save user message to DB
     await db.insert(messages).values({
         conversationId,
         tenantId,
@@ -36,123 +75,116 @@ export async function runMessageRelay(
         content,
     });
 
-    // Load agent
-    const [agent] = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.id, agentId))
-        .limit(1);
-
-    if (!agent) {
-        throw new RelayError('Agent not found', 'NOT_FOUND', 404);
-    }
-
-    // Load active skill — latest version
-    const [skill] = await db
-        .select()
-        .from(agentSkills)
-        .where(and(
-            eq(agentSkills.agentId, agentId),
-            eq(agentSkills.tenantId, tenantId),
-            eq(agentSkills.status, 'active'),
-        ))
-        .orderBy(desc(agentSkills.version))
-        .limit(1);
-
-    if (!skill) {
-        throw new RelayError('No active skill configured for this agent', 'NO_ACTIVE_SKILL', 400);
-    }
-
-    // Load policy (optional)
-    const [policy] = await db
-        .select()
-        .from(agentPolicies)
-        .where(and(
-            eq(agentPolicies.agentId, agentId),
-            eq(agentPolicies.tenantId, tenantId),
-        ))
-        .limit(1);
-
-    // Load full message history including the user message just inserted
-    const history: (typeof messages.$inferSelect)[] = await db
-        .select()
-        .from(messages)
-        .where(and(
-            eq(messages.conversationId, conversationId),
-            eq(messages.tenantId, tenantId),
-        ))
-        .orderBy(asc(messages.createdAt));
-
-    const agentMessages: AgentMessage[] = history.map((m) => ({
-        role: m.role,
-        content: m.content,
-        toolCalls: (m.toolCalls as AgentMessage['toolCalls']) ?? undefined,
-        toolResults: (m.toolResults as AgentMessage['toolResults']) ?? undefined,
-    }));
-
-    // Build request
-    const skillConfig = (skill.config ?? {}) as Record<string, unknown>;
-    const request: AgentRunRequest = {
+    // 3. Allocate a session ID and register it in Redis
+    //    createSession() returns an existing session if one is already tracked
+    //    for this conversation, otherwise stores the new ID
+    const sessionId = configResult.config.sessionId;
+    await createSession({
+        sessionId,
         conversationId,
         tenantId,
         agentId,
-        messages: agentMessages,
-        skill: {
-            name: skill.name,
-            systemPrompt: skill.systemPrompt,
-            tools: skill.tools,
-            config: {
-                ...skillConfig,
-                temperature: skillConfig.temperature as number | undefined,
-                maxTokens: skillConfig.maxTokens as number | undefined,
-                topP: skillConfig.topP as number | undefined,
-            },
-        },
-        policy: {
-            allowedActions: policy?.allowedActions ?? [],
-            blockedActions: policy?.blockedActions ?? [],
-            requiresApproval: policy?.requiresApproval ?? [],
-            maxTokensPerMessage: policy?.maxTokensPerMessage ?? undefined,
-            maxMessagesPerConversation: policy?.maxMessagesPerConversation ?? undefined,
-        },
-    };
-
-    // Call adapter
-    let adapterResponse;
-    try {
-        adapterResponse = await vertexAdapter.run(request);
-    } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'AI adapter error';
-        console.error('Vertex adapter error:', err);
-        throw new RelayError(msg, 'ADAPTER_ERROR', 500);
-    }
-
-    // Save assistant response
-    const [assistantMessage] = await db.insert(messages).values({
-        conversationId,
-        tenantId,
-        role: 'assistant',
-        content: adapterResponse.message.content,
-        toolCalls: adapterResponse.message.toolCalls ?? null,
-        tokenCount: adapterResponse.tokenCount.total,
-        model: adapterResponse.model,
-    }).returning();
-
-    // Meter usage
-    await db.insert(usageRecords).values({
-        tenantId,
-        actorId: agentId,
-        actorType: 'agent',
-        metric: 'llm_tokens',
-        quantity: String(adapterResponse.tokenCount.total),
+        userId,
     });
 
-    // Escalate conversation if adapter signals human handoff
-    if (adapterResponse.needsHuman) {
-        await db.update(conversations)
-            .set({ needsHuman: true })
-            .where(eq(conversations.id, conversationId));
+    // Usage context — shared by recordSessionStart and recordAgentUsage below
+    const usageContext: UsageContext = {
+        tenantId,
+        agentId,
+        userId,
+        conversationId,
+        sessionId,
+    };
+
+    // Record session start for analytics (one record per new session)
+    try {
+        await recordSessionStart(usageContext);
+    } catch (err) {
+        console.error('[Relay] Failed to record session start:', err);
     }
 
-    return assistantMessage;
+    // 4. Create event handler — accumulates response content and pushes events to frontend
+    const { handler, getResult } = createEventHandler({
+        tenantId,
+        userId,
+        conversationId,
+        pushToFrontend: (event: AgentEvent) =>
+            pushToConnectedClients(tenantId, userId, {
+                type: 'agent.event',
+                payload: event as unknown as Record<string, unknown>,
+            }),
+    });
+
+    try {
+        // 5. Start VM session — sends full config (skill, policy, LLM creds, history)
+        const runtime = getRuntime();
+        const sessionResult = await runtime.startSession(configResult.config, handler);
+
+        if (sessionResult.status === 'error') {
+            throw new RelayError(
+                sessionResult.error ?? 'Failed to start agent session',
+                'SESSION_ERROR',
+                500,
+            );
+        }
+
+        // 6. Send user message — VM streams events back via handler
+        await runtime.sendMessage(sessionResult.sessionId, content, handler);
+
+        // 7. Extend session TTL now that we've had a successful exchange
+        await touchSession(sessionId);
+
+        // 8. End VM session and collect final usage
+        const usageReport = await runtime.endSession(sessionResult.sessionId, 'completed');
+
+        // 9. Mark session as completed in Redis
+        await endSession(sessionId, 'completed');
+
+        // 10. Read accumulated result
+        const { accumulatedContent, usage, errors } = getResult();
+        const finalUsage = usageReport ?? usage;
+
+        if (!accumulatedContent) {
+            throw new RelayError('No response received from agent', 'EMPTY_RESPONSE', 500);
+        }
+
+        // 11. Save assistant message
+        const [assistantMessage] = await db
+            .insert(messages)
+            .values({
+                conversationId,
+                tenantId,
+                role: 'assistant',
+                content: accumulatedContent,
+                tokenCount: finalUsage?.totalTokens ?? null,
+                model: finalUsage?.model ?? null,
+            })
+            .returning();
+
+        // 12. Record usage for billing metering (non-fatal — don't block the response)
+        if (finalUsage) {
+            try {
+                await recordAgentUsage(usageContext, finalUsage);
+            } catch (err) {
+                console.error('[Relay] Failed to record usage:', err);
+            }
+        }
+
+        // 13. Escalate conversation if the runtime reported unrecoverable errors
+        if (errors.length > 0) {
+            await db
+                .update(conversations)
+                .set({ needsHuman: true })
+                .where(eq(conversations.id, conversationId));
+        }
+
+        return assistantMessage;
+
+    } catch (err: unknown) {
+        // Clear session tracking on error so the next request starts fresh
+        await clearSession(conversationId);
+
+        if (err instanceof RelayError) throw err;
+        throw err;
+    }
 }

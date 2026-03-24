@@ -12,6 +12,10 @@
   "dependencies": {
     "ai": "^4.3.19",
     "@ai-sdk/google-vertex": "^1.0.4",
-    "yaml": "^2.3.4"
+    "yaml": "^2.3.4",
+    "@serverless-saas/database": "workspace:*",
+    "@serverless-saas/cache": "workspace:*",
+    "drizzle-orm": "^0.36.0",
+    "@aws-sdk/client-sqs": "^3.1011.0"
   }
 }
