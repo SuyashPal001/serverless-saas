@@ -7,15 +7,21 @@ import { SendHorizontal, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
     onSend: (content: string) => void;
+    onStop?: () => void;
     disabled?: boolean;
     isLoading?: boolean;
+    isStreaming?: boolean;
 }
 
-export function ChatInput({ onSend, disabled, isLoading }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled, isLoading, isStreaming }: ChatInputProps) {
     const [content, setContent] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const handleSend = () => {
+        if (isStreaming) {
+            onStop?.();
+            return;
+        }
         if (!content.trim() || disabled || isLoading) return;
         onSend(content.trim());
         setContent("");
@@ -49,19 +55,32 @@ export function ChatInput({ onSend, disabled, isLoading }: ChatInputProps) {
                     className="flex-1 min-h-[44px] max-h-[200px] py-3 pr-12 resize-none bg-muted/30 focus-visible:ring-1"
                     disabled={disabled}
                 />
-                <Button
-                    size="icon"
-                    onClick={handleSend}
-                    disabled={!content.trim() || disabled || isLoading}
-                    className="absolute right-2 bottom-1.5 h-8 w-8 rounded-full"
-                >
-                    {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <SendHorizontal className="h-4 w-4" />
-                    )}
-                    <span className="sr-only">Send</span>
-                </Button>
+                
+                {isStreaming ? (
+                    <Button
+                        size="icon"
+                        onClick={onStop}
+                        variant="destructive"
+                        className="absolute right-2 bottom-1.5 h-8 w-8 rounded-full animate-in fade-in zoom-in duration-200"
+                    >
+                        <div className="h-3 w-3 bg-current rounded-sm" />
+                        <span className="sr-only">Stop</span>
+                    </Button>
+                ) : (
+                    <Button
+                        size="icon"
+                        onClick={handleSend}
+                        disabled={!content.trim() || disabled || isLoading}
+                        className="absolute right-2 bottom-1.5 h-8 w-8 rounded-full"
+                    >
+                        {isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <SendHorizontal className="h-4 w-4" />
+                        )}
+                        <span className="sr-only">Send</span>
+                    </Button>
+                )}
             </div>
             <p className="text-[10px] text-center text-muted-foreground mt-2">
                 Shift + Enter for a new line. Press Enter to send.

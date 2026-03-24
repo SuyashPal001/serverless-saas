@@ -39,6 +39,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const maxRetries = 5;
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,14 +102,21 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
 
               case 'delta':
                 // Streaming chunk - relay diffs for us
-                // Note: relay protocol doesn't explicitly send messageId in delta yet,
-                // we use conversationId as a stable reference for the current stream
-                onMessageDelta?.(event.text, conversationId);
+                // Generate a stable messageId for this stream if we don't have one
+                if (!currentMessageIdRef.current) {
+                  currentMessageIdRef.current = crypto.randomUUID();
+                }
+                onMessageDelta?.(event.text, currentMessageIdRef.current);
                 break;
 
               case 'done':
                 // Stream complete - clear thinking/loading state
-                onMessageComplete?.('', conversationId);
+                // Use the captured messageId and clear it for the next message
+                if (currentMessageIdRef.current) {
+                  // Pass final text if relay sends it, otherwise pass empty string to trigger preservation
+                  onMessageComplete?.(event.text || '', currentMessageIdRef.current);
+                  currentMessageIdRef.current = null;
+                }
                 break;
 
               case 'error':

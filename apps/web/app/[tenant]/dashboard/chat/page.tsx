@@ -67,8 +67,17 @@ export default function ChatPage() {
     } = useVoice({ conversationId: conversationId || undefined });
 
     const [isThinking, setIsThinking] = useState(false);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const stopFlagRef = useRef(false);
     const [eventError, setEventError] = useState<string | null>(null);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
+
+    const handleStopStreaming = useCallback(() => {
+        stopFlagRef.current = true;
+        setIsStreaming(false);
+        setIsThinking(false);
+        toast.info("Message generation stopped");
+    }, []);
 
     const agentEvents = useAgentEvents({
         conversationId: conversationId || '',
@@ -77,57 +86,71 @@ export default function ChatPage() {
             setEventError(null);
         }, []),
         onMessageDelta: useCallback((delta: string, messageId: string) => {
+            if (stopFlagRef.current) return;
             setIsThinking(false);
+            setIsStreaming(true);
             queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
                 if (!old) return { data: [] };
                 const existingIndex = old.data.findIndex(m => m.id === messageId);
+                let newData = [...old.data];
+                
                 if (existingIndex >= 0) {
-                    const newData = [...old.data];
                     newData[existingIndex] = {
                         ...newData[existingIndex],
                         content: newData[existingIndex].content + delta,
                         isStreaming: true,
                     };
-                    return { data: newData };
                 } else {
-                    return {
-                        data: [...old.data, {
-                            id: messageId,
-                            conversationId: conversationId!,
-                            role: 'assistant',
-                            content: delta,
-                            createdAt: new Date().toISOString(),
-                            isStreaming: true,
-                        }]
-                    };
+                    newData.push({
+                        id: messageId,
+                        conversationId: conversationId!,
+                        role: 'assistant',
+                        content: delta,
+                        createdAt: new Date().toISOString(),
+                        isStreaming: true,
+                    });
                 }
+
+                // Bug 3: Sort messages by createdAt
+                return { 
+                    data: [...newData].sort((a, b) => 
+                        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                    ) 
+                };
             });
         }, [conversationId, queryClient]),
         onMessageComplete: useCallback((content: string, messageId: string) => {
             setIsThinking(false);
+            setIsStreaming(false);
+            stopFlagRef.current = false;
             queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
                 if (!old) return { data: [] };
                 const existingIndex = old.data.findIndex(m => m.id === messageId);
+                let newData = [...old.data];
+
                 if (existingIndex >= 0) {
-                    const newData = [...old.data];
                     newData[existingIndex] = {
                         ...newData[existingIndex],
-                        content,
+                        content: content || newData[existingIndex].content,
                         isStreaming: false,
                     };
-                    return { data: newData };
                 } else {
-                    return {
-                        data: [...old.data, {
-                            id: messageId,
-                            conversationId: conversationId!,
-                            role: 'assistant',
-                            content,
-                            createdAt: new Date().toISOString(),
-                            isStreaming: false,
-                        }]
-                    };
+                    newData.push({
+                        id: messageId,
+                        conversationId: conversationId!,
+                        role: 'assistant',
+                        content,
+                        createdAt: new Date().toISOString(),
+                        isStreaming: false,
+                    });
                 }
+
+                // Bug 3: Sort messages by createdAt
+                return { 
+                    data: [...newData].sort((a, b) => 
+                        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                    ) 
+                };
             });
         }, [conversationId, queryClient]),
         onToolCalling: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
@@ -159,6 +182,8 @@ export default function ChatPage() {
         }, []),
         onError: useCallback((code: string, message: string | object, recoverable: boolean) => {
             setIsThinking(false);
+            setIsStreaming(false);
+            stopFlagRef.current = false;
             const errorMsg = typeof message === 'string' ? message : (message as any)?.message || JSON.stringify(message);
             setEventError(`[${code}] ${errorMsg}`);
             toast.error(errorMsg);
@@ -216,6 +241,7 @@ export default function ChatPage() {
                 return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
             });
             setIsThinking(true);
+            stopFlagRef.current = false;
             setEventError(null);
             return api.post<Message>(`/api/v1/conversations/${conversationId}/messages`, { content });
         },
@@ -267,6 +293,7 @@ export default function ChatPage() {
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);
+            setIsStreaming(false);
             // Optionally refetch to restore state
             queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
         }
@@ -360,7 +387,9 @@ export default function ChatPage() {
                                 <div className="flex-1 min-w-0">
                                     <ChatInput 
                                         onSend={handleSendMessage} 
-                                        isLoading={sendMessage.isPending || isThinking}
+                                        onStop={handleStopStreaming}
+                                        isLoading={sendMessage.isPending} 
+                                        isStreaming={isStreaming || isThinking}
                                         disabled={selectedConversation.status !== 'active'}
                                     />
                                 </div>
