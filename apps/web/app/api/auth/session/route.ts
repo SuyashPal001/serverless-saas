@@ -69,6 +69,16 @@ export async function DELETE() {
     });
 
     response.cookies.set({
+        name: 'platform_access_token',
+        value: '',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 0,
+    });
+
+    response.cookies.set({
         name: 'platform_refresh_token',
         value: '',
         httpOnly: true,

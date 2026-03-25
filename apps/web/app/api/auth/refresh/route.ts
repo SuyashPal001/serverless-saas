@@ -15,13 +15,14 @@ export async function POST(request: NextRequest) {
         const body = await request.json().catch(() => ({}));
         const tenantId: string | undefined = body.tenantId;
 
-        const { idToken } = await refreshSession(
+        const { idToken, accessToken } = await refreshSession(
             refreshToken,
             tenantId ? { tenantId } : undefined,
         );
 
         const response = NextResponse.json({ success: true });
 
+        // ID Token - httpOnly
         response.cookies.set({
             name: 'platform_token',
             value: idToken,
@@ -31,6 +32,19 @@ export async function POST(request: NextRequest) {
             path: '/',
             maxAge: 3600,
         });
+
+        // Access Token - NOT httpOnly (for WebSocket)
+        if (accessToken) {
+            response.cookies.set({
+                name: 'platform_access_token',
+                value: accessToken,
+                httpOnly: false,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                path: '/',
+                maxAge: 3600,
+            });
+        }
 
         return response;
     } catch (error) {

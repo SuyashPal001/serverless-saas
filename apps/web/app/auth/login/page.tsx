@@ -117,14 +117,15 @@ function LoginPageContent() {
         setError(null);
 
         try {
-            let { idToken } = pendingTokens;
-            const { refreshToken, accessToken } = pendingTokens;
+            let { idToken, accessToken } = pendingTokens;
+            const { refreshToken } = pendingTokens;
 
             // Picked a different workspace than what's in the JWT —
             // refresh with clientMetadata so the pre-token lambda stamps the right tenantId
             if (!workspace.isCurrent) {
                 const refreshed = await refreshSession(refreshToken, { tenantId: workspace.tenantId });
                 idToken = refreshed.idToken;
+                accessToken = refreshed.accessToken;
             }
 
             const res = await fetch('/api/auth/session', {
