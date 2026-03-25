@@ -8,8 +8,9 @@ import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { AgentSelector } from "@/components/platform/chat/AgentSelector";
-import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall } from "@/components/platform/chat/types";
+import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall, MessageAttachment } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
+import { Attachment } from "@/types/agent-events";
 import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { useCanvas } from "@/hooks/useCanvas";
@@ -49,9 +50,19 @@ export default function ChatPage() {
     });
 
     const conversations = conversationsData?.data || [];
-    const selectedConversation = useMemo(() => 
-        conversations.find(c => c.id === conversationId),
-    [conversations, conversationId]);
+
+    // Fetch the active conversation directly when conversationId is in the URL.
+    // This prevents messages being hidden while the list is still loading or if
+    // the list query fails — selectedConversation should not depend on the list.
+    const { data: activeConversationData } = useQuery<{ data: Conversation }>({
+        queryKey: ["conversation", conversationId],
+        queryFn: () => api.get<{ data: Conversation }>(`/api/v1/conversations/${conversationId}`),
+        enabled: !!conversationId,
+    });
+
+    const selectedConversation = useMemo(() =>
+        activeConversationData?.data ?? conversations.find(c => c.id === conversationId),
+    [activeConversationData, conversations, conversationId]);
 
     const {
         isCanvasOpen,
@@ -277,8 +288,8 @@ export default function ChatPage() {
         createConversation.mutate(agent.id);
     };
 
-    const handleSendMessage = (content: string) => {
-        if (!content.trim()) return;
+    const handleSendMessage = (content: string, attachments?: Attachment[]) => {
+        if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
         // 1. Optimistic update
         queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
@@ -287,6 +298,13 @@ export default function ChatPage() {
                 conversationId: conversationId!,
                 role: 'user',
                 content,
+                attachments: attachments?.map(a => ({
+                    id: a.fileId,
+                    name: a.name,
+                    type: a.type,
+                    size: a.size,
+                    previewUrl: a.previewUrl  // carry local blob URL for immediate preview
+                })),
                 createdAt: new Date().toISOString()
             };
             const newData = old ? [...old.data, newMessage] : [newMessage];
@@ -302,7 +320,7 @@ export default function ChatPage() {
         setEventError(null);
 
         // 2. Send via WebSocket for real-time interaction
-        const sent = sendWsMessage(content);
+        const sent = sendWsMessage(content, attachments);
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);
