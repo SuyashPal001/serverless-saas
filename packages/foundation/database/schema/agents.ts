@@ -7,6 +7,23 @@ export const workflowTriggerEnum = pgEnum('workflow_trigger', ['incident_created
 export const workflowStatusEnum = pgEnum('workflow_status', ['active', 'paused', 'archived']);
 export const workflowRunStatusEnum = pgEnum('workflow_run_status', ['running', 'completed', 'failed', 'awaiting_approval']);
 
+export const agentTypeEnum = pgEnum('agent_type', ['ops', 'support', 'billing', 'custom']);
+export const agentStatusEnum = pgEnum('agent_status', ['active', 'paused', 'retired']);
+
+export const agents = pgTable('agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  name: text('name').notNull(),
+  type: agentTypeEnum('type').notNull(),
+  model: text('model'),
+  status: agentStatusEnum('status').notNull().default('active'),
+  apiKeyId: uuid('api_key_id').notNull(),
+  llmProviderId: uuid('llm_provider_id'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const agentWorkflows = pgTable('agent_workflows', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),

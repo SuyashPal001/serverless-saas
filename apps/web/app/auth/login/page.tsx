@@ -82,6 +82,11 @@ function LoginPageContent() {
 
             // 3. Skip picker if redirect param is present or user has only one workspace
             if (redirectParam || workspaceList.length <= 1) {
+                console.log('[auth] sending to session:', {
+                    hasIdToken: !!idToken,
+                    hasAccessToken: !!accessToken,
+                    accessTokenPreview: accessToken?.substring(0, 30)
+                });
                 const res = await fetch('/api/auth/session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

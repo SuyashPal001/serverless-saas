@@ -1,7 +1,8 @@
 import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, unique } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { tenants } from './tenancy';
-import { users, agents } from './auth';
+import { users } from './auth';
+import { agents } from './agents';
 
 export const conversationStatusEnum = pgEnum('conversation_status', ['active', 'archived', 'escalated']);
 

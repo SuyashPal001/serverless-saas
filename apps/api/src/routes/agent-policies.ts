@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { agents } from '@serverless-saas/database/schema/auth';
+import { agents } from '@serverless-saas/database/schema/agents';
 import { agentPolicies } from '@serverless-saas/database/schema/conversations';
 import type { AppEnv } from '../types';
 

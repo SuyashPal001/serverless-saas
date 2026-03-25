@@ -17,7 +17,7 @@ interface ConversationListProps {
 }
 
 export function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
-    const { data: conversationsData, isLoading } = useQuery<ConversationsResponse>({
+    const { data: conversationsData, isLoading, isError, refetch } = useQuery<ConversationsResponse>({
         queryKey: ["conversations"],
         queryFn: () => api.get<ConversationsResponse>("/api/v1/conversations"),
     });
@@ -50,7 +50,14 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
             </div>
             
             <div className="flex-1 overflow-y-auto px-2 space-y-0.5 custom-scrollbar">
-                    {isLoading ? (
+                    {isError ? (
+                        <div className="py-10 text-center px-4">
+                            <p className="text-sm text-destructive mb-2">Failed to load chats</p>
+                            <Button variant="outline" size="sm" onClick={() => refetch()} className="mx-auto">
+                                Retry
+                            </Button>
+                        </div>
+                    ) : isLoading ? (
                         Array.from({ length: 5 }).map((_, i) => (
                             <div key={i} className="p-3">
                                 <Skeleton className="h-10 w-full" />

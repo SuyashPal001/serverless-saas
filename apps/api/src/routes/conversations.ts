@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '@serverless-saas/database/client';
 import { conversations } from '@serverless-saas/database/schema/conversations';
-import { agents } from '@serverless-saas/database/schema/auth';
+import { agents } from '@serverless-saas/database/schema/agents';
 import type { AppEnv } from '../types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
@@ -25,15 +25,33 @@ conversationsRoutes.get('/', async (c) => {
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
     if (userId) filters.push(eq(conversations.userId, userId));
 
-    const data = await db.query.conversations.findMany({
-        where: and(...filters),
-        orderBy: [desc(conversations.createdAt)],
-        with: {
-            agent: true,
-        },
-    });
+    try {
+        const data = await db
+            .select({
+                id: conversations.id,
+                tenantId: conversations.tenantId,
+                agentId: conversations.agentId,
+                title: conversations.title,
+                status: conversations.status,
+                metadata: conversations.metadata,
+                createdAt: conversations.createdAt,
+                updatedAt: conversations.updatedAt,
+                agent: {
+                    id: agents.id,
+                    name: agents.name,
+                    type: agents.type,
+                }
+            })
+            .from(conversations)
+            .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .where(and(...filters))
+            .orderBy(desc(conversations.createdAt));
 
-    return c.json({ data });
+        return c.json({ data });
+    } catch (error) {
+        console.error('Fetch conversations failed:', error);
+        return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    }
 });
 
 // POST /conversations — create new conversation

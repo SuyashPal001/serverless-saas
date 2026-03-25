@@ -3,7 +3,7 @@ import { and, eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
-import { agents } from '@serverless-saas/database/schema/auth';
+import { agents } from '@serverless-saas/database/schema/agents';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { runMessageRelay, RelayError } from './_relay';
 import type { AppEnv } from '../types';

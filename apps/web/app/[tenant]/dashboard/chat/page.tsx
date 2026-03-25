@@ -19,6 +19,7 @@ import { useVoice } from "@/hooks/useVoice";
 import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "@/components/platform/SidebarContext";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ export default function ChatPage() {
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
 
     // Fetch conversations
-    const { data: conversationsData, isLoading: isLoadingConversations } = useQuery<ConversationsResponse>({
+    const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
         queryKey: ["conversations"],
         queryFn: () => api.get<ConversationsResponse>("/api/v1/conversations"),
     });
@@ -421,18 +422,40 @@ export default function ChatPage() {
                                     />
                                 </div>
                             </>
+                        ) : isLoadingConversations ? (
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
+                                <div className="space-y-4 w-full max-w-sm">
+                                    <Skeleton className="h-12 w-full mx-auto" />
+                                    <Skeleton className="h-40 w-full mx-auto" />
+                                    <Skeleton className="h-10 w-32 mx-auto rounded-full" />
+                                </div>
+                            </div>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
                                     <MessageSquare className="h-8 w-8 text-muted-foreground" />
                                 </div>
-                                <h2 className="text-2xl font-bold tracking-tight mb-2">Select a conversation</h2>
+                                <h2 className="text-2xl font-bold tracking-tight mb-2">
+                                    {isErrorConversations ? "Failed to load chats" : "Select a conversation"}
+                                </h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">
-                                    Select an existing conversation from the list or start a new one to interact with your agents.
+                                    {isErrorConversations 
+                                        ? "There was an error loading your conversations. Please try again."
+                                        : "Select an existing conversation from the list or start a new one to interact with your agents."}
                                 </p>
-                                <Button onClick={handleNewChat} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2">
-                                    <Plus className="h-4 w-4" />
-                                    Start New Conversation
+                                <Button 
+                                    onClick={isErrorConversations ? () => queryClient.invalidateQueries({ queryKey: ["conversations"] }) : handleNewChat} 
+                                    size="lg" 
+                                    className="rounded-full shadow-lg h-12 px-6 gap-2"
+                                >
+                                    {isErrorConversations ? (
+                                        <>Retry Loading</>
+                                    ) : (
+                                        <>
+                                            <Plus className="h-4 w-4" />
+                                            Start New Conversation
+                                        </>
+                                    )}
                                 </Button>
                             </div>
                         )}
