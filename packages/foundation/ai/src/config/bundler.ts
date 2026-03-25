@@ -12,7 +12,7 @@
 
 import { db } from '@serverless-saas/database';
 import { eq, and, desc, isNull } from 'drizzle-orm';
-import { agents } from '@serverless-saas/database/schema/auth';
+import { agents } from '@serverless-saas/database/schema/agents';
 import {
   agentSkills,
   agentPolicies,
