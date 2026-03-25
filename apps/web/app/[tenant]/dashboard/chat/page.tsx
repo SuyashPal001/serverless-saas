@@ -218,11 +218,11 @@ export default function ChatPage() {
     // Create conversation mutation
     const createConversation = useMutation({
         mutationFn: (agentId: string) => 
-            api.post<Conversation>("/api/v1/conversations", { agentId }),
-        onSuccess: (newConv) => {
+            api.post<{ data: Conversation }>("/api/v1/conversations", { agentId }),
+        onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             setIsSelectorOpen(false);
-            router.push(`/${tenantSlug}/dashboard/chat?id=${newConv.id}`);
+            router.push(`/${tenantSlug}/dashboard/chat?id=${response.data.id}`);
             toast.success("Conversation started");
         },
         onError: (error: any) => {
