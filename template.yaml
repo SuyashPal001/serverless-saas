@@ -69,6 +69,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           FROM_EMAIL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/ses/from-email}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
     Metadata:
       BuildMethod: makefile
 
@@ -112,6 +113,7 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
     Metadata:
       BuildMethod: makefile
 
@@ -134,6 +136,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           WS_TOKEN_SECRET_SSM_PATH: !Sub "/${ProjectName}/${EnvironmentName}/ws-token-secret"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
     Metadata:
       BuildMethod: makefile
 
