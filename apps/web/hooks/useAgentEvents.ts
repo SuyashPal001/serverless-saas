@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
-import type { AgentEvent } from '@/types/agent-events';
+import type { AgentEvent, Attachment } from '@/types/agent-events';
 
 export interface UseAgentEventsOptions {
   conversationId: string;
@@ -139,10 +139,29 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           if (!isMounted) return;
           console.log('WebSocket disconnected for agent events');
           setIsConnected(false);
+          
           if (retryCountRef.current < maxRetries) {
             retryCountRef.current++;
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = setTimeout(connect, 3000);
+            
+            reconnectTimeoutRef.current = setTimeout(async () => {
+                // If token is missing, attempt one refresh before trying to reconnect
+                const currentToken = document.cookie
+                  .split('; ')
+                  .find(row => row.startsWith('platform_access_token='))
+                  ?.split('=')[1];
+
+                if (!currentToken) {
+                    console.log('[useAgentEvents] Token missing on reconnect, triggering refresh...');
+                    try {
+                        await fetch('/api/auth/refresh', { method: 'POST' });
+                    } catch (e) {
+                        console.error('[useAgentEvents] Refresh failed on reconnect:', e);
+                    }
+                }
+                
+                connect();
+            }, 3000);
           }
         };
 
@@ -180,10 +199,13 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     onSessionEnded,
   ]);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, attachments?: Attachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Relay expects { message: '...' } as per instructions
-      wsRef.current.send(JSON.stringify({ message: text }));
+      // Relay expects { message: '...', attachments: [...] }
+      wsRef.current.send(JSON.stringify({ 
+        message: text,
+        attachments 
+      }));
       return true;
     }
     console.error('WebSocket is not open. Cannot send message.');
