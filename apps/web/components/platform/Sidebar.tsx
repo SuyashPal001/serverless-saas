@@ -23,61 +23,109 @@ import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { useNotifications } from "@/lib/notifications-context"
 import { canRead } from "@/lib/permissions"
+import { useSidebar } from "./SidebarContext"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface SidebarItemProps {
     href: string
     label: string
     icon: React.ElementType
+    isCollapsed?: boolean
 }
 
-function SidebarItem({ href, label, icon: Icon }: SidebarItemProps) {
+function SidebarItem({ href, label, icon: Icon, isCollapsed }: SidebarItemProps) {
     const pathname = usePathname()
     const isActive = pathname === href
 
-    return (
+    const content = (
         <Link
             href={href}
             className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                 isActive
                     ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                isCollapsed && "justify-center px-2"
             )}
         >
-            <Icon className="w-4 h-4" />
-            <span>{label}</span>
+            <Icon className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span>{label}</span>}
         </Link>
     )
+
+    if (isCollapsed) {
+        return (
+            <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                    {content}
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2">
+                    {label}
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
+
+    return content
 }
 
-function NotificationsItem({ href, unreadCount }: { href: string; unreadCount: number }) {
+function NotificationsItem({ href, unreadCount, isCollapsed }: { href: string; unreadCount: number; isCollapsed?: boolean }) {
     const pathname = usePathname()
     const isActive = pathname === href
 
-    return (
+    const content = (
         <Link
             href={href}
             className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative",
                 isActive
                     ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                isCollapsed && "justify-center px-2"
             )}
         >
-            <Bell className="w-4 h-4" />
-            <span>Notifications</span>
+            <Bell className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span>Notifications</span>}
             {unreadCount > 0 && (
-                <span className="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight">
+                <span className={cn(
+                    "bg-primary text-primary-foreground rounded-full text-[10px] flex items-center justify-center font-bold",
+                    isCollapsed 
+                        ? "absolute -top-1 -right-1 h-4 w-4" 
+                        : "ml-auto px-1.5 py-0.5 min-w-[1.25rem] leading-tight"
+                )}>
                     {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
             )}
         </Link>
     )
+
+    if (isCollapsed) {
+        return (
+            <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                    {content}
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2">
+                    Notifications
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
+
+    return content
 }
 
 export function Sidebar() {
     const { tenantSlug, role, permissions = [] } = useTenant()
     const { unreadCount } = useNotifications()
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar()
 
     const base = `/${tenantSlug}/dashboard`
 
@@ -101,39 +149,78 @@ export function Sidebar() {
     ]
 
     return (
-        <aside className="fixed left-0 top-0 bottom-0 w-[240px] flex flex-col bg-card border-r border-border py-6 px-4 z-50">
-            <div className="flex items-center gap-2 px-2 mb-8">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                    <span className="text-primary-foreground font-bold text-xl">P</span>
+        <TooltipProvider>
+            <aside className={cn(
+                "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
+                isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
+            )}>
+                <div className={cn(
+                    "flex items-center gap-2 mb-8 transition-all px-2",
+                    isSidebarCollapsed ? "justify-center" : "px-2"
+                )}>
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                        <span className="text-primary-foreground font-bold text-xl uppercase">
+                            {tenantSlug?.[0] || 'P'}
+                        </span>
+                    </div>
+                    {!isSidebarCollapsed && (
+                        <span className="text-lg font-bold tracking-tight text-foreground truncate">
+                            Platform
+                        </span>
+                    )}
                 </div>
-                <span className="text-lg font-bold tracking-tight text-foreground">Platform</span>
-            </div>
 
-            <nav className="flex-1 space-y-1">
-                {navItems.filter(item => item.show).map((item) => (
-                    <SidebarItem key={item.href} href={item.href} label={item.label} icon={item.icon} />
-                ))}
+                <nav className="flex-1 space-y-1">
+                    {navItems.filter(item => item.show).map((item) => (
+                        <SidebarItem 
+                            key={item.href} 
+                            href={item.href} 
+                            label={item.label} 
+                            icon={item.icon} 
+                            isCollapsed={isSidebarCollapsed} 
+                        />
+                    ))}
 
-                {canRead(permissions, "notifications") && (
-                    <NotificationsItem
-                        href={`${base}/notifications`}
-                        unreadCount={unreadCount}
-                    />
-                )}
-            </nav>
+                    {canRead(permissions, "notifications") && (
+                        <NotificationsItem
+                            href={`${base}/notifications`}
+                            unreadCount={unreadCount}
+                            isCollapsed={isSidebarCollapsed}
+                        />
+                    )}
+                </nav>
 
-            {role === "platform_admin" && (
-                <div className="mt-8 pt-8 border-t border-border">
-                    <p className="px-2 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Ops
-                    </p>
-                    <nav className="space-y-1">
-                        {opsItems.map((item) => (
-                            <SidebarItem key={item.href} {...item} />
-                        ))}
-                    </nav>
+                <div className="mt-auto pt-4 border-t border-border/50">
+                    {role === "platform_admin" && !isSidebarCollapsed && (
+                        <div className="mb-4">
+                            <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                                Ops
+                            </p>
+                            <nav className="space-y-1">
+                                {opsItems.map((item) => (
+                                    <SidebarItem key={item.href} {...item} isCollapsed={isSidebarCollapsed} />
+                                ))}
+                            </nav>
+                        </div>
+                    )}
+                    
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleSidebar}
+                        className="w-full h-10 rounded-md hover:bg-accent hover:text-accent-foreground transition-all group"
+                    >
+                        {isSidebarCollapsed ? (
+                            <PanelLeftOpen className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
+                        ) : (
+                            <div className="flex items-center gap-3 w-full px-3">
+                                <PanelLeftClose className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+                                <span className="text-sm font-medium">Collapse</span>
+                            </div>
+                        )}
+                    </Button>
                 </div>
-            )}
-        </aside>
+            </aside>
+        </TooltipProvider>
     )
 }

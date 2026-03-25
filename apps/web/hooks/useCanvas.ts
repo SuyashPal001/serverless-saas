@@ -8,9 +8,18 @@ export function useCanvas() {
   const [hasActivity, setHasActivity] = useState(false);
   const activityTimeoutRef = useRef<NodeJS.Timeout>(null);
 
+  const [isCanvasExpanded, setIsCanvasExpanded] = useState(false);
+
   // Toggle canvas panel
   const toggleCanvas = useCallback(() => {
-    setIsCanvasOpen(prev => !prev);
+    setIsCanvasOpen(prev => {
+        if (prev) setIsCanvasExpanded(false); // reset expand when closing
+        return !prev;
+    });
+  }, []);
+
+  const toggleExpand = useCallback(() => {
+    setIsCanvasExpanded(prev => !prev);
   }, []);
 
   // Open canvas
@@ -21,6 +30,7 @@ export function useCanvas() {
   // Close canvas
   const closeCanvas = useCallback(() => {
     setIsCanvasOpen(false);
+    setIsCanvasExpanded(false);
   }, []);
 
   // Handle canvas update (called from useAgentEvents)
@@ -59,8 +69,10 @@ export function useCanvas() {
 
   return {
     isCanvasOpen,
+    isCanvasExpanded,
     hasActivity,
     toggleCanvas,
+    toggleExpand,
     openCanvas,
     closeCanvas,
     handleCanvasUpdate,

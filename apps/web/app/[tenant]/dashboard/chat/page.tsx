@@ -16,7 +16,8 @@ import { useCanvas } from "@/hooks/useCanvas";
 import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas/types";
 import { VoiceButton, VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
-import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight } from "lucide-react";
+import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useSidebar } from "@/components/platform/SidebarContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ export default function ChatPage() {
     const conversationId = searchParams.get("id");
     
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+    const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
 
     // Fetch conversations
     const { data: conversationsData, isLoading: isLoadingConversations } = useQuery<ConversationsResponse>({
@@ -52,11 +54,17 @@ export default function ChatPage() {
 
     const {
         isCanvasOpen,
+        isCanvasExpanded,
         hasActivity,
         toggleCanvas,
+        toggleExpand,
         handleCanvasUpdate,
         resetCanvas,
     } = useCanvas();
+
+    const handleAgentCanvasUpdate = useCallback((action: string, data: Record<string, unknown>) => {
+        handleCanvasUpdate(action as CanvasAction, data as CanvasEventData);
+    }, [handleCanvasUpdate]);
 
     const {
         isModalOpen,
@@ -90,9 +98,8 @@ export default function ChatPage() {
             setIsThinking(false);
             setIsStreaming(true);
             queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
-                if (!old) return { data: [] };
-                const existingIndex = old.data.findIndex(m => m.id === messageId);
-                let newData = [...old.data];
+                const newData = old ? [...old.data] : [];
+                const existingIndex = newData.findIndex(m => m.id === messageId);
                 
                 if (existingIndex >= 0) {
                     newData[existingIndex] = {
@@ -124,9 +131,8 @@ export default function ChatPage() {
             setIsStreaming(false);
             stopFlagRef.current = false;
             queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
-                if (!old) return { data: [] };
-                const existingIndex = old.data.findIndex(m => m.id === messageId);
-                let newData = [...old.data];
+                const newData = old ? [...old.data] : [];
+                const existingIndex = newData.findIndex(m => m.id === messageId);
 
                 if (existingIndex >= 0) {
                     newData[existingIndex] = {
@@ -188,7 +194,7 @@ export default function ChatPage() {
             setEventError(`[${code}] ${errorMsg}`);
             toast.error(errorMsg);
         }, []),
-        onCanvasUpdate: (action, data) => handleCanvasUpdate(action as CanvasAction, data as CanvasEventData),
+        onCanvasUpdate: handleAgentCanvasUpdate,
         onSessionEnded: useCallback((reason: string) => {
             setIsThinking(false);
             setActiveToolCalls(new Map());
@@ -282,7 +288,13 @@ export default function ChatPage() {
                 content,
                 createdAt: new Date().toISOString()
             };
-            return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
+            const newData = old ? [...old.data, newMessage] : [newMessage];
+            // Bug 3: Sort messages by createdAt
+            return { 
+                data: newData.sort((a, b) => 
+                    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                )
+            };
         });
 
         setIsThinking(true);
@@ -300,10 +312,13 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-172px)] -m-8 overflow-hidden bg-background">
-            <div className="flex flex-1 overflow-hidden">
+        <div className="flex bg-background h-[calc(100vh-64px)] overflow-hidden relative w-full">
+            <div className="flex flex-1 overflow-hidden relative">
                 {/* Conversations Sidebar */}
-                <div className="w-1/4 min-w-[280px] flex flex-col border-r border-border">
+                <div className={cn(
+                    "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-background/50 backdrop-blur-sm z-20 overflow-hidden relative",
+                    isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-1/4 min-w-[280px] opacity-100 translate-x-0"
+                )}>
                     <ConversationList 
                         selectedId={conversationId || undefined}
                         onSelect={handleSelectConversation}
@@ -311,33 +326,45 @@ export default function ChatPage() {
                     />
                 </div>
 
-                {/* Chat Area & Canvas Container */}
-                <div className="flex-1 flex overflow-hidden">
-                    
+                {/* Main Chat Area */}
+                <div className="flex-1 flex flex-row min-w-0 bg-background relative overflow-hidden">
                     {/* Chat Panel */}
                     <div className={cn(
-                        "flex flex-col overflow-hidden bg-muted/5 transition-all",
-                        isCanvasOpen ? "w-1/2 border-r border-border" : "w-full"
+                        "flex flex-col overflow-hidden transition-all h-full",
+                        isCanvasExpanded ? "w-0 opacity-0 pointer-events-none" : "flex-1",
+                        isCanvasOpen ? "border-r border-border" : ""
                     )}>
                         {selectedConversation ? (
                             <>
                                 {/* Chat Header */}
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shadow-sm z-10 shrink-0">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                                            <Bot className="h-5 w-5" />
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={toggleChatSidebar}
+                                            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground transition-all hover:bg-muted"
+                                        >
+                                            {isChatSidebarCollapsed ? (
+                                                <PanelLeftOpen className="h-4 w-4" />
+                                            ) : (
+                                                <PanelLeftClose className="h-4 w-4" />
+                                            )}
+                                        </Button>
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted border border-border/50">
+                                            <Bot className="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <h2 className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-[400px]">
+                                                <h2 className="font-bold text-base tracking-tight truncate max-w-[200px] sm:max-w-[400px]">
                                                     {selectedConversation.title || (selectedConversation.agent?.name ? `Chat with ${selectedConversation.agent.name}` : "Chat with Agent")}
                                                 </h2>
-                                                <Badge variant={selectedConversation.status === 'active' ? "default" : "secondary"} className="text-[10px] h-4.5">
+                                                <Badge variant={selectedConversation.status === 'active' ? "default" : "secondary"} className="text-[10px] font-bold uppercase py-0 px-1.5 h-4.5 bg-primary/5 text-primary border-primary/20">
                                                     {selectedConversation.status}
                                                 </Badge>
                                             </div>
-                                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <span>Agent: {selectedConversation.agent?.name || "Initializing..."} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}</span>
+                                            <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                                                <span>Agent: {selectedConversation.agent?.name || (isConnected ? "Connected" : "Connecting...")} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}</span>
                                             </p>
                                         </div>
                                     </div>
@@ -357,67 +384,66 @@ export default function ChatPage() {
                                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
                                             <Info className="h-4 w-4" />
                                         </Button>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-                                                <MoreVertical className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive">
-                                                Archive Conversation
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                                                    <MoreVertical className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                                                    Archive Conversation
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Messages */}
-                            <MessageThread 
-                                messages={messages} 
-                                isLoading={isLoadingMessages} 
-                                isTyping={isThinking || sendMessage.isPending}
-                                activeToolCalls={Array.from(activeToolCalls.values())}
-                                error={eventError}
-                            />
+                                {/* Messages */}
+                                <MessageThread 
+                                    messages={messages} 
+                                    isLoading={isLoadingMessages} 
+                                    isTyping={isThinking || sendMessage.isPending}
+                                    activeToolCalls={Array.from(activeToolCalls.values())}
+                                    error={eventError}
+                                />
 
-                            {/* Input */}
-                            <div className="flex items-end gap-2 px-6 pb-4">
-                                <VoiceButton onClick={openVoice} className="mb-1" />
-                                <div className="flex-1 min-w-0">
+                                {/* Input */}
+                                <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                                     <ChatInput 
                                         onSend={handleSendMessage} 
                                         onStop={handleStopStreaming}
+                                        onVoiceClick={openVoice}
+                                        onMediaClick={(type) => toast.info(`Adding ${type}...`)}
                                         isLoading={sendMessage.isPending} 
                                         isStreaming={isStreaming || isThinking}
                                         disabled={selectedConversation.status !== 'active'}
                                     />
                                 </div>
+                            </>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
+                                <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
+                                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <h2 className="text-2xl font-bold tracking-tight mb-2">Select a conversation</h2>
+                                <p className="text-muted-foreground max-w-sm mb-8">
+                                    Select an existing conversation from the list or start a new one to interact with your agents.
+                                </p>
+                                <Button onClick={handleNewChat} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2">
+                                    <Plus className="h-4 w-4" />
+                                    Start New Conversation
+                                </Button>
                             </div>
-                        </>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background">
-                            <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
-                                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                            <h2 className="text-2xl font-bold tracking-tight mb-2">Select a conversation</h2>
-                            <p className="text-muted-foreground max-w-sm mb-8">
-                                Select an existing conversation from the list or start a new one to interact with your agents.
-                            </p>
-                            <Button onClick={handleNewChat} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2">
-                                <Plus className="h-4 w-4" />
-                                Start New Conversation
-                            </Button>
-                        </div>
-                    )}
+                        )}
                     </div>
                     
                     {/* Canvas Panel */}
                     <div className={cn(
-                        "transition-all overflow-hidden h-full z-10",
-                        isCanvasOpen ? "w-1/2" : "w-0"
+                        "transition-all overflow-hidden h-full z-10 bg-background",
+                        isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0")
                     )}>
-                        <Canvas isOpen={isCanvasOpen} onActivity={() => {}} />
+                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={() => {}} />
                     </div>
                 </div>
             </div>

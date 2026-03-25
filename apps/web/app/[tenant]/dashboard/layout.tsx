@@ -1,7 +1,11 @@
+"use client"
+
 import { Sidebar } from "@/components/platform/Sidebar"
 import { Topbar } from "@/components/platform/Topbar"
 import { Toaster } from "@/components/ui/sonner"
 import { NotificationsProvider } from "@/components/platform/NotificationsProvider"
+import { SidebarProvider, useSidebar } from "@/components/platform/SidebarContext"
+import { cn } from "@/lib/utils"
 
 export default async function DashboardLayout({
     children,
@@ -14,25 +18,44 @@ export default async function DashboardLayout({
 
     return (
         <NotificationsProvider>
-            <div className="flex min-h-screen bg-background text-foreground">
-                {/* Sidebar is fixed, so it doesn't need to be in the flex flow for positioning, 
-              but we keep it here for clarity. The width is 240px. */}
-                <Sidebar />
-
-                <div className="flex-1 flex flex-col min-w-0 ml-[240px]">
-                    {/* Topbar is also fixed in the component, but we've offset the main 
-                container by 240px to center it. The Topbar height is 16 (64px). */}
-                    <Topbar />
-
-                    <main className="flex-1 mt-16 p-8 overflow-y-auto">
-                        <div className="max-w-7xl mx-auto h-full">
-                            {children}
-                        </div>
-                    </main>
-                </div>
-
+            <SidebarProvider>
+                <SidebarContent children={children} />
                 <Toaster position="bottom-right" richColors theme="dark" />
-            </div>
+            </SidebarProvider>
         </NotificationsProvider>
+    );
+}
+
+import { usePathname } from "next/navigation";
+
+// Inner component to access sidebar context
+function SidebarContent({ children }: { children: React.ReactNode }) {
+    const { isSidebarCollapsed } = useSidebar();
+    const pathname = usePathname();
+    const isChatPage = pathname?.includes('/dashboard/chat');
+    
+    return (
+        <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
+            <Sidebar />
+
+            <div className={cn(
+                "flex-1 flex flex-col min-w-0 transition-all duration-300",
+                isSidebarCollapsed ? "ml-16" : "ml-60"
+            )}>
+                <Topbar />
+
+                <main className={cn(
+                    "flex-1 mt-16 overflow-y-auto custom-scrollbar",
+                    !isChatPage && "p-8"
+                )}>
+                    <div className={cn(
+                        "h-full",
+                        !isChatPage && "max-w-7xl mx-auto"
+                    )}>
+                        {children}
+                    </div>
+                </main>
+            </div>
+        </div>
     );
 }

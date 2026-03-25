@@ -9,8 +9,12 @@ import type { CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData, CanvasAc
 interface CanvasProps {
   /** Whether canvas panel is visible */
   isOpen: boolean;
+  /** Whether canvas is natively expanded */
+  isExpanded?: boolean;
   /** Callback when canvas receives updates */
   onActivity?: () => void;
+  /** Callback to toggle expanded mode */
+  onExpand?: () => void;
 }
 
 // Initial state
@@ -25,7 +29,7 @@ const initialState: CanvasState = {
 // Overlay duration in ms
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, onActivity }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
 
@@ -163,6 +167,8 @@ export function Canvas({ isOpen, onActivity }: CanvasProps) {
           url={state.currentUrl}
           overlays={state.overlays}
           isActive={state.isActive}
+          isFullscreen={isExpanded}
+          onFullscreen={onExpand}
         />
       </div>
 

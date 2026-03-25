@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Monitor, MousePointer2, Type, Navigation, Maximize2, Minimize2 } from 'lucide-react';
 import type { CanvasOverlay } from './types';
@@ -10,6 +10,7 @@ interface CanvasViewerProps {
   url: string | null;
   overlays: CanvasOverlay[];
   isActive: boolean;
+  isFullscreen?: boolean;
   onFullscreen?: () => void;
 }
 
@@ -18,10 +19,10 @@ export function CanvasViewer({
   url,
   overlays,
   isActive,
+  isFullscreen = false,
   onFullscreen,
 }: CanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Clean up expired overlays
   const activeOverlays = overlays.filter(o => o.expiresAt > Date.now());
@@ -30,8 +31,8 @@ export function CanvasViewer({
     <div
       ref={containerRef}
       className={cn(
-        'relative bg-black rounded-lg overflow-hidden',
-        isFullscreen ? 'fixed inset-4 z-50' : 'aspect-video'
+        'relative bg-black rounded-lg overflow-hidden group w-full',
+        isFullscreen ? 'h-[75vh]' : 'aspect-video'
       )}
     >
       {/* URL Bar */}
@@ -91,11 +92,13 @@ export function CanvasViewer({
 
       {/* Fullscreen Toggle */}
       <button
-        onClick={() => {
-          setIsFullscreen(!isFullscreen);
-          onFullscreen?.();
-        }}
-        className="absolute bottom-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 rounded transition-colors"
+        onClick={onFullscreen}
+        className={cn(
+            "absolute p-2 rounded-md transition-all z-20",
+            isFullscreen 
+              ? "top-4 right-4 opacity-100 bg-zinc-800 hover:bg-zinc-700 shadow-xl border border-white/10" 
+              : "bottom-2 right-2 opacity-0 group-hover:opacity-100 bg-black/50 hover:bg-black/70"
+        )}
       >
         {isFullscreen ? (
           <Minimize2 className="h-4 w-4 text-white" />
@@ -106,7 +109,6 @@ export function CanvasViewer({
     </div>
   );
 }
-
 // Click ripple animation
 function ClickRipple({ x, y }: { x: number; y: number }) {
   return (

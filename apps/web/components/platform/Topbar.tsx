@@ -219,8 +219,11 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
     )
 }
 
+import { useSidebar } from "./SidebarContext"
+
 export function Topbar() {
     const { tenantId, tenantSlug, plan, email, name } = useTenant()
+    const { isSidebarCollapsed } = useSidebar()
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -238,7 +241,10 @@ export function Topbar() {
     const currentPlanColor = planColors[plan?.toLowerCase()] || planColors.free
 
     return (
-        <header className="fixed top-0 right-0 left-[240px] h-16 flex items-center justify-between px-8 bg-card border-b border-border z-40">
+        <header className={cn(
+            "fixed top-0 right-0 h-16 flex items-center justify-between px-8 bg-card border-b border-border z-40 transition-all duration-300",
+            isSidebarCollapsed ? "left-16" : "left-60"
+        )}>
             <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} />
 
             <div className="flex items-center gap-6">

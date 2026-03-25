@@ -45,8 +45,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     let isMounted = true;
 
     const connect = async () => {
-      // Avoid connecting if there's no conversationId
-      if (!conversationId || !isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+      if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
         return;
       }
 
@@ -140,7 +139,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           if (!isMounted) return;
           console.log('WebSocket disconnected for agent events');
           setIsConnected(false);
-          if (retryCountRef.current < maxRetries && conversationId) {
+          if (retryCountRef.current < maxRetries) {
             retryCountRef.current++;
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = setTimeout(connect, 3000);
@@ -158,9 +157,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       }
     };
 
-    if (conversationId) {
-      connect();
-    }
+    connect();
 
     return () => {
       isMounted = false;
@@ -172,7 +169,6 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
   }, [
-    conversationId,
     onThinking,
     onMessageDelta,
     onMessageComplete,
