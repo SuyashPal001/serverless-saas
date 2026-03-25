@@ -58,6 +58,12 @@ conversationsRoutes.get('/', async (c) => {
 conversationsRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
+    console.log('DEBUG conversations POST - requestContext:', JSON.stringify(requestContext));
+    console.log('DEBUG conversations POST - tenantId:', tenantId);
+    
+    const body = await c.req.json();
+    console.log('DEBUG conversations POST - body:', JSON.stringify(body));
+
     const permissions = requestContext?.permissions ?? [];
 
     if (!permissions.includes('conversations:create')) {
@@ -72,7 +78,7 @@ conversationsRoutes.post('/', async (c) => {
         metadata: z.record(z.unknown()).optional(),
     });
 
-    const result = schema.safeParse(await c.req.json());
+    const result = schema.safeParse(body);
     if (!result.success) {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
     }
