@@ -3,6 +3,7 @@ import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations } from '@serverless-saas/database/schema/conversations';
+import { agents } from '@serverless-saas/database/schema/auth';
 import type { AppEnv } from '../types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
@@ -56,6 +57,16 @@ conversationsRoutes.post('/', async (c) => {
     const result = schema.safeParse(await c.req.json());
     if (!result.success) {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [agent] = await db
+        .select()
+        .from(agents)
+        .where(and(eq(agents.id, result.data.agentId), eq(agents.tenantId, tenantId)))
+        .limit(1);
+
+    if (!agent) {
+        return c.json({ error: 'Agent not found', code: 'NOT_FOUND' }, 404);
     }
 
     const [created] = await db.insert(conversations).values({

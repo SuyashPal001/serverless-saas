@@ -154,6 +154,13 @@ export const handler: PreTokenGenerationTriggerHandler = async (
           'custom:plan': subscription.plan,
         },
       },
+      accessTokenGeneration: {
+        claimsToAddOrOverride: {
+          'custom:tenantId': membership.tenantId,
+          'custom:role': role.name,
+          'custom:plan': subscription.plan,
+        },
+      },
     },
   };
 
