@@ -86,3 +86,40 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
         throw err;
     }
 });
+
+// POST /conversations/:conversationId/messages/save — internal route for relay to save messages
+messagesRoutes.post('/:conversationId/messages/save', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+
+    const conversationId = c.req.param('conversationId');
+
+    // Quick check that conversation exists and belongs to the tenant
+    if (!await resolveConversation(conversationId, tenantId)) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const schema = z.object({
+        content: z.string().min(1),
+        role: z.enum(['user', 'assistant']),
+    });
+
+    const body = await c.req.json();
+    const result = schema.safeParse(body);
+
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [message] = await db
+        .insert(messages)
+        .values({
+            conversationId,
+            tenantId,
+            role: result.data.role,
+            content: result.data.content,
+        })
+        .returning();
+
+    return c.json({ data: message }, 201);
+});

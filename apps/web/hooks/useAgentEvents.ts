@@ -6,6 +6,7 @@ import type { AgentEvent, Attachment } from '@/types/agent-events';
 
 export interface UseAgentEventsOptions {
   conversationId: string;
+  agentId?: string;
   onThinking?: () => void;
   onMessageDelta?: (delta: string, messageId: string) => void;
   onMessageComplete?: (content: string, messageId: string) => void;
@@ -20,6 +21,7 @@ export interface UseAgentEventsOptions {
 export function useAgentEvents(options: UseAgentEventsOptions) {
   const {
     conversationId,
+    agentId,
     onThinking,
     onMessageDelta,
     onMessageComplete,
@@ -52,6 +54,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const onApprovalRequiredRef = useRef(onApprovalRequired);
   const onErrorRef = useRef(onError);
   const onSessionEndedRef = useRef(onSessionEnded);
+  const agentIdRef = useRef(agentId);
 
   // Keep refs current on every render without triggering the effect
   onThinkingRef.current = onThinking;
@@ -63,6 +66,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   onApprovalRequiredRef.current = onApprovalRequired;
   onErrorRef.current = onError;
   onSessionEndedRef.current = onSessionEnded;
+  agentIdRef.current = agentId;
 
   useEffect(() => {
     let isMounted = true;
@@ -222,9 +226,10 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const sendMessage = useCallback((text: string, attachments?: Attachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       // Relay expects { message: '...', attachments: [...] }
-      wsRef.current.send(JSON.stringify({ 
+      wsRef.current.send(JSON.stringify({
         message: text,
-        attachments 
+        agentId: agentIdRef.current,
+        attachments
       }));
       return true;
     }

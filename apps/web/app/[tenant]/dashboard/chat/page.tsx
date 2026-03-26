@@ -101,6 +101,7 @@ export default function ChatPage() {
 
     const agentEvents = useAgentEvents({
         conversationId: conversationId || '',
+        agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id,
         onThinking: useCallback(() => {
             setIsThinking(true);
             setEventError(null);
