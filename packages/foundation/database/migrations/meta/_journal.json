@@ -50,6 +50,13 @@
       "when": 1774120835731,
       "tag": "0006_robust_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774558277546,
+      "tag": "0007_stiff_the_fallen",
+      "breakpoints": true
     }
   ]
 }

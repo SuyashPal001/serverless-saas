@@ -3,7 +3,7 @@ import { tenants } from './tenancy';
 import { users } from './auth';
 
 export const integrationStatusEnum = pgEnum('integration_status', ['active', 'disconnected', 'error']);
-export const llmProviderEnum = pgEnum('llm_provider', ['openai', 'anthropic', 'mistral', 'openrouter']);
+export const llmProviderEnum = pgEnum('llm_provider', ['openai', 'anthropic', 'mistral', 'openrouter', 'kimi', 'vertex']);
 export const emailProviderEnum = pgEnum('email_provider', ['ses', 'sendgrid', 'resend', 'postmark']);
 export const storageProviderEnum = pgEnum('storage_provider', ['s3', 'gcs', 'r2']);
 
@@ -28,6 +28,10 @@ export const llmProviders = pgTable('llm_providers', {
   apiKeyEncrypted: text('api_key_encrypted').notNull(),
   isDefault: boolean('is_default').notNull().default(false),
   costPerToken: decimal('cost_per_token', { precision: 10, scale: 8 }),
+  displayName: text('display_name'),
+  openclawModelId: text('openclaw_model_id'),
+  isPlatform: boolean('is_platform').notNull().default(false),
+  status: text('status').notNull().default('live'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
