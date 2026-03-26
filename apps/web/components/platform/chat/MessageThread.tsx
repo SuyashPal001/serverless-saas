@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, User, Terminal, Info, MessageSquare } from "lucide-react";
+import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText } from "lucide-react";
 import { Message } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -158,6 +158,30 @@ function MessageItem({ message }: { message: Message }) {
                         <div className="whitespace-pre-wrap break-words">{message.content}</div>
                     )}
                 </div>
+                
+                {message.attachments && message.attachments.length > 0 && (
+                    <div className={cn(
+                        "flex flex-wrap gap-2 mt-2",
+                        isUser ? "justify-end" : "justify-start"
+                    )}>
+                        {message.attachments.map((file) => (
+                            file.type.startsWith('image/') && file.previewUrl ? (
+                                <div key={file.id} className="rounded-xl overflow-hidden border border-border/30 shadow-sm max-w-[220px]">
+                                    <img
+                                        src={file.previewUrl}
+                                        alt={file.name}
+                                        className="w-full h-auto object-cover max-h-56"
+                                    />
+                                </div>
+                            ) : (
+                                <div key={file.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
+                                    <FileText className="h-3 w-3 text-purple-500" />
+                                    <span className="truncate max-w-[120px]">{file.name}</span>
+                                </div>
+                            )
+                        ))}
+                    </div>
+                )}
                 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2 space-y-2">

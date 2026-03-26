@@ -28,6 +28,7 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
     const [content, setContent] = useState("");
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [isUploading, setIsUploading] = useState(false);
+    const [pendingUpload, setPendingUpload] = useState<{ previewUrl?: string; name: string; type: string } | null>(null);
     
     // Cleanup preview URLs on unmount
     useEffect(() => {
@@ -53,6 +54,7 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
         onSend(content.trim(), attachments.length > 0 ? attachments : undefined);
         setContent("");
         setAttachments([]);
+        setPendingUpload(null);
     };
 
     const handleFileSelect = () => {
@@ -84,11 +86,12 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
         const fileType = file.type;
         const fileSize = file.size;
         
-        // Immediate local preview for images
+        // Immediate local preview — show in the strip right away as skeleton
         let previewUrl: string | undefined;
         if (fileType.startsWith('image/')) {
             previewUrl = URL.createObjectURL(file);
         }
+        setPendingUpload({ previewUrl, name: fileName, type: fileType });
 
         try {
             // 1. Get upload URL — backend returns { data: { fileId, uploadUrl, key } }
@@ -131,6 +134,7 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
             if (previewUrl) URL.revokeObjectURL(previewUrl);
         } finally {
             setIsUploading(false);
+            setPendingUpload(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
             uploadTypeRef.current = null;
         }
@@ -167,16 +171,17 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                 <div className="flex flex-col rounded-2xl border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
                     
                     {/* Attachment Preview — inside the card, above text area */}
-                    {attachments.length > 0 && (
-                        <div className="flex flex-wrap gap-3 p-3 pb-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                    {(attachments.length > 0 || pendingUpload) && (
+                        <div className="flex flex-wrap gap-3 p-3 pb-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                            {/* Confirmed attachments */}
                             {attachments.map((file) => (
-                                <div key={file.fileId} className="relative group">
+                                <div key={file.fileId} className="relative">
                                     {file.previewUrl ? (
                                         <div className="h-20 w-20 rounded-xl overflow-hidden border border-border/40 shadow-sm">
                                             <img 
                                                 src={file.previewUrl} 
                                                 alt={file.name} 
-                                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                className="h-full w-full object-cover"
                                             />
                                         </div>
                                     ) : (
@@ -189,16 +194,41 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                                             <span className="text-[9px] font-medium line-clamp-2 text-center break-all leading-tight">{file.name}</span>
                                         </div>
                                     )}
+                                    {/* Always-visible X — like Claude */}
                                     <button 
                                         onClick={() => removeAttachment(file.fileId)}
-                                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:scale-110 duration-150"
+                                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-150"
                                     >
                                         <X className="h-3 w-3" />
                                     </button>
                                 </div>
                             ))}
+
+                            {/* Pending upload — skeleton shimmer */}
+                            {pendingUpload && (
+                                <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-border/40 shadow-sm">
+                                    {pendingUpload.previewUrl ? (
+                                        <img
+                                            src={pendingUpload.previewUrl}
+                                            alt="Uploading..."
+                                            className="h-full w-full object-cover opacity-50"
+                                        />
+                                    ) : (
+                                        <div className="h-full w-full bg-muted" />
+                                    )}
+                                    {/* Shimmer overlay */}
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                                    {/* Pulsing dark tint */}
+                                    <div className="absolute inset-0 bg-black/30 animate-pulse" />
+                                    {/* Spinner in centre */}
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Loader2 className="h-5 w-5 text-white animate-spin drop-shadow" />
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Divider below attachment strip */}
-                            <div className="w-full h-px bg-border/40 mt-2" />
+                            <div className="w-full h-px bg-border/40 mt-1" />
                         </div>
                     )}
                     

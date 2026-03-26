@@ -12,6 +12,14 @@ export interface ToolCall {
     durationMs?: number;
 }
 
+export interface MessageAttachment {
+    id: string;
+    name: string;
+    type: string;
+    size?: number;
+    previewUrl?: string;
+}
+
 export interface Message {
     id: string;
     conversationId: string;
@@ -20,6 +28,7 @@ export interface Message {
     createdAt: string;
     toolCalls?: ToolCall[];
     isStreaming?: boolean;
+    attachments?: MessageAttachment[];
 }
 
 export interface Conversation {

@@ -17,6 +17,14 @@ export type AgentEventType =
   | 'error'
   | 'usage.report';
 
+export interface Attachment {
+  fileId: string;
+  name: string;
+  type: string;
+  size?: number;
+  previewUrl?: string; // local object URL for optimistic image preview
+}
+
 export interface BaseAgentEvent {
   type: AgentEventType;
   sessionId: string;

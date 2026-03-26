@@ -23,6 +23,17 @@ export async function POST(request: NextRequest) {
             maxAge: 3600,
         });
 
+        // ID Token - NOT httpOnly (for WebSocket relay idToken param)
+        response.cookies.set({
+            name: 'platform_id_token',
+            value: token,
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 3600,
+        });
+
         // Access Token - NOT httpOnly (for WebSocket)
         if (accessToken) {
             response.cookies.set({
@@ -70,6 +81,16 @@ export async function DELETE() {
 
     response.cookies.set({
         name: 'platform_access_token',
+        value: '',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 0,
+    });
+
+    response.cookies.set({
+        name: 'platform_id_token',
         value: '',
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',

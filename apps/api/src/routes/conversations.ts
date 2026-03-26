@@ -119,12 +119,29 @@ conversationsRoutes.get('/:id', async (c) => {
 
     const id = c.req.param('id');
 
-    const data = await db.query.conversations.findFirst({
-        where: and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)),
-        with: {
-            agent: true,
-        },
-    });
+    const [data] = await db
+        .select({
+            id: conversations.id,
+            tenantId: conversations.tenantId,
+            agentId: conversations.agentId,
+            userId: conversations.userId,
+            externalUserId: conversations.externalUserId,
+            title: conversations.title,
+            status: conversations.status,
+            needsHuman: conversations.needsHuman,
+            metadata: conversations.metadata,
+            createdAt: conversations.createdAt,
+            updatedAt: conversations.updatedAt,
+            agent: {
+                id: agents.id,
+                name: agents.name,
+                type: agents.type,
+            },
+        })
+        .from(conversations)
+        .innerJoin(agents, eq(conversations.agentId, agents.id))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
 
     if (!data) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
@@ -174,12 +191,29 @@ conversationsRoutes.patch('/:id', async (c) => {
         .set({ ...result.data, updatedAt: new Date() })
         .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)));
 
-    const updated = await db.query.conversations.findFirst({
-        where: and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)),
-        with: {
-            agent: true,
-        },
-    });
+    const [updated] = await db
+        .select({
+            id: conversations.id,
+            tenantId: conversations.tenantId,
+            agentId: conversations.agentId,
+            userId: conversations.userId,
+            externalUserId: conversations.externalUserId,
+            title: conversations.title,
+            status: conversations.status,
+            needsHuman: conversations.needsHuman,
+            metadata: conversations.metadata,
+            createdAt: conversations.createdAt,
+            updatedAt: conversations.updatedAt,
+            agent: {
+                id: agents.id,
+                name: agents.name,
+                type: agents.type,
+            },
+        })
+        .from(conversations)
+        .innerJoin(agents, eq(conversations.agentId, agents.id))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
 
     return c.json({ data: updated });
 });

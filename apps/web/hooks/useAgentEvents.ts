@@ -61,6 +61,11 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           return;
         }
 
+        const idToken = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('platform_id_token='))
+          ?.split('=')[1];
+
         const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://agent-saas.fitnearn.com";
 
         if (!wsUrl) {
@@ -68,8 +73,10 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           return;
         }
 
-        // Connect to GCP relay with Cognito access token
-        const socket = new WebSocket(`${wsUrl}/ws?token=${token}`);
+        // Connect to GCP relay with Cognito access token and idToken
+        const socket = new WebSocket(
+          `${wsUrl}/ws?token=${token}${idToken ? `&idToken=${idToken}` : ''}`
+        );
         wsRef.current = socket;
 
         socket.onopen = () => {
