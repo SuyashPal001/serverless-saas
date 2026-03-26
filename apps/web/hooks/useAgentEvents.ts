@@ -41,6 +41,29 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentMessageIdRef = useRef<string | null>(null);
 
+  // Stable refs for all callbacks — the effect reads from these at call time
+  // so the WS is never torn down just because a callback prop changed identity.
+  const onThinkingRef = useRef(onThinking);
+  const onMessageDeltaRef = useRef(onMessageDelta);
+  const onMessageCompleteRef = useRef(onMessageComplete);
+  const onToolCallingRef = useRef(onToolCalling);
+  const onToolResultRef = useRef(onToolResult);
+  const onCanvasUpdateRef = useRef(onCanvasUpdate);
+  const onApprovalRequiredRef = useRef(onApprovalRequired);
+  const onErrorRef = useRef(onError);
+  const onSessionEndedRef = useRef(onSessionEnded);
+
+  // Keep refs current on every render without triggering the effect
+  onThinkingRef.current = onThinking;
+  onMessageDeltaRef.current = onMessageDelta;
+  onMessageCompleteRef.current = onMessageComplete;
+  onToolCallingRef.current = onToolCalling;
+  onToolResultRef.current = onToolResult;
+  onCanvasUpdateRef.current = onCanvasUpdate;
+  onApprovalRequiredRef.current = onApprovalRequired;
+  onErrorRef.current = onError;
+  onSessionEndedRef.current = onSessionEnded;
+
   useEffect(() => {
     let isMounted = true;
 
@@ -112,7 +135,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 if (!currentMessageIdRef.current) {
                   currentMessageIdRef.current = crypto.randomUUID();
                 }
-                onMessageDelta?.(event.text, currentMessageIdRef.current);
+                onMessageDeltaRef.current?.(event.text, currentMessageIdRef.current);
                 break;
 
               case 'done':
@@ -120,14 +143,14 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 // Use the captured messageId and clear it for the next message
                 if (currentMessageIdRef.current) {
                   // Pass final text if relay sends it, otherwise pass empty string to trigger preservation
-                  onMessageComplete?.(event.text || '', currentMessageIdRef.current);
+                  onMessageCompleteRef.current?.(event.text || '', currentMessageIdRef.current);
                   currentMessageIdRef.current = null;
                 }
                 break;
 
               case 'error':
                 // Error from relay
-                onError?.('RELAY_ERROR', event.message, false);
+                onErrorRef.current?.('RELAY_ERROR', event.message, false);
                 break;
 
               case 'pong':
@@ -194,17 +217,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
-  }, [
-    onThinking,
-    onMessageDelta,
-    onMessageComplete,
-    onToolCalling,
-    onToolResult,
-    onCanvasUpdate,
-    onApprovalRequired,
-    onError,
-    onSessionEnded,
-  ]);
+  }, []);
 
   const sendMessage = useCallback((text: string, attachments?: Attachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
