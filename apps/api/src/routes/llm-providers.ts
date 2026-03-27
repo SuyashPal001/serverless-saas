@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { eq, desc, asc } from 'drizzle-orm';
-import { db } from '@serverless-saas/database/db';
+import { db } from '@serverless-saas/database/client';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import type { AppEnv } from '../types';
 
