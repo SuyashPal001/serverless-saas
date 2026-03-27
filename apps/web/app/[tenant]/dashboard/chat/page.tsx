@@ -363,6 +363,7 @@ export default function ChatPage() {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
         // Enrich image attachments with presigned S3 URLs so the GCP relay can fetch them
+        console.log('[presigned-url] enriching', attachments?.length, 'attachments');
         let enrichedAttachments = attachments;
         if (attachments && attachments.length > 0) {
             enrichedAttachments = await Promise.all(
@@ -373,7 +374,8 @@ export default function ChatPage() {
                                 `/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`
                             );
                             return { ...att, presignedUrl };
-                        } catch {
+                        } catch (err: any) {
+                            console.error('[presigned-url] failed:', att.fileId, err?.message || err);
                             return att;
                         }
                     }
@@ -381,6 +383,9 @@ export default function ChatPage() {
                 })
             );
         }
+        console.log('[presigned-url] enriched:', enrichedAttachments?.map(a => ({
+            fileId: a.fileId, hasPresignedUrl: !!(a as any).presignedUrl
+        })));
 
         // 1. Optimistic update
         queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
