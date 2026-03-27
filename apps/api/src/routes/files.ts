@@ -93,7 +93,7 @@ filesRoutes.post(
 filesRoutes.get('/:id/presigned-url', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
-  const fileId = decodeURIComponent(c.req.param('id'));
+  const fileId = c.req.param('id');
 
   const permissions = requestContext?.permissions || [];
   if (!permissions.includes('files:read')) {
