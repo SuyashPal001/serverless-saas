@@ -225,10 +225,27 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     };
   }, []);
 
-  const sendMessage = useCallback((text: string, attachments?: Attachment[]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Relay expects { message: '...', agentId, conversationId, attachments }
-      wsRef.current.send(JSON.stringify({
+  const sendMessage = useCallback(async (text: string, attachments?: Attachment[]) => {
+    const waitForOpen = (): Promise<boolean> => {
+      return new Promise((resolve) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          resolve(true);
+          return;
+        }
+        const timeout = setTimeout(() => resolve(false), 5000);
+        const interval = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            clearTimeout(timeout);
+            clearInterval(interval);
+            resolve(true);
+          }
+        }, 100);
+      });
+    };
+
+    const isOpen = await waitForOpen();
+    if (isOpen) {
+      wsRef.current!.send(JSON.stringify({
         message: text,
         agentId: agentIdRef.current,
         conversationId: conversationIdRef.current,
@@ -236,7 +253,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       }));
       return true;
     }
-    console.error('WebSocket is not open. Cannot send message.');
+    console.error('WebSocket not open after 5s. Cannot send message.');
     return false;
   }, []);
 

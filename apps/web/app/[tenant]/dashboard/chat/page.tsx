@@ -416,7 +416,7 @@ export default function ChatPage() {
         setEventError(null);
 
         // 2. Send via WebSocket for real-time interaction
-        const sent = sendWsMessage(content, enrichedAttachments, conversationId || undefined);
+        const sent = await sendWsMessage(content, enrichedAttachments, conversationId || undefined);
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);
