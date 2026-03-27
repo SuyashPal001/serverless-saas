@@ -193,6 +193,7 @@ agentsRoutes.patch('/:id', async (c) => {
         name: z.string().min(1).max(100).optional(),
         status: z.enum(['active', 'paused', 'retired']).optional(),
         model: z.string().optional(),
+        llmProviderId: z.string().uuid().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());

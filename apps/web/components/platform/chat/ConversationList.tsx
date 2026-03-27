@@ -4,11 +4,25 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, MessageSquare, Bot, Search, MoreVertical } from "lucide-react";
+import { Plus, MessageSquare, Bot, Search, MoreVertical, Trash2, Archive } from "lucide-react";
 import { Conversation, ConversationsResponse } from "./types";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useState } from "react";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useRouter, useParams } from "next/navigation";
+import { toast } from "sonner";
 
 interface ConversationListProps {
     selectedId?: string;
@@ -17,12 +31,32 @@ interface ConversationListProps {
 }
 
 export function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const queryClient = useQueryClient();
+    const router = useRouter();
+    const params = useParams();
+    const tenantSlug = params.tenant as string;
+
     const { data: conversationsData, isLoading, isError, refetch } = useQuery<ConversationsResponse>({
         queryKey: ["conversations"],
         queryFn: () => api.get<ConversationsResponse>("/api/v1/conversations"),
     });
 
-    const conversations = conversationsData?.data || [];
+    const deleteMutation = useMutation({
+        mutationFn: (id: string) => api.delete(`/api/v1/conversations/${id}`),
+        onSuccess: (_, deletedId) => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            toast.success("Conversation archived");
+            if (selectedId === deletedId) {
+                router.push(`/${tenantSlug}/dashboard/chat`);
+            }
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || "Failed to archive conversation");
+        }
+    });
+
+    const conversations = (conversationsData?.data || []).filter(c => c.status !== 'archived');
 
     return (
         <div className="flex flex-col h-full bg-background border-r border-border">
@@ -65,32 +99,44 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                         ))
                     ) : conversations.length > 0 ? (
                         conversations.map((conversation) => (
-                            <button
-                                key={conversation.id}
-                                onClick={() => onSelect(conversation)}
-                                className={cn(
-                                    "w-full flex flex-col items-start gap-1 p-3 rounded-xl text-left transition-all hover:bg-muted group relative",
-                                    selectedId === conversation.id ? "bg-muted shadow-sm ring-1 ring-border" : "transparent"
-                                )}
-                            >
-                                <div className="flex items-center justify-between w-full gap-2">
-                                    <span className={cn(
-                                        "font-semibold truncate text-sm",
-                                        selectedId === conversation.id ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-                                    )}>
-                                        {conversation.title || `Chat with ${conversation.agent?.name || 'Agent'}`}
-                                    </span>
-                                    {conversation.status === 'active' && (
-                                        <div className="h-2 w-2 rounded-full bg-green-500 shrink-0 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                            <div key={conversation.id} className="group relative">
+                                <button
+                                    onClick={() => onSelect(conversation)}
+                                    className={cn(
+                                        "w-full flex flex-col items-start gap-1 p-3 rounded-xl text-left transition-all hover:bg-muted",
+                                        selectedId === conversation.id ? "bg-muted shadow-sm ring-1 ring-border" : "transparent"
                                     )}
-                                </div>
-                                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                    <Bot className="h-3 w-3 shrink-0" />
-                                    <span className="truncate">{conversation.agent?.name || "Agent"}</span>
-                                    <span>•</span>
-                                    <span>{formatDistanceToNow(new Date(conversation.createdAt), { addSuffix: true })}</span>
-                                </div>
-                            </button>
+                                >
+                                    <div className="flex items-center justify-between w-full gap-2">
+                                        <span className={cn(
+                                            "font-semibold truncate text-sm",
+                                            selectedId === conversation.id ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                                        )}>
+                                            {conversation.title || `Chat with ${conversation.agent?.name || 'Agent'}`}
+                                        </span>
+                                        {conversation.status === 'active' && (
+                                            <div className="h-2 w-2 rounded-full bg-green-500 shrink-0 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                        <Bot className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">{conversation.agent?.name || "Agent"}</span>
+                                        <span>•</span>
+                                        <span>{formatDistanceToNow(new Date(conversation.createdAt), { addSuffix: true })}</span>
+                                    </div>
+                                </button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive z-10"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteId(conversation.id);
+                                    }}
+                                >
+                                    <Archive className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
                         ))
                     ) : (
                         <div className="py-10 text-center text-sm text-muted-foreground px-4">
@@ -98,6 +144,31 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                         </div>
                     )}
                 </div>
+
+            <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Archive Conversation?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will move the conversation to your archives. You can still access it later if needed.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                                if (deleteId) {
+                                    deleteMutation.mutate(deleteId);
+                                    setDeleteId(null);
+                                }
+                            }}
+                        >
+                            Archive
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

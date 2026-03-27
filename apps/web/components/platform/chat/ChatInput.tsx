@@ -11,8 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { Attachment } from "@/types/agent-events";
-import { X, Paperclip, FileText } from "lucide-react";
+import { X, Paperclip, FileText, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+interface LLMProvider {
+    id: string;
+    provider: string;
+    model: string;
+    displayName: string;
+    isDefault: boolean;
+    status: 'live' | 'coming_soon';
+}
 
 interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
@@ -22,9 +33,23 @@ interface ChatInputProps {
     disabled?: boolean;
     isLoading?: boolean;
     isStreaming?: boolean;
+    llmProviderId?: string | null;
+    providers?: LLMProvider[];
+    onModelChange?: (providerId: string) => void;
 }
 
-export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled, isLoading, isStreaming }: ChatInputProps) {
+export function ChatInput({ 
+    onSend, 
+    onStop, 
+    onVoiceClick, 
+    onMediaClick, 
+    disabled, 
+    isLoading, 
+    isStreaming,
+    llmProviderId,
+    providers = [],
+    onModelChange
+}: ChatInputProps) {
     const [content, setContent] = useState("");
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -232,17 +257,28 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                         </div>
                     )}
                     
-                    {/* Textarea row */}
-                    <div className="flex items-end gap-2 px-2 py-2">
-                        {/* + Button */}
-                        <div className="flex items-center self-end pb-0.5">
+                    {/* Textarea — no border, merges with card */}
+                    <Textarea
+                        ref={textareaRef}
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Ask anything, @ to mention, / for workflows..."
+                        className="w-full min-h-[44px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
+                        disabled={disabled}
+                    />
+                    
+                    {/* Bottom actions row */}
+                    <div className="flex items-center justify-between px-2 pb-2">
+                        <div className="flex items-center gap-0.5">
+                            {/* + Button */}
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <button className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                                        <Plus className="h-5 w-5" />
+                                    <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                        <Plus className="h-4 w-4" />
                                     </button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="w-48 p-2">
+                                <DropdownMenuContent side="top" align="start" className="w-48 p-2">
                                     <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
                                     <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
                                         <ImageIcon className="h-4 w-4" />
@@ -254,26 +290,56 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
+
+                            <div className="h-4 w-[1px] bg-border/30 mx-1" />
+
+                            {/* Model Selector button */}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground gap-1.5 rounded-lg">
+                                        <span className="opacity-50">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                                        </span>
+                                        {providers.find(p => p.id === llmProviderId)?.displayName || 
+                                         providers.find(p => p.isDefault)?.displayName || 
+                                         "Model"}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent side="top" align="start" className="w-64 p-1">
+                                    <div className="px-2 py-1.5 text-[10px] uppercase font-bold text-muted-foreground tracking-wider opacity-50">Model</div>
+                                    {providers.map((p) => (
+                                        <DropdownMenuItem 
+                                            key={p.id}
+                                            onClick={() => onModelChange?.(p.id)}
+                                            disabled={p.status === 'coming_soon'}
+                                            className={cn(
+                                                "gap-2 cursor-pointer py-2 flex items-center justify-between rounded-md transition-colors",
+                                                llmProviderId === p.id && "bg-muted font-medium",
+                                                p.status === 'coming_soon' && "opacity-40"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span>{p.displayName}</span>
+                                                {p.status === 'coming_soon' && (
+                                                    <Lock className="h-3 w-3" />
+                                                )}
+                                            </div>
+                                            {p.status === 'live' && !llmProviderId && p.isDefault && (
+                                                <Badge variant="outline" className="text-[9px] h-4 px-1 opacity-60">Default</Badge>
+                                            )}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
 
-                        {/* Textarea — no border, merges with card */}
-                        <Textarea
-                            ref={textareaRef}
-                            value={content}
-                            onChange={(e) => setContent(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Type a message..."
-                            className="flex-1 min-h-[44px] max-h-[200px] py-2.5 px-1 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none"
-                            disabled={disabled}
-                        />
-
                         {/* Right action buttons */}
-                        <div className="flex items-center gap-1 self-end pb-0.5">
+                        <div className="flex items-center gap-1.5">
                             {onVoiceClick && !content.trim() && !isStreaming && !isLoading && (
                                 <button
                                     type="button"
                                     onClick={onVoiceClick}
-                                    className="h-9 w-9 flex items-center justify-center rounded-xl text-purple-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors"
+                                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-purple-500 hover:bg-purple-100/50 dark:hover:bg-purple-950/20 transition-colors"
                                 >
                                     <Mic className="h-4 w-4" />
                                 </button>
@@ -282,7 +348,7 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                             {isStreaming ? (
                                 <button
                                     onClick={onStop}
-                                    className="h-9 w-9 flex items-center justify-center rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all animate-in fade-in zoom-in duration-200 shadow-sm"
+                                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
                                 >
                                     <StopCircle className="h-4 w-4" />
                                 </button>
@@ -290,7 +356,10 @@ export function ChatInput({ onSend, onStop, onVoiceClick, onMediaClick, disabled
                                 <button
                                     onClick={handleSend}
                                     disabled={(!content.trim() && attachments.length === 0) || disabled || isLoading || isUploading}
-                                    className="h-9 w-9 flex items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-all active:scale-95 shadow-sm"
+                                    className={cn(
+                                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 shadow-sm",
+                                        (content.trim() || attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
+                                    )}
                                 >
                                     {isLoading || isUploading ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />

@@ -17,19 +17,30 @@ import { useCanvas } from "@/hooks/useCanvas";
 import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas/types";
 import { VoiceButton, VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
-import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
 import { useSidebar } from "@/components/platform/SidebarContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Lock } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ChatPage() {
     const params = useParams();
@@ -41,7 +52,28 @@ export default function ChatPage() {
     const conversationId = searchParams.get("id");
     
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
+    
+    interface LLMProvider {
+        id: string;
+        provider: string;
+        model: string;
+        displayName: string;
+        isDefault: boolean;
+        status: 'live' | 'coming_soon';
+    }
+
+    interface LLMProvidersResponse {
+        providers: LLMProvider[];
+    }
+
+    const { data: providersData } = useQuery<LLMProvidersResponse>({
+        queryKey: ["llm-providers"],
+        queryFn: () => api.get<LLMProvidersResponse>("/api/v1/llm-providers"),
+    });
+
+    const providers = providersData?.providers || [];
 
     // Fetch conversations
     const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
@@ -100,7 +132,7 @@ export default function ChatPage() {
     }, []);
 
     const agentEvents = useAgentEvents({
-        conversationId: conversationId || '',
+        conversationId: conversationId || undefined,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id,
         onThinking: useCallback(() => {
             setIsThinking(true);
@@ -245,6 +277,22 @@ export default function ChatPage() {
         }
     });
 
+    // Update agent mutation for model changes
+    const updateAgentMutation = useMutation({
+        mutationFn: (values: { llmProviderId: string }) => {
+            const agentId = selectedConversation?.agentId || selectedConversation?.agent?.id;
+            return api.patch(`/api/v1/agents/${agentId}`, values);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            toast.success("AI Model updated");
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || error.message || "Failed to update model");
+        }
+    });
+
     // Send message mutation
     const sendMessage = useMutation({
         mutationFn: (content: string) => {
@@ -289,6 +337,20 @@ export default function ChatPage() {
         createConversation.mutate(agent.id);
     };
 
+    const deleteConversation = useMutation({
+        mutationFn: (id: string) => api.delete(`/api/v1/conversations/${id}`),
+        onSuccess: (_, deletedId) => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            toast.success("Conversation archived");
+            if (conversationId === deletedId) {
+                router.push(`/${tenantSlug}/dashboard/chat`);
+            }
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || "Failed to archive conversation");
+        }
+    });
+
     const handleSendMessage = (content: string, attachments?: Attachment[]) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
@@ -321,7 +383,7 @@ export default function ChatPage() {
         setEventError(null);
 
         // 2. Send via WebSocket for real-time interaction
-        const sent = sendWsMessage(content, attachments);
+        const sent = sendWsMessage(content, attachments, conversationId || undefined);
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);
@@ -383,8 +445,30 @@ export default function ChatPage() {
                                                     {selectedConversation.status}
                                                 </Badge>
                                             </div>
-                                            <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
-                                                <span>Agent: {selectedConversation.agent?.name || (isConnected ? "Connected" : "Connecting...")} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}</span>
+                                            <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-3">
+                                                <span className="flex items-center gap-1">
+                                                    Agent: {selectedConversation.agent?.name || (isConnected ? "Connected" : "Connecting...")} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}
+                                                </span>
+                                                {selectedConversation.agent && (
+                                                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 flex items-center gap-1 bg-muted/30 border-muted">
+                                                        {(() => {
+                                                            const agent = selectedConversation.agent;
+                                                            if (providers.length === 0) return agent.model || "Loading Model...";
+                                                            
+                                                            const provider = providers.find(p => p.id === agent.llmProviderId) 
+                                                                || providers.find(p => p.isDefault);
+                                                            
+                                                            if (!provider) return agent.model || "Platform Default";
+                                                            
+                                                            return (
+                                                                <>
+                                                                    {provider.status === 'coming_soon' && <Lock className="h-2 w-2" />}
+                                                                    {provider.displayName}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </Badge>
+                                                )}
                                             </p>
                                         </div>
                                     </div>
@@ -411,7 +495,11 @@ export default function ChatPage() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                                                <DropdownMenuItem 
+                                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                                    onClick={() => setIsDeleteDialogOpen(true)}
+                                                >
+                                                    <Archive className="h-4 w-4 mr-2" />
                                                     Archive Conversation
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
@@ -438,6 +526,15 @@ export default function ChatPage() {
                                         isLoading={sendMessage.isPending} 
                                         isStreaming={isStreaming || isThinking}
                                         disabled={selectedConversation.status !== 'active'}
+                                        providers={providers}
+                                        llmProviderId={selectedConversation.agent?.llmProviderId}
+                                        onModelChange={(providerId) => {
+                                            if (selectedConversation.agent?.id) {
+                                                updateAgentMutation.mutate({ 
+                                                    llmProviderId: providerId 
+                                                });
+                                            }
+                                        }}
                                     />
                                 </div>
                             </>
@@ -495,6 +592,31 @@ export default function ChatPage() {
                 onOpenChange={setIsSelectorOpen}
                 onSelect={handleSelectAgent}
             />
+
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Archive Conversation?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will move the conversation to your archives. You can still access it later if needed.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                                if (conversationId) {
+                                    deleteConversation.mutate(conversationId);
+                                    setIsDeleteDialogOpen(false);
+                                }
+                            }}
+                        >
+                            Archive
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <VoiceModal
                 isOpen={isModalOpen}

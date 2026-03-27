@@ -13,10 +13,32 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { WorkflowsList } from "@/components/platform/agents/WorkflowsList";
 import { toast } from "sonner";
 import type { AgentDetail, AgentStatus } from "@/components/platform/agents/types";
 import { cn } from "@/lib/utils";
+import { Lock, Save, X, Edit2 } from "lucide-react";
+
+interface LLMProvider {
+    id: string;
+    provider: string;
+    model: string;
+    displayName: string;
+    isDefault: boolean;
+    status: 'live' | 'coming_soon';
+}
+
+interface LLMProvidersResponse {
+    providers: LLMProvider[];
+}
 
 const typeColors: Record<string, string> = {
     ops: "bg-blue-500/10 text-blue-500",
@@ -38,9 +60,50 @@ export default function AgentDetailPage() {
     const queryClient = useQueryClient();
     const { tenantId, permissions = [] } = useTenant();
 
+    const [isEditing, setIsEditing] = React.useState(false);
+    const [editForm, setEditForm] = React.useState({
+        name: "",
+        llmProviderId: "",
+    });
+
     const { data: agent, isLoading: isLoadingAgent, error: agentError } = useQuery({
         queryKey: ["agents", agentId],
         queryFn: () => api.get<AgentDetail>(`/api/v1/agents/${agentId}`),
+    });
+
+    const { data: providersData } = useQuery<LLMProvidersResponse>({
+        queryKey: ["llm-providers"],
+        queryFn: () => api.get<LLMProvidersResponse>("/api/v1/llm-providers"),
+    });
+
+    const providers = providersData?.providers || [];
+
+    React.useEffect(() => {
+        if (agent) {
+            setEditForm({
+                name: agent.name,
+                llmProviderId: agent.llmProviderId || "",
+            });
+        }
+    }, [agent]);
+
+    const updateAgentMutation = useMutation({
+        mutationFn: (values: { name?: string; llmProviderId?: string; status?: AgentStatus }) => {
+            const payload = { ...values };
+            if (payload.llmProviderId === "") {
+                delete payload.llmProviderId;
+            }
+            return api.patch(`/api/v1/agents/${agentId}`, payload);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+            queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
+            setIsEditing(false);
+            toast.success("Agent updated successfully");
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || error.message || "Failed to update agent");
+        },
     });
 
     const updateStatusMutation = useMutation({
@@ -111,7 +174,15 @@ export default function AgentDetailPage() {
                     ) : (
                         <div className="space-y-2">
                             <div className="flex items-center gap-3">
-                                <h1 className="text-3xl font-bold tracking-tight">{agent?.name}</h1>
+                                {isEditing ? (
+                                    <Input
+                                        value={editForm.name}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                        className="text-3xl font-bold tracking-tight h-auto py-1 max-w-md"
+                                    />
+                                ) : (
+                                    <h1 className="text-3xl font-bold tracking-tight">{agent?.name}</h1>
+                                )}
                                 <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
                                     {agent?.type}
                                 </Badge>
@@ -127,26 +198,60 @@ export default function AgentDetailPage() {
 
                     <div className="flex items-center gap-2">
                         {!isLoadingAgent && canUpdate && agent?.status !== "retired" && (
-                            <Button
-                                variant="outline"
-                                onClick={() => updateStatusMutation.mutate(isPaused ? "active" : "paused")}
-                                disabled={updateStatusMutation.isPending}
-                            >
-                                {isPaused ? (
+                            <>
+                                {isEditing ? (
                                     <>
-                                        <Play className="mr-2 h-4 w-4" />
-                                        Reactivate Agent
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setIsEditing(false)}
+                                        >
+                                            <X className="mr-2 h-4 w-4" />
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => updateAgentMutation.mutate(editForm)}
+                                            disabled={updateAgentMutation.isPending}
+                                        >
+                                            <Save className="mr-2 h-4 w-4" />
+                                            Save Changes
+                                        </Button>
                                     </>
                                 ) : (
                                     <>
-                                        <Pause className="mr-2 h-4 w-4" />
-                                        Pause Agent
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setIsEditing(true)}
+                                        >
+                                            <Edit2 className="mr-2 h-4 w-4" />
+                                            Edit Agent
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => updateStatusMutation.mutate(isPaused ? "active" : "paused")}
+                                            disabled={updateStatusMutation.isPending}
+                                        >
+                                            {isPaused ? (
+                                                <>
+                                                    <Play className="mr-2 h-4 w-4" />
+                                                    Reactivate
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Pause className="mr-2 h-4 w-4" />
+                                                    Pause
+                                                </>
+                                            )}
+                                        </Button>
                                     </>
                                 )}
-                            </Button>
+                            </>
                         )}
-                        {!isLoadingAgent && (
-                            <Button asChild>
+                        {!isLoadingAgent && !isEditing && (
+                            <Button size="sm" asChild>
                                 <Link href={`/${tenantSlug}/dashboard/agents/${agentId}/runs`}>
                                     <Play className="mr-2 h-4 w-4" />
                                     View Runs
@@ -165,12 +270,42 @@ export default function AgentDetailPage() {
                                 <div className="rounded-lg bg-primary/10 p-2 text-primary">
                                     <Cpu className="h-5 w-5" />
                                 </div>
-                                <div className="space-y-0.5">
-                                    <p className="text-sm font-medium text-muted-foreground">Model</p>
+                                <div className="space-y-0.5 w-full">
+                                    <p className="text-sm font-medium text-muted-foreground">AI Model</p>
                                     {isLoadingAgent ? (
                                         <Skeleton className="h-5 w-24" />
+                                    ) : isEditing ? (
+                                        <Select
+                                            value={editForm.llmProviderId}
+                                            onValueChange={(val) => setEditForm(prev => ({ ...prev, llmProviderId: val }))}
+                                        >
+                                            <SelectTrigger className="w-full mt-1">
+                                                <SelectValue placeholder="Select a model" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {providers.map((p) => (
+                                                    <SelectItem
+                                                        key={p.id}
+                                                        value={p.id}
+                                                        disabled={p.status === 'coming_soon'}
+                                                        className={cn(p.status === 'coming_soon' && "opacity-50")}
+                                                    >
+                                                        <div className="flex items-center justify-between w-full gap-2">
+                                                            <span>{p.displayName}</span>
+                                                            {p.status === 'coming_soon' && (
+                                                                <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1">
+                                                                    Coming Soon
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     ) : (
-                                        <p className="font-semibold">{agent?.model}</p>
+                                        <p className="font-semibold">
+                                            {providers.find(p => p.id === agent?.llmProviderId)?.displayName || agent?.model || "Not set"}
+                                        </p>
                                     )}
                                 </div>
                             </div>

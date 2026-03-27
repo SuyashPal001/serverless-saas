@@ -20,6 +20,7 @@ export interface Agent {
     type: AgentType;
     status: AgentStatus;
     model: string | null;
+    llmProviderId: string | null;
     createdAt: string;
 }
 

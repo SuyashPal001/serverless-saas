@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import type { AgentEvent, Attachment } from '@/types/agent-events';
 
 export interface UseAgentEventsOptions {
-  conversationId: string;
+  conversationId?: string;
   agentId?: string;
   onThinking?: () => void;
   onMessageDelta?: (delta: string, messageId: string) => void;
@@ -35,6 +35,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
 
   const [isConnected, setIsConnected] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
+  const conversationIdRef = useRef<string | undefined>(conversationId);
   
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
@@ -57,6 +58,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const agentIdRef = useRef(agentId);
 
   // Keep refs current on every render without triggering the effect
+  conversationIdRef.current = conversationId;
   onThinkingRef.current = onThinking;
   onMessageDeltaRef.current = onMessageDelta;
   onMessageCompleteRef.current = onMessageComplete;
@@ -225,10 +227,11 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
 
   const sendMessage = useCallback((text: string, attachments?: Attachment[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Relay expects { message: '...', attachments: [...] }
+      // Relay expects { message: '...', agentId, conversationId, attachments }
       wsRef.current.send(JSON.stringify({
         message: text,
         agentId: agentIdRef.current,
+        conversationId: conversationIdRef.current,
         attachments
       }));
       return true;
