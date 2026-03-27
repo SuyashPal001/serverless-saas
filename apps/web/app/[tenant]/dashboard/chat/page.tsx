@@ -359,8 +359,28 @@ export default function ChatPage() {
         }
     });
 
-    const handleSendMessage = (content: string, attachments?: Attachment[]) => {
+    const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
+
+        // Enrich image attachments with presigned S3 URLs so the GCP relay can fetch them
+        let enrichedAttachments = attachments;
+        if (attachments && attachments.length > 0) {
+            enrichedAttachments = await Promise.all(
+                attachments.map(async (att) => {
+                    if (att.type.startsWith('image/')) {
+                        try {
+                            const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+                                `/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`
+                            );
+                            return { ...att, presignedUrl };
+                        } catch {
+                            return att;
+                        }
+                    }
+                    return att;
+                })
+            );
+        }
 
         // 1. Optimistic update
         queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
@@ -380,8 +400,8 @@ export default function ChatPage() {
             };
             const newData = old ? [...old.data, newMessage] : [newMessage];
             // Bug 3: Sort messages by createdAt
-            return { 
-                data: newData.sort((a, b) => 
+            return {
+                data: newData.sort((a, b) =>
                     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
                 )
             };
@@ -391,7 +411,7 @@ export default function ChatPage() {
         setEventError(null);
 
         // 2. Send via WebSocket for real-time interaction
-        const sent = sendWsMessage(content, attachments, conversationId || undefined);
+        const sent = sendWsMessage(content, enrichedAttachments, conversationId || undefined);
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);

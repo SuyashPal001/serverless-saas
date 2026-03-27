@@ -89,6 +89,25 @@ filesRoutes.post(
   }
 );
 
+// Get presigned GET URL for relay image fetch — short-lived, image attachments only
+filesRoutes.get('/:id/presigned-url', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const fileId = decodeURIComponent(c.req.param('id'));
+
+  const permissions = requestContext?.permissions || [];
+  if (!permissions.includes('files:read')) {
+    return c.json({ error: 'Forbidden', message: 'Missing permission: files:read' }, 403);
+  }
+
+  try {
+    const presignedUrl = await storageService.getDownloadUrl(tenantId, fileId);
+    return c.json({ presignedUrl });
+  } catch {
+    return c.json({ error: 'Not Found', message: 'File not found' }, 404);
+  }
+});
+
 // Get presigned download URL — must be before /:id to avoid route shadowing
 filesRoutes.get('/:id/download', async (c) => {
   const requestContext = c.get('requestContext') as any;

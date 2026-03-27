@@ -22,7 +22,8 @@ export interface Attachment {
   name: string;
   type: string;
   size?: number;
-  previewUrl?: string; // local object URL for optimistic image preview
+  previewUrl?: string;   // local blob: URL for optimistic image preview (browser only)
+  presignedUrl?: string; // S3 presigned HTTPS URL for relay to fetch image data
 }
 
 export interface BaseAgentEvent {
