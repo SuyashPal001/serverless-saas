@@ -254,7 +254,15 @@ export default function ChatPage() {
     // Fetch messages
     const { data: messagesData, isLoading: isLoadingMessages, refetch: refetchMessages } = useQuery<MessagesResponse>({
         queryKey: ["messages", conversationId],
-        queryFn: () => api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`),
+        queryFn: async () => {
+            const response = await api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`);
+            return {
+                ...response,
+                data: [...response.data].sort((a, b) => 
+                    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                )
+            };
+        },
         enabled: !!conversationId,
     });
 
