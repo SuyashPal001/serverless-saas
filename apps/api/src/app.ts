@@ -35,6 +35,7 @@ import { webhooksRoutes } from './routes/webhooks';
 import { filesRoutes } from './routes/files';
 import { eventsRoutes } from './routes/events';
 import { integrationsRoutes } from './routes/integrations';
+import { llmProvidersRoutes } from './routes/llm-providers';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
 import { sessionsRoutes } from './routes/sessions';
@@ -122,6 +123,7 @@ api.route('/integrations', integrationsRoutes);
 api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
 api.route('/sessions', sessionsRoutes);
+api.route('/llm-providers', llmProvidersRoutes);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);
