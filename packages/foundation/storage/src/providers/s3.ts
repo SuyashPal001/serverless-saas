@@ -10,6 +10,8 @@ export class S3StorageProvider implements StorageProvider {
     this.client = new S3Client({
       region: config.region,
       credentials: config.credentials,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
     this.bucket = config.bucket;
   }
