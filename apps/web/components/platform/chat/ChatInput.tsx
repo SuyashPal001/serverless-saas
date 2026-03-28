@@ -246,8 +246,12 @@ export function ChatInput({
         const fileType = file.type;
         const fileSize = file.size;
         
-        if (fileSize > 35 * 1024 * 1024) {
-            toast.error('File too large. Maximum size is 35MB.');
+        const maxSize = fileType.startsWith('video/') 
+            ? 200 * 1024 * 1024 
+            : 35 * 1024 * 1024
+        
+        if (fileSize > maxSize) {
+            toast.error(`File too large. Maximum size is ${fileType.startsWith('video/') ? '200MB' : '35MB'}.`);
             if (fileInputRef.current) fileInputRef.current.value = "";
             setIsUploading(false);
             return;
@@ -332,7 +336,7 @@ export function ChatInput({
                 accept={
                     uploadTypeRef.current === 'video' ? "video/*" : 
                     uploadTypeRef.current === 'audio' ? "audio/*" : 
-                    uploadTypeRef.current === 'document' ? "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : 
+                    uploadTypeRef.current === 'document' ? "application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" : 
                     "image/*,video/*,audio/*,application/pdf"
                 }
                 onChange={handleFileChange}
