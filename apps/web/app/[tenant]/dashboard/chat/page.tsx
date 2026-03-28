@@ -382,9 +382,10 @@ export default function ChatPage() {
         if (attachments && attachments.length > 0) {
             enrichedAttachments = await Promise.all(
                 attachments.map(async (att) => {
-                    if (att.type.startsWith('image/') || 
-                        att.type.startsWith('video/') ||
-                        att.type.startsWith('audio/') ||
+                    console.log('[presigned-url] att:', att.type, att.fileId, !!att.type?.startsWith('video/'))
+                    if (att.type?.startsWith('image/') || 
+                        att.type?.startsWith('video/') ||
+                        att.type?.startsWith('audio/') ||
                         att.type === 'application/pdf' ||
                         att.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                         try {
@@ -393,7 +394,7 @@ export default function ChatPage() {
                             );
                             return { ...att, presignedUrl };
                         } catch (err: any) {
-                            console.error('[presigned-url] failed:', att.fileId, err?.message || err);
+                            console.error('[presigned-url] failed for', att.type, att.fileId, err?.status, err?.message);
                             return att;
                         }
                     }
