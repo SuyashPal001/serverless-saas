@@ -382,7 +382,11 @@ export default function ChatPage() {
         if (attachments && attachments.length > 0) {
             enrichedAttachments = await Promise.all(
                 attachments.map(async (att) => {
-                    if (att.type.startsWith('image/')) {
+                    if (att.type.startsWith('image/') || 
+                        att.type.startsWith('video/') ||
+                        att.type.startsWith('audio/') ||
+                        att.type === 'application/pdf' ||
+                        att.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                         try {
                             const { presignedUrl } = await api.get<{ presignedUrl: string }>(
                                 `/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`
