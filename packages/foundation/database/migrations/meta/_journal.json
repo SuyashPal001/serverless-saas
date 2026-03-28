@@ -57,6 +57,13 @@
       "when": 1774558277546,
       "tag": "0007_stiff_the_fallen",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774731801489,
+      "tag": "0008_futuristic_obadiah_stane",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "id": "27b970d2-e349-49a5-9d5a-af2e69ef106a",
+  "id": "1981bee2-e789-4706-b695-7396c9cb3521",
   "prevId": "29ff9260-f96a-482b-b6b4-b93fa7002ff0",
   "version": "7",
   "dialect": "postgresql",
@@ -4318,6 +4318,12 @@
         "model": {
           "name": "model",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attachments": {
+          "name": "attachments",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
