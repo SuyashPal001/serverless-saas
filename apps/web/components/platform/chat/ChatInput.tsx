@@ -87,7 +87,7 @@ export function ChatInput({
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const uploadTypeRef = useRef<'image' | 'video' | null>(null);
+    const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -223,10 +223,10 @@ export function ChatInput({
         }
     };
 
-    const handleMediaClick = (type: 'image' | 'video') => {
+    const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
         uploadTypeRef.current = type;
         handleFileSelect();
-        onMediaClick?.(type);
+        onMediaClick?.(type as any);
     };
 
     const removeAttachment = (fileId: string) => {
@@ -246,6 +246,13 @@ export function ChatInput({
         const fileType = file.type;
         const fileSize = file.size;
         
+        if (fileSize > 35 * 1024 * 1024) {
+            toast.error('File too large. Maximum size is 35MB.');
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            setIsUploading(false);
+            return;
+        }
+
         // Immediate local preview — show in the strip right away as skeleton
         let previewUrl: string | undefined;
         if (fileType.startsWith('image/')) {
@@ -322,7 +329,12 @@ export function ChatInput({
                 type="file" 
                 ref={fileInputRef}
                 className="hidden" 
-                accept={uploadTypeRef.current === 'video' ? "video/*" : "image/*,video/*"}
+                accept={
+                    uploadTypeRef.current === 'video' ? "video/*" : 
+                    uploadTypeRef.current === 'audio' ? "audio/*" : 
+                    uploadTypeRef.current === 'document' ? "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : 
+                    "image/*,video/*,audio/*,application/pdf"
+                }
                 onChange={handleFileChange}
             />
             
@@ -460,14 +472,13 @@ export function ChatInput({
                                             </button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent side="top" align="start" className="w-48 p-2">
-                                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
-                                                <ImageIcon className="h-4 w-4" />
-                                                <span>Media</span>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('audio')} className="gap-2 cursor-pointer py-2">
+                                                <Mic className="h-4 w-4" />
+                                                <span>Audio</span>
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="gap-2 cursor-pointer py-2">
-                                                <Video className="h-4 w-4" />
-                                                <span>Video</span>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
+                                                <FileText className="h-4 w-4" />
+                                                <span>Document (PDF, DOCX)</span>
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>

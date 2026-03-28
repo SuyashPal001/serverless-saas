@@ -102,6 +102,12 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const schema = z.object({
         content: z.string().min(1),
         role: z.enum(['user', 'assistant']),
+        attachments: z.array(z.object({
+            fileId: z.string().optional(),
+            name: z.string(),
+            type: z.string(),
+            size: z.number().optional(),
+        })).optional(),
     });
 
     const body = await c.req.json();
@@ -118,6 +124,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             tenantId,
             role: result.data.role,
             content: result.data.content,
+            attachments: result.data.attachments ?? null,
         })
         .returning();
 

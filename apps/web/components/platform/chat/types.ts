@@ -13,7 +13,8 @@ export interface ToolCall {
 }
 
 export interface MessageAttachment {
-    id: string;
+    id: string;        // local UI id (uuid)
+    fileId?: string;   // S3 fileId — used to re-fetch presigned URL on reload
     name: string;
     type: string;
     size?: number;
