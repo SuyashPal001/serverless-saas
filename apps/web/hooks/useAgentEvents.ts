@@ -103,14 +103,15 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
         }
 
         // Connect to GCP relay with Cognito access token and idToken
-        const socket = new WebSocket(
-          `${wsUrl}/ws?token=${token}${idToken ? `&idToken=${idToken}` : ''}`
-        );
+        const wsFullUrl = `${wsUrl}/ws?token=${token}${idToken ? `&idToken=${idToken}` : ''}`;
+        console.log('[useAgentEvents] Connecting to:', wsUrl, '(token length:', token.length, ')');
+        
+        const socket = new WebSocket(wsFullUrl);
         wsRef.current = socket;
 
         socket.onopen = () => {
           if (!isMounted) return;
-          console.log('WebSocket connected to GCP relay');
+          console.log('[useAgentEvents] WebSocket connected to GCP relay');
           setIsConnected(true);
           retryCountRef.current = 0;
           
@@ -131,7 +132,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
             switch (event.type) {
               case 'session.started':
                 // Defensive handling as per instructions
-                console.log('Relay session started:', event.sessionId);
+                console.log('[useAgentEvents] Relay session started:', event.sessionId);
                 sessionIdRef.current = event.sessionId || null;
                 break;
 
@@ -164,16 +165,16 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 break;
 
               default:
-                console.warn('Unknown event type from relay:', event.type);
+                console.warn('[useAgentEvents] Unknown event type from relay:', event.type);
             }
           } catch (err) {
             console.error('[useAgentEvents] Failed to parse message:', err);
           }
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event) => {
           if (!isMounted) return;
-          console.log('WebSocket disconnected for agent events');
+          console.log(`[useAgentEvents] WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason || 'none'}`);
           setIsConnected(false);
           
           if (retryCountRef.current < maxRetries) {
@@ -203,7 +204,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
 
         socket.onerror = (error) => {
           if (!isMounted) return;
-          console.error('WebSocket error:', error);
+          console.error('[useAgentEvents] WebSocket error details:', error);
           socket.close();
         };
 

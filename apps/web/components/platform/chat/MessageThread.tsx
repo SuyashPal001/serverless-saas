@@ -8,6 +8,7 @@ import { format } from "date-fns";
 
 import { ToolCallCard } from "./ToolCallCard";
 import { StreamingMessage } from "./StreamingMessage";
+import { MessageAudioPlayer } from "./MessageAudioPlayer";
 
 interface MessageThreadProps {
     messages: Message[];
@@ -143,21 +144,23 @@ function MessageItem({ message }: { message: Message }) {
                 "flex flex-col gap-1 w-full flex-1 max-w-[80%]",
                 isUser ? "items-end" : "items-start"
             )}>
-                <div className={cn(
-                    "rounded-2xl px-4 py-2.5 text-sm shadow-sm",
-                    isUser 
-                        ? "bg-primary text-primary-foreground rounded-tr-none" 
-                        : "bg-muted text-foreground rounded-tl-none border border-border/50"
-                )}>
-                    {isAssistant && message.isStreaming ? (
-                        <StreamingMessage 
-                            isStreaming={true} 
-                            content={message.content} 
-                        />
-                    ) : (
-                        <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                    )}
-                </div>
+                {(message.content.trim() || (isAssistant && message.isStreaming)) && (
+                    <div className={cn(
+                        "rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+                        isUser 
+                            ? "bg-primary text-primary-foreground rounded-tr-none" 
+                            : "bg-muted text-foreground rounded-tl-none border border-border/50"
+                    )}>
+                        {isAssistant && message.isStreaming ? (
+                            <StreamingMessage 
+                                isStreaming={true} 
+                                content={message.content} 
+                            />
+                        ) : (
+                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                        )}
+                    </div>
+                )}
                 
                 {message.attachments && message.attachments.length > 0 && (
                     <div className={cn(
@@ -173,6 +176,12 @@ function MessageItem({ message }: { message: Message }) {
                                         className="w-full h-auto object-cover max-h-56"
                                     />
                                 </div>
+                            ) : file.type.startsWith('audio/') && file.previewUrl ? (
+                                <MessageAudioPlayer 
+                                    key={file.id} 
+                                    url={file.previewUrl} 
+                                    variant={isUser ? 'user' : 'assistant'}
+                                />
                             ) : (
                                 <div key={file.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
                                     <FileText className="h-3 w-3 text-purple-500" />

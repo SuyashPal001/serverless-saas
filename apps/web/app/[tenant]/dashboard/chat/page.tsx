@@ -346,7 +346,7 @@ export default function ChatPage() {
     };
 
     const deleteConversation = useMutation({
-        mutationFn: (id: string) => api.delete(`/api/v1/conversations/${id}`),
+        mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
         onSuccess: (_, deletedId) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             toast.success("Conversation archived");
@@ -361,6 +361,20 @@ export default function ChatPage() {
 
     const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
+
+        // Auto-generate chat title for new conversations
+        if (!selectedConversation?.title && messages.length === 0 && content.trim()) {
+            const words = content.trim().split(/\s+/);
+            const newTitle = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
+            
+            // Fire and forget title update
+            api.patch(`/api/v1/conversations/${conversationId}`, { title: newTitle })
+                .then(() => {
+                    queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                    queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+                })
+                .catch(console.error);
+        }
 
         // Enrich image attachments with presigned S3 URLs so the GCP relay can fetch them
         console.log('[presigned-url] enriching', attachments?.length, 'attachments');
@@ -416,7 +430,7 @@ export default function ChatPage() {
         setEventError(null);
 
         // 2. Send via WebSocket for real-time interaction
-        const sent = await sendWsMessage(content, enrichedAttachments, conversationId || undefined);
+        const sent = await sendWsMessage(content, enrichedAttachments);
         if (!sent) {
             toast.error("Failed to send message. Please check your connection.");
             setIsThinking(false);

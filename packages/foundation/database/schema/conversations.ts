@@ -48,6 +48,7 @@ export const messages = pgTable('messages', {
   toolResults: jsonb('tool_results'),
   tokenCount: integer('token_count'),
   model: text('model'),
+  attachments: jsonb('attachments'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

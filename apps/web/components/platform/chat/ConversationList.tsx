@@ -19,6 +19,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRouter, useParams } from "next/navigation";
@@ -43,7 +49,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (id: string) => api.delete(`/api/v1/conversations/${id}`),
+        mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
         onSuccess: (_, deletedId) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             toast.success("Conversation archived");
@@ -99,44 +105,62 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                         ))
                     ) : conversations.length > 0 ? (
                         conversations.map((conversation) => (
-                            <div key={conversation.id} className="group relative">
+                            <div key={conversation.id} className="relative group">
                                 <button
                                     onClick={() => onSelect(conversation)}
                                     className={cn(
-                                        "w-full flex flex-col items-start gap-1 p-3 rounded-xl text-left transition-all hover:bg-muted",
-                                        selectedId === conversation.id ? "bg-muted shadow-sm ring-1 ring-border" : "transparent"
+                                        "w-full flex items-center h-9 px-2.5 rounded-md transition-colors text-left",
+                                        selectedId === conversation.id 
+                                            ? "bg-accent/80 text-foreground font-medium" 
+                                            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground font-normal"
                                     )}
                                 >
-                                    <div className="flex items-center justify-between w-full gap-2">
-                                        <span className={cn(
-                                            "font-semibold truncate text-sm",
-                                            selectedId === conversation.id ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-                                        )}>
-                                            {conversation.title || `Chat with ${conversation.agent?.name || 'Agent'}`}
-                                        </span>
-                                        {conversation.status === 'active' && (
-                                            <div className="h-2 w-2 rounded-full bg-green-500 shrink-0 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                        <Bot className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">{conversation.agent?.name || "Agent"}</span>
-                                        <span>•</span>
-                                        <span>{formatDistanceToNow(new Date(conversation.createdAt), { addSuffix: true })}</span>
-                                    </div>
+                                    <span className="truncate text-[13px] w-[calc(100%-1.25rem)]">
+                                        {conversation.title || `Chat with ${conversation.agent?.name || 'Agent'}`}
+                                    </span>
                                 </button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive z-10"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeleteId(conversation.id);
-                                    }}
-                                >
-                                    <Archive className="h-3.5 w-3.5" />
-                                </Button>
+                                <div className={cn(
+                                    "absolute right-1 top-1/2 -translate-y-1/2",
+                                    selectedId === conversation.id 
+                                        ? "opacity-100" 
+                                        : "opacity-0 group-hover:opacity-100"
+                                )}>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted shadow-none data-[state=open]:opacity-100"
+                                            >
+                                                <MoreVertical className="h-[14px] w-[14px]" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-[160px] rounded-lg">
+                                        <DropdownMenuItem 
+                                            className="cursor-pointer rounded-lg mx-1 my-0.5"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteId(conversation.id);
+                                            }}
+                                        >
+                                            <Archive className="h-4 w-4 mr-2" />
+                                            Archive
+                                        </DropdownMenuItem>
+                                        <div className="h-px bg-border my-1 mx-2" />
+                                        <DropdownMenuItem 
+                                            className="text-red-500 focus:text-red-500 focus:bg-red-500/10 cursor-pointer rounded-lg mx-1 my-0.5"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteId(conversation.id);
+                                            }}
+                                        >
+                                            <Trash2 className="h-4 w-4 mr-2 opacity-80" />
+                                            Delete
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
+                        </div>
                         ))
                     ) : (
                         <div className="py-10 text-center text-sm text-muted-foreground px-4">

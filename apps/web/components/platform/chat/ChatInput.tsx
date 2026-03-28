@@ -1,4 +1,4 @@
-import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle } from "lucide-react";
+import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Play, Pause, Trash2, Square } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -11,10 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { Attachment } from "@/types/agent-events";
-import { X, Paperclip, FileText, Lock } from "lucide-react";
+import { X, Paperclip, FileText, Lock, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+import { AudioVisualizer } from "./AudioVisualizer";
+import { MessageAudioPlayer } from "./MessageAudioPlayer";
 
 interface LLMProvider {
     id: string;
@@ -55,25 +58,157 @@ export function ChatInput({
     const [isUploading, setIsUploading] = useState(false);
     const [pendingUpload, setPendingUpload] = useState<{ previewUrl?: string; name: string; type: string } | null>(null);
     
-    // Cleanup preview URLs on unmount
+    // Recording state
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [audioPreview, setAudioPreview] = useState<{ url: string, blob: Blob } | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [playbackTime, setPlaybackTime] = useState(0);
+
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const audioChunksRef = useRef<BlobPart[]>([]);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Cleanup preview URLs and streams on unmount
     useEffect(() => {
         return () => {
             attachments.forEach(attachment => {
                 if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
             });
+            if (audioPreview) URL.revokeObjectURL(audioPreview.url);
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+            if (timerRef.current) clearInterval(timerRef.current);
         };
     }, []);
 
-    
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const uploadTypeRef = useRef<'image' | 'video' | null>(null);
 
-    const handleSend = () => {
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+            
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            
+            mediaRecorder.onstop = () => {
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+                    ? 'audio/webm' 
+                    : MediaRecorder.isTypeSupported('audio/mp4') 
+                        ? 'audio/mp4' 
+                        : 'audio/mpeg';
+
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                const url = URL.createObjectURL(audioBlob);
+                setAudioPreview({ url, blob: audioBlob });
+                if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(track => track.stop());
+                }
+            };
+            
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingTime(0);
+            timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+        } catch (err) {
+            console.error(err);
+            toast.error("Microphone access denied");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (timerRef.current) clearInterval(timerRef.current);
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.onstop = null; // Prevent generating preview
+            mediaRecorderRef.current.stop();
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+        }
+        setIsRecording(false);
+        setAudioPreview(null);
+        if (timerRef.current) clearInterval(timerRef.current);
+    };
+
+    const togglePlay = () => {
+        if (!audioRef.current) return;
+        if (isPlaying) {
+            audioRef.current.pause();
+        } else {
+            audioRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+    };
+
+    const handleSend = async () => {
         if (isStreaming) {
             onStop?.();
             return;
         }
+
+        if (audioPreview) {
+            setIsUploading(true);
+            try {
+                const ext = audioPreview.blob.type.includes('webm') ? 'webm' : audioPreview.blob.type.includes('mp4') ? 'mp4' : 'mp3';
+                const uploadRes = await api.post<{ data: { fileId: string; uploadUrl: string; key: string } }>("/api/v1/files/upload", {
+                    filename: `audio_message_${Date.now()}.${ext}`,
+                    contentType: audioPreview.blob.type,
+                });
+                const { fileId, uploadUrl } = uploadRes.data;
+                
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: audioPreview.blob,
+                    headers: { 'Content-Type': audioPreview.blob.type }
+                });
+                
+                if (!uploadResponse.ok) throw new Error("Upload failed");
+                await api.post(`/api/v1/files/${fileId}/confirm`, { size: audioPreview.blob.size });
+                
+                const finalAttachments = [...attachments, {
+                    fileId,
+                    name: "Voice Message",
+                    type: audioPreview.blob.type,
+                    size: audioPreview.blob.size,
+                    previewUrl: audioPreview.url
+                }];
+                
+                onSend(content.trim(), finalAttachments);
+                setContent("");
+                setAttachments([]);
+                setAudioPreview(null);
+            } catch (err) {
+                console.error("Audio upload error:", err);
+                toast.error("Failed to upload audio message");
+            } finally {
+                setIsUploading(false);
+            }
+            return;
+        }
+
         if ((!content.trim() && attachments.length === 0) || disabled || isLoading || isUploading) return;
         
         onSend(content.trim(), attachments.length > 0 ? attachments : undefined);
@@ -197,7 +332,7 @@ export function ChatInput({
                     
                     {/* Attachment Preview — inside the card, above text area */}
                     {(attachments.length > 0 || pendingUpload) && (
-                        <div className="flex flex-wrap gap-3 p-3 pb-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex flex-wrap gap-3 p-3 pb-2 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
                             {/* Confirmed attachments */}
                             {attachments.map((file) => (
                                 <div key={file.fileId} className="relative">
@@ -257,119 +392,167 @@ export function ChatInput({
                         </div>
                     )}
                     
-                    {/* Textarea — no border, merges with card */}
-                    <Textarea
-                        ref={textareaRef}
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Ask anything, @ to mention, / for workflows..."
-                        className="w-full min-h-[44px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
-                        disabled={disabled}
-                    />
-                    
-                    {/* Bottom actions row */}
-                    <div className="flex items-center justify-between px-2 pb-2">
-                        <div className="flex items-center gap-0.5">
-                            {/* + Button */}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                                        <Plus className="h-4 w-4" />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent side="top" align="start" className="w-48 p-2">
-                                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
-                                    <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
-                                        <ImageIcon className="h-4 w-4" />
-                                        <span>Media</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleMediaClick('video')} className="gap-2 cursor-pointer py-2">
-                                        <Video className="h-4 w-4" />
-                                        <span>Video</span>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-
-                            <div className="h-4 w-[1px] bg-border/30 mx-1" />
-
-                            {/* Model Selector button */}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground gap-1.5 rounded-lg">
-                                        <span className="opacity-50">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                    {(isRecording || audioPreview) ? (
+                        <div className="flex items-center gap-3 w-full bg-transparent px-3 py-4 animate-in fade-in zoom-in-95">
+                            <button 
+                                onClick={cancelRecording} 
+                                className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
+                                <Trash2 className="h-5 w-5" />
+                            </button>
+                            
+                            <div className="flex-1 flex items-center justify-center">
+                                {audioPreview ? (
+                                    <MessageAudioPlayer 
+                                        url={audioPreview.url} 
+                                        durationSeconds={recordingTime} 
+                                        variant="input" 
+                                    />
+                                ) : (
+                                    <div className="flex items-center gap-3 w-full min-w-[240px] max-w-sm h-[48px] bg-background/50 backdrop-blur-sm border border-destructive/30 rounded-full px-2 shadow-sm select-none animate-pulse">
+                                        <button 
+                                            onClick={stopRecording}
+                                            className="h-[30px] w-[30px] shadow-sm shrink-0 rounded-full bg-destructive flex items-center justify-center text-destructive-foreground transition-transform active:scale-95"
+                                        >
+                                            <Square className="h-3 w-3 fill-destructive-foreground" />
+                                        </button>
+                                        
+                                        <div className="flex-1 h-6 flex items-center overflow-hidden">
+                                            {streamRef.current && <AudioVisualizer stream={streamRef.current} />}
+                                        </div>
+                                        
+                                        <span className="text-[10px] font-mono shrink-0 w-[38px] text-right ml-1 text-destructive pr-2 font-medium">
+                                            {formatTime(recordingTime)}
                                         </span>
-                                        {providers.find(p => p.id === llmProviderId)?.displayName || 
-                                         providers.find(p => p.isDefault)?.displayName || 
-                                         "Model"}
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent side="top" align="start" className="w-64 p-1">
-                                    <div className="px-2 py-1.5 text-[10px] uppercase font-bold text-muted-foreground tracking-wider opacity-50">Model</div>
-                                    {providers.map((p) => (
-                                        <DropdownMenuItem 
-                                            key={p.id}
-                                            onClick={() => onModelChange?.(p.id)}
-                                            disabled={p.status === 'coming_soon'}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <button 
+                                onClick={handleSend}
+                                disabled={isRecording || isUploading} 
+                                className="h-10 w-10 shrink-0 rounded-full bg-primary flex items-center justify-center text-primary-foreground shadow-sm transition-transform active:scale-95 disabled:opacity-50"
+                            >
+                                {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal className="h-5 w-5" />}
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Textarea — no border, merges with card */}
+                            <Textarea
+                                ref={textareaRef}
+                                value={content}
+                                onChange={(e) => setContent(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Ask anything, @ to mention, / for workflows..."
+                                className="w-full min-h-[44px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
+                                disabled={disabled}
+                            />
+                            
+                            {/* Bottom actions row */}
+                            <div className="flex items-center justify-between px-2 pb-2">
+                                <div className="flex items-center gap-0.5">
+                                    {/* + Button */}
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                                <Plus className="h-4 w-4" />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent side="top" align="start" className="w-48 p-2">
+                                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
+                                                <ImageIcon className="h-4 w-4" />
+                                                <span>Media</span>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="gap-2 cursor-pointer py-2">
+                                                <Video className="h-4 w-4" />
+                                                <span>Video</span>
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    <div className="h-4 w-[1px] bg-border/30 mx-1" />
+
+                                    {/* Model Selector button */}
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground gap-1.5 rounded-lg">
+                                                <span className="opacity-50">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                                                </span>
+                                                {providers.find(p => p.id === llmProviderId)?.displayName || 
+                                                 providers.find(p => p.isDefault)?.displayName || 
+                                                 "Model"}
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent side="top" align="start" className="w-64 p-1">
+                                            <div className="px-2 py-1.5 text-[10px] uppercase font-bold text-muted-foreground tracking-wider opacity-50">Model</div>
+                                            {providers.map((p) => (
+                                                <DropdownMenuItem 
+                                                    key={p.id}
+                                                    onClick={() => onModelChange?.(p.id)}
+                                                    disabled={p.status === 'coming_soon'}
+                                                    className={cn(
+                                                        "gap-2 cursor-pointer py-2 flex items-center justify-between rounded-md transition-colors",
+                                                        llmProviderId === p.id && "bg-muted font-medium",
+                                                        p.status === 'coming_soon' && "opacity-40"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{p.displayName}</span>
+                                                        {p.status === 'coming_soon' && (
+                                                            <Lock className="h-3 w-3" />
+                                                        )}
+                                                    </div>
+                                                    {p.status === 'live' && !llmProviderId && p.isDefault && (
+                                                        <Badge variant="outline" className="text-[9px] h-4 px-1 opacity-60">Default</Badge>
+                                                    )}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+
+                                {/* Right action buttons */}
+                                <div className="flex items-center gap-1.5">
+                                    {!content.trim() && !isStreaming && !isLoading && (
+                                        <button
+                                            type="button"
+                                            onClick={startRecording}
+                                            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                        >
+                                            <Mic className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                    
+                                    {isStreaming ? (
+                                        <button
+                                            onClick={onStop}
+                                            className="h-8 w-8 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
+                                        >
+                                            <StopCircle className="h-4 w-4" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={handleSend}
+                                            disabled={(!content.trim() && attachments.length === 0) || disabled || isLoading || isUploading}
                                             className={cn(
-                                                "gap-2 cursor-pointer py-2 flex items-center justify-between rounded-md transition-colors",
-                                                llmProviderId === p.id && "bg-muted font-medium",
-                                                p.status === 'coming_soon' && "opacity-40"
+                                                "h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 shadow-sm",
+                                                (content.trim() || attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
                                             )}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <span>{p.displayName}</span>
-                                                {p.status === 'coming_soon' && (
-                                                    <Lock className="h-3 w-3" />
-                                                )}
-                                            </div>
-                                            {p.status === 'live' && !llmProviderId && p.isDefault && (
-                                                <Badge variant="outline" className="text-[9px] h-4 px-1 opacity-60">Default</Badge>
+                                            {isLoading || isUploading ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <SendHorizontal className="h-4 w-4" />
                                             )}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
-
-                        {/* Right action buttons */}
-                        <div className="flex items-center gap-1.5">
-                            {onVoiceClick && !content.trim() && !isStreaming && !isLoading && (
-                                <button
-                                    type="button"
-                                    onClick={onVoiceClick}
-                                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-purple-500 hover:bg-purple-100/50 dark:hover:bg-purple-950/20 transition-colors"
-                                >
-                                    <Mic className="h-4 w-4" />
-                                </button>
-                            )}
-                            
-                            {isStreaming ? (
-                                <button
-                                    onClick={onStop}
-                                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
-                                >
-                                    <StopCircle className="h-4 w-4" />
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={handleSend}
-                                    disabled={(!content.trim() && attachments.length === 0) || disabled || isLoading || isUploading}
-                                    className={cn(
-                                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 shadow-sm",
-                                        (content.trim() || attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
+                                        </button>
                                     )}
-                                >
-                                    {isLoading || isUploading ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <SendHorizontal className="h-4 w-4" />
-                                    )}
-                                </button>
-                            )}
-                        </div>
-                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
                 
                 <p className="text-[10px] text-center text-muted-foreground mt-2">
