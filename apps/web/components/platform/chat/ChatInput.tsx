@@ -472,6 +472,15 @@ export function ChatInput({
                                             </button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent side="top" align="start" className="w-48 p-2">
+                                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
+                                                <ImageIcon className="h-4 w-4" />
+                                                <span>Media</span>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="gap-2 cursor-pointer py-2">
+                                                <Video className="h-4 w-4" />
+                                                <span>Video</span>
+                                            </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => handleMediaClick('audio')} className="gap-2 cursor-pointer py-2">
                                                 <Mic className="h-4 w-4" />
                                                 <span>Audio</span>

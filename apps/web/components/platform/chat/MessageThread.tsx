@@ -9,6 +9,8 @@ import { format } from "date-fns";
 import { ToolCallCard } from "./ToolCallCard";
 import { StreamingMessage } from "./StreamingMessage";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
+import { api } from "@/lib/api";
+import { useState } from "react";
 
 interface MessageThreadProps {
     messages: Message[];
@@ -20,6 +22,7 @@ interface MessageThreadProps {
 
 export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -27,6 +30,42 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages, isTyping]);
+
+    // Refresh presigned URLs for historical messages
+    useEffect(() => {
+        const refreshUrls = async () => {
+            const toRefresh = messages.flatMap(m => m.attachments || [])
+                .filter(att => att.fileId && (!att.previewUrl || att.previewUrl.startsWith('blob:')))
+                .filter(att => !freshUrls[att.fileId!]);
+
+            if (toRefresh.length === 0) return;
+
+            const results = await Promise.all(
+                toRefresh.map(async (att) => {
+                    try {
+                        const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+                            `/api/v1/files/${encodeURIComponent(att.fileId!)}/presigned-url`
+                        );
+                        return { fileId: att.fileId!, url: presignedUrl };
+                    } catch (err) {
+                        console.error('Failed to refresh URL for', att.fileId, err);
+                        return null;
+                    }
+                })
+            );
+
+            const newUrls = results.reduce((acc, curr) => {
+                if (curr) acc[curr.fileId] = curr.url;
+                return acc;
+            }, {} as Record<string, string>);
+
+            if (Object.keys(newUrls).length > 0) {
+                setFreshUrls(prev => ({ ...prev, ...newUrls }));
+            }
+        };
+
+        refreshUrls();
+    }, [messages]);
 
     if (isLoading && messages.length === 0) {
         return (
@@ -55,7 +94,7 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
                 )}
 
                 {messages.map((message) => (
-                    <MessageItem key={message.id} message={message} />
+                    <MessageItem key={message.id} message={message} freshUrls={freshUrls} />
                 ))}
 
                 {isTyping && (
@@ -112,7 +151,7 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
     );
 }
 
-function MessageItem({ message }: { message: Message }) {
+function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Record<string, string> }) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system' || message.role === 'tool';
@@ -167,28 +206,77 @@ function MessageItem({ message }: { message: Message }) {
                         "flex flex-wrap gap-2 mt-2",
                         isUser ? "justify-end" : "justify-start"
                     )}>
-                        {message.attachments.map((file) => (
-                            file.type.startsWith('image/') && file.previewUrl ? (
-                                <div key={file.id} className="rounded-xl overflow-hidden border border-border/30 shadow-sm max-w-[220px]">
-                                    <img
-                                        src={file.previewUrl}
-                                        alt={file.name}
-                                        className="w-full h-auto object-cover max-h-56"
+                        {message.attachments.map((file) => {
+                            const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl;
+                            
+                            if (file.type.startsWith('image/') && url) {
+                                return (
+                                    <div key={file.id} className="rounded-xl overflow-hidden border border-border/30 shadow-sm max-w-[220px]">
+                                        <img
+                                            src={url}
+                                            alt={file.name}
+                                            className="w-full h-auto object-cover max-h-56"
+                                        />
+                                    </div>
+                                );
+                            }
+
+                            if (file.type.startsWith('video/') && url) {
+                                return (
+                                    <video 
+                                        key={file.id} 
+                                        controls 
+                                        className="max-w-[220px] rounded-xl border border-border/30 shadow-sm"
+                                        src={url} 
                                     />
-                                </div>
-                            ) : file.type.startsWith('audio/') && file.previewUrl ? (
-                                <MessageAudioPlayer 
-                                    key={file.id} 
-                                    url={file.previewUrl} 
-                                    variant={isUser ? 'user' : 'assistant'}
-                                />
-                            ) : (
+                                );
+                            }
+
+                            if (file.type.startsWith('audio/') && url) {
+                                return (
+                                    <MessageAudioPlayer 
+                                        key={file.id} 
+                                        url={url} 
+                                        variant={isUser ? 'user' : 'assistant'}
+                                    />
+                                );
+                            }
+
+                            if (file.type === 'application/pdf' && url) {
+                                return (
+                                    <div key={file.id} className="flex items-center gap-3 px-3 py-2 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium min-w-[180px]">
+                                        <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+                                            <FileText className="h-4 w-4 text-red-500" />
+                                        </div>
+                                        <div className="flex flex-col flex-1 truncate">
+                                            <span className="truncate">{file.name}</span>
+                                            <a 
+                                                href={url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-primary hover:underline text-[10px] mt-0.5"
+                                            >
+                                                Open PDF
+                                            </a>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // DOCX or Generic Fallback
+                            const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                            return (
                                 <div key={file.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
-                                    <FileText className="h-3 w-3 text-purple-500" />
+                                    <FileText className={cn("h-3 w-3", isDocx ? "text-blue-500" : "text-purple-500")} />
                                     <span className="truncate max-w-[120px]">{file.name}</span>
+                                    {url && (
+                                        <a href={url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary hover:underline font-bold">
+                                            ↓
+                                        </a>
+                                    )}
                                 </div>
-                            )
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
                 

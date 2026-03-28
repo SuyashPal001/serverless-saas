@@ -409,11 +409,12 @@ export default function ChatPage() {
                 role: 'user',
                 content,
                 attachments: attachments?.map(a => ({
-                    id: a.fileId,
+                    id: crypto.randomUUID(),
+                    fileId: a.fileId,
                     name: a.name,
                     type: a.type,
                     size: a.size,
-                    previewUrl: a.previewUrl  // carry local blob URL for immediate preview
+                    previewUrl: a.previewUrl
                 })),
                 createdAt: new Date().toISOString()
             };
