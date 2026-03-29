@@ -485,10 +485,7 @@ export function ChatInput({
                                                 <Video className="h-4 w-4" />
                                                 <span>Video</span>
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('audio')} className="gap-2 cursor-pointer py-2">
-                                                <Mic className="h-4 w-4" />
-                                                <span>Audio</span>
-                                            </DropdownMenuItem>
+
                                             <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
                                                 <FileText className="h-4 w-4" />
                                                 <span>Document (PDF, DOCX)</span>
