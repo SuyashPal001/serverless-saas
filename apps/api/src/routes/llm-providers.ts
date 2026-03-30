@@ -23,7 +23,7 @@ llmProvidersRoutes.get('/', async (c) => {
         .orderBy(desc(llmProviders.isDefault), asc(llmProviders.displayName));
 
     return c.json({
-        providers: data.map((row) => ({
+        providers: data.map((row: any) => ({
             id: row.id,
             provider: row.provider,
             model: row.model,

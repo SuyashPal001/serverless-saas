@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/',
-            maxAge: 3600,
+            maxAge: 7200,
         });
 
         // Access Token - NOT httpOnly (for WebSocket)
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
                 path: '/',
-                maxAge: 3600,
+                maxAge: 7200,
             });
         }
 

@@ -83,10 +83,10 @@ export async function runMessageRelay(
     // Usage context — shared by recordSessionStart and recordAgentUsage below
     const usageContext: UsageContext = {
         tenantId,
-        agentId,
-        userId,
-        conversationId,
-        sessionId,
+        agentId: agentId || (null as any),
+        userId: userId || (null as any),
+        conversationId: conversationId || (null as any),
+        sessionId: sessionId || (null as any),
     };
 
     // Record session start for analytics (one record per new session)
