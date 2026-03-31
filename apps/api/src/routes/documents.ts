@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '@serverless-saas/database';
 import { eq, and, desc } from 'drizzle-orm';
 import { documents } from '@serverless-saas/database/schema/documents';
@@ -8,6 +10,46 @@ import { publishToQueue } from '../lib/sqs';
 import type { AppEnv } from '../types';
 
 const documentsRoutes = new Hono<AppEnv>();
+const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
+
+// POST /api/v1/documents/upload-url
+documentsRoutes.post(
+  '/upload-url',
+  zValidator('json', z.object({
+    fileName: z.string().min(1).max(255),
+    mimeType: z.enum([
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ]),
+  })),
+  async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+
+    if (!tenantId) {
+      return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+    }
+
+    const { fileName, mimeType } = c.req.valid('json');
+    const fileKey = `tenants/${tenantId}/documents/${crypto.randomUUID()}-${fileName}`;
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: process.env.DOCUMENTS_BUCKET!,
+        Key: fileKey,
+        ContentType: mimeType,
+      });
+
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+
+      return c.json({ uploadUrl, fileKey });
+    } catch (error) {
+      console.error('Failed to generate presigned URL:', error);
+      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    }
+  }
+);
 
 // POST /api/v1/documents
 documentsRoutes.post(

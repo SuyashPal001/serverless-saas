@@ -71,6 +71,7 @@ Resources:
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
           WORKER_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
     Metadata:
       BuildMethod: makefile
 

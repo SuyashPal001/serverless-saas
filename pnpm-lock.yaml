@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1011.0
+        version: 3.1014.0
       '@aws-sdk/client-ses':
         specifier: ^3.0.0
         version: 3.1009.0
@@ -26,6 +29,9 @@ importers:
       '@aws-sdk/client-ssm':
         specifier: ^3.1011.0
         version: 3.1011.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1011.0
+        version: 3.1014.0
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.10(hono@4.12.3)
