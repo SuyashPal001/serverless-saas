@@ -94,6 +94,7 @@ Resources:
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key}}"
           GCP_LOCATION: "us-central1"
+          DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
     Metadata:
       BuildMethod: makefile
 

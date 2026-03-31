@@ -5,6 +5,7 @@ import { handleAudit } from './handlers/audit';
 import { handleCacheInvalidate } from './handlers/cache';
 import { handleWebhookDelivery } from './handlers/webhookDelivery';
 import { handleUsageRecord } from './handlers/usageRecord';
+import { handleDocumentIngest, DocumentIngestPayload } from './handlers/documentIngest';
 
 export async function route(body: Record<string, unknown>): Promise<void> {
   const type = body.type as string | undefined;
@@ -30,6 +31,9 @@ export async function route(body: Record<string, unknown>): Promise<void> {
       break;
     case 'usage.record':
       await handleUsageRecord(body);
+      break;
+    case 'document.ingest':
+      await handleDocumentIngest(body.payload as DocumentIngestPayload);
       break;
     default:
       console.log('Worker received unknown job type — skipping', { type });
