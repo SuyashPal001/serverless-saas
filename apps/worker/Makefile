@@ -1,7 +1,7 @@
 REPO_ROOT := /mnt/data/projects/serverless-saas
 ESBUILD   := $(REPO_ROOT)/node_modules/.bin/esbuild
 ESBUILD_FLAGS := --bundle --platform=node --target=es2020 --minify --sourcemap \
-  --external:@aws-sdk/*
+  --external:@aws-sdk/* --external:pdf-parse --external:mammoth
 
 build-FoundationApiFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/api/src/index.ts \
