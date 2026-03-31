@@ -70,7 +70,6 @@ Resources:
           FROM_EMAIL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/ses/from-email}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
-          INTERNAL_SERVICE_KEY: !Sub "{{resolve:ssm-secure:/${ProjectName}/${EnvironmentName}/internal-service-key}}"
           WORKER_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
     Metadata:
       BuildMethod: makefile
