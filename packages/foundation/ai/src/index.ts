@@ -33,3 +33,9 @@ export {
     cleanupTenantSessions,
 } from './sessions/manager';
 export type { SessionData, SessionSummary } from './sessions/manager';
+
+// RAG
+export * from './embeddings';
+export * from './cache';
+export * from './retrieve';
+export * from './format';

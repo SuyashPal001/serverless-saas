@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
 import type { AppEnv } from '../../types';
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -27,17 +28,19 @@ async function getServiceKey(): Promise<string> {
   }
 }
 
+const bodySchema = z.object({
+  query: z.string().min(1),
+  tenantId: z.string().uuid(),
+  limit: z.number().int().min(1).max(10).default(5),
+  scoreThreshold: z.number().min(0).max(1).default(0.5),
+});
+
 const retrieveRoute = new Hono<AppEnv>();
 
 // POST /api/v1/internal/retrieve
 retrieveRoute.post(
   '/retrieve',
-  zValidator('json', z.object({
-    query: z.string().min(1),
-    tenantId: z.string().uuid(),
-    limit: z.number().int().positive().optional(),
-    scoreThreshold: z.number().min(0).max(1).optional(),
-  })),
+  zValidator('json', bodySchema),
   async (c) => {
     try {
       // Auth: service API key header
@@ -48,9 +51,19 @@ retrieveRoute.post(
         return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
       }
 
-      // Stub response for Phase 1B
-      return c.json({ context: '', chunks: [] }, 200);
+      const body = c.req.valid('json');
+      const chunks = await retrieveChunks(
+        body.query,
+        body.tenantId,
+        body.limit,
+        body.scoreThreshold
+      );
+
+      const context = formatContextBlock(chunks);
+
+      return c.json({ context, chunks }, 200);
     } catch (error) {
+      console.error('Retrieve failed:', error);
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500);
     }
   }

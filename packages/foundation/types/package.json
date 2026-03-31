@@ -8,5 +8,9 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.36.4"
   }
 }

@@ -10,7 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/types": "workspace:*",
-    "@serverless-saas/auth": "workspace:*"
+    "drizzle-orm": "^0.36.4"
   }
 }
