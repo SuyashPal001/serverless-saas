@@ -120,8 +120,8 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const [message] = await db
         .insert(messages)
         .values({
-            conversationId,
-            tenantId,
+            conversationId: conversationId || (null as any),
+            tenantId: tenantId || (null as any),
             role: result.data.role,
             content: result.data.content,
             attachments: result.data.attachments ?? null,

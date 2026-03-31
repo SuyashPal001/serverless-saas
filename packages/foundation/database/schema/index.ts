@@ -13,3 +13,4 @@ export * from './invitations';
 export * from './webhooks';
 export * from './storage';
 export * from './conversations';
+export * from './documents';

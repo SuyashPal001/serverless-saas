@@ -62,8 +62,8 @@ export async function runMessageRelay(
 
     // 2. Save user message to DB
     await db.insert(messages).values({
-        conversationId,
-        tenantId,
+        conversationId: conversationId || (null as any),
+        tenantId: tenantId || (null as any),
         role: 'user',
         content,
     });
@@ -145,8 +145,8 @@ export async function runMessageRelay(
         const [assistantMessage] = await db
             .insert(messages)
             .values({
-                conversationId,
-                tenantId,
+                conversationId: conversationId || (null as any),
+                tenantId: tenantId || (null as any),
                 role: 'assistant',
                 content: accumulatedContent,
                 tokenCount: finalUsage?.totalTokens ?? null,
