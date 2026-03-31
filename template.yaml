@@ -92,7 +92,7 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
-          GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key:SecretString:key}}"
+          GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key}}"
           GCP_LOCATION: "us-central1"
     Metadata:
       BuildMethod: makefile
