@@ -39,6 +39,8 @@ import { llmProvidersRoutes } from './routes/llm-providers';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
 import { sessionsRoutes } from './routes/sessions';
+import documentsRoutes from './routes/documents';
+import internalRetrieveRoute from './routes/internal/retrieve';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -124,9 +126,14 @@ api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
 api.route('/sessions', sessionsRoutes);
 api.route('/llm-providers', llmProvidersRoutes);
+api.route('/documents', documentsRoutes);
+
+const internalApi = new Hono<AppEnv>();
+internalApi.route('/internal', internalRetrieveRoute);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);
 app.route('/api/v1', api);
+app.route('/api/v1', internalApi);
 
 export { app };
