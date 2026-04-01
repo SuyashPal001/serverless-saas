@@ -16,4 +16,6 @@ build-FoundationPretokenFunction:
 build-FoundationWorkerFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/lambda.ts \
 	  --outfile=$(ARTIFACTS_DIR)/lambda.js \
-	  $(ESBUILD_FLAGS)
+	  $(ESBUILD_FLAGS) \
+	  --node-paths=$(REPO_ROOT)/apps/worker/node_modules \
+	  --node-paths=$(REPO_ROOT)/node_modules
