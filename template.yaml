@@ -72,6 +72,8 @@ Resources:
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
           WORKER_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
+          GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key}}"
+          GCP_LOCATION: "us-central1"
     Metadata:
       BuildMethod: makefile
 
