@@ -71,6 +71,8 @@ documentsRoutes.post(
     }
 
     // Check for duplicate
+    console.log('[documents route] db.query keys:', Object.keys((db as any).query || {}));
+    console.log('[documents route] db.query.documents:', typeof (db as any).query?.documents);
     const existing = await db.query.documents.findFirst({
       where: and(
         eq(documents.tenantId, tenantId),
