@@ -216,6 +216,11 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    api_internal = {
+      route_key       = "POST /api/v1/internal/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     }
 
   tags = {}
