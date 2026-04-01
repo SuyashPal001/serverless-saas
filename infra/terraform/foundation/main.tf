@@ -434,6 +434,22 @@ module "iam" {
             Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
           }]
         })
+        s3_documents = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject",
+              "s3:ListBucket"
+            ]
+            Resource = [
+              "arn:aws:s3:::${var.project}-${var.environment}-files",
+              "arn:aws:s3:::${var.project}-${var.environment}-files/*"
+            ]
+          }]
+        })
         sns_publish = jsonencode({
           Version = "2012-10-17"
           Statement = [{
