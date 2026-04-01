@@ -2,8 +2,8 @@ import * as crypto from 'crypto';
 import { v5 as uuidv5 } from 'uuid';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { neon } from '@neondatabase/serverless';
-// Removed unused imports to fix TS6192
-// import { documents, documentChunks } from '@serverless-saas/database/schema/documents';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 import { getOrEmbedTexts } from '@serverless-saas/ai';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -48,14 +48,11 @@ function chunkText(text: string): string[] {
 // ── Parse file content ────────────────────────────────────
 async function parseFile(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
-    // Fixed TS2349: pdf-parse is not a constructor, it's a function exported via export =
-    const pdfParse = await import('pdf-parse');
-    const result = await (pdfParse as any)(buffer);
+    const result = await pdfParse(buffer);
     return result.text;
   }
 
   if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    const mammoth = await import('mammoth');
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   }
