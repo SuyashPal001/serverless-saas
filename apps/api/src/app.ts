@@ -133,7 +133,7 @@ internalApi.route('/internal', internalRetrieveRoute);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);
-app.route('/api/v1', api);
 app.route('/api/v1', internalApi);
+app.route('/api/v1', api);
 
 export { app };
