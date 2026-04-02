@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Monitor, MousePointer2, Type, Navigation, Maximize2, Minimize2 } from 'lucide-react';
+import { Monitor, MousePointer2, Type, Maximize2, Minimize2, ArrowLeft, ArrowRight, RotateCw, ShieldCheck } from 'lucide-react';
 import type { CanvasOverlay } from './types';
 
 interface CanvasViewerProps {
@@ -31,84 +31,85 @@ export function CanvasViewer({
     <div
       ref={containerRef}
       className={cn(
-        'relative bg-black rounded-lg overflow-hidden group w-full',
+        'flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-white/10 shadow-2xl w-full',
         isFullscreen ? 'h-[75vh]' : 'aspect-video'
       )}
     >
-      {/* URL Bar */}
-      {url && (
-        <div className="absolute top-0 left-0 right-0 bg-muted/90 backdrop-blur px-3 py-1.5 flex items-center gap-2 z-10">
-          <Navigation className="h-3 w-3 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground truncate flex-1">
-            {url}
-          </span>
+      {/* Browser Chrome */}
+      <div className="h-10 bg-[#2d2d2d] flex items-center px-3 gap-3 border-b border-black/20">
+        {/* Traffic Lights */}
+        <div className="flex gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-[#ff5f56]" />
+          <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
+          <div className="w-3 h-3 rounded-full bg-[#27c93f]" />
+        </div>
+
+        {/* Nav Controls */}
+        <div className="flex gap-2 text-white/40">
+          <ArrowLeft className="h-4 w-4" />
+          <ArrowRight className="h-4 w-4" />
+          <RotateCw className="h-4 w-4" />
+        </div>
+
+        {/* URL Bar */}
+        <div className="flex-1 bg-[#1e1e1e] rounded-md px-3 py-1 flex items-center gap-2 text-white/60 text-xs border border-white/5">
+          <ShieldCheck className="h-3 w-3 text-emerald-500" />
+          <span className="truncate flex-1">{url || 'about:blank'}</span>
           {isActive && (
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-xs text-green-500">Live</span>
-            </span>
+            <span className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse" />
           )}
         </div>
-      )}
 
-      {/* Screenshot */}
-      {screenshot ? (
-        <img
-          src={`data:image/png;base64,${screenshot}`}
-          alt="Agent view"
-          className="w-full h-full object-contain"
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-          <div className="text-center">
-            <Monitor className="h-12 w-12 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Waiting for agent activity...</p>
-          </div>
-        </div>
-      )}
+        {/* Fullscreen Toggle */}
+        <button onClick={onFullscreen} className="text-white/60 hover:text-white">
+          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </button>
+      </div>
 
-      {/* Click Overlays */}
-      {activeOverlays
-        .filter(o => o.type === 'click')
-        .map(overlay => (
-          <ClickRipple
-            key={overlay.id}
-            x={overlay.x ?? 0}
-            y={overlay.y ?? 0}
+      {/* Viewport */}
+      <div className="relative flex-1 overflow-hidden bg-black">
+        {screenshot ? (
+          <img
+            src={`data:image/png;base64,${screenshot}`}
+            alt="Agent view"
+            className="w-full h-full object-contain"
           />
-        ))}
-
-      {/* Type Overlays */}
-      {activeOverlays
-        .filter(o => o.type === 'type')
-        .map(overlay => (
-          <TypeIndicator
-            key={overlay.id}
-            x={overlay.x ?? 0}
-            y={overlay.y ?? 0}
-            text={overlay.text ?? ''}
-          />
-        ))}
-
-      {/* Fullscreen Toggle */}
-      <button
-        onClick={onFullscreen}
-        className={cn(
-            "absolute p-2 rounded-md transition-all z-20",
-            isFullscreen 
-              ? "top-4 right-4 opacity-100 bg-zinc-800 hover:bg-zinc-700 shadow-xl border border-white/10" 
-              : "bottom-2 right-2 opacity-0 group-hover:opacity-100 bg-black/50 hover:bg-black/70"
-        )}
-      >
-        {isFullscreen ? (
-          <Minimize2 className="h-4 w-4 text-white" />
         ) : (
-          <Maximize2 className="h-4 w-4 text-white" />
+          <div className="w-full h-full flex items-center justify-center text-white/20">
+            <div className="text-center">
+              <Monitor className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Waiting for agent activity...</p>
+            </div>
+          </div>
         )}
-      </button>
+
+        {/* Click Overlays */}
+        {activeOverlays
+          .filter(o => o.type === 'click')
+          .map(overlay => (
+            <ClickRipple
+              key={overlay.id}
+              x={overlay.x ?? 0}
+              y={overlay.y ?? 0}
+            />
+          ))}
+
+        {/* Type Overlays */}
+        {activeOverlays
+          .filter(o => o.type === 'type')
+          .map(overlay => (
+            <TypeIndicator
+              key={overlay.id}
+              x={overlay.x ?? 0}
+              y={overlay.y ?? 0}
+              text={overlay.text ?? ''}
+            />
+          ))}
+      </div>
     </div>
   );
 }
+
 // Click ripple animation
 function ClickRipple({ x, y }: { x: number; y: number }) {
   return (
