@@ -27,6 +27,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
     const agent = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
 
     try {
+        console.log('[proxy]', req.method, url);
         const res = await undiciFetch(url, {
             method: req.method,
             headers,
@@ -43,6 +44,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
             headers: { 'Content-Type': 'application/json' },
         });
     } catch (err: unknown) {
+        console.error('[proxy error]', req.method, url, err);
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
         return NextResponse.json(
             { error: isTimeout ? 'Upstream request timed out' : 'Proxy error' },
