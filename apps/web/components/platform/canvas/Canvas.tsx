@@ -47,6 +47,7 @@ interface KBDocument {
   previewUrl?: string;
   textContent?: string;
   htmlContent?: string;
+  errorMessage?: string;
 }
 
 export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps) {
@@ -106,6 +107,8 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
     const type = file.name.split('.').pop()?.toLowerCase() || 'unknown';
     const localId = crypto.randomUUID();
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
     const newDoc: KBDocument = {
       id: localId,
       name: file.name,
@@ -114,6 +117,11 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
       isPolling: false,
       file,
     };
+
+    if (file.size > MAX_FILE_SIZE) {
+      setDocuments(prev => [{ ...newDoc, status: 'failed', errorMessage: 'File exceeds 10MB limit' }, ...prev]);
+      return;
+    }
 
     // Local preview setup
     if (type === 'pdf') {
@@ -440,7 +448,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
                 </div>
                 <div className="text-center px-4">
                   <p className="text-xs font-medium text-muted-foreground">Drop files here or click to upload</p>
-                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">PDF, DOCX, or TXT supported</p>
+                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">PDF, DOCX, or TXT · Max 10MB per file</p>
                 </div>
               </div>
             ) : (
@@ -455,6 +463,9 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
                       <h5 className="font-medium text-zinc-200 line-clamp-3 leading-snug break-words">
                         {doc.name}
                       </h5>
+                      {doc.errorMessage && (
+                        <p className="text-[10px] text-red-400 mt-1 leading-snug">{doc.errorMessage}</p>
+                      )}
                       <p className="text-[11px] text-muted-foreground mt-1.5 font-medium flex items-center gap-1">
                         {doc.isPolling && (
                           <Loader2 className="h-2.5 w-2.5 animate-spin shrink-0" />
