@@ -39,6 +39,10 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
 
         const data = await res.text();
 
+        if (res.status === 204) {
+            return new NextResponse(null, { status: 204 });
+        }
+
         return new NextResponse(data, {
             status: res.status,
             headers: { 'Content-Type': 'application/json' },
