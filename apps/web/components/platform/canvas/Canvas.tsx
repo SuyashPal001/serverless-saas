@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { File, FileText, Trash2, Plus, Download, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import * as mammoth from 'mammoth';
+import { toast } from 'sonner';
 import type { CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData, CanvasAction } from './types';
 
 interface CanvasProps {
@@ -55,6 +56,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const [documents, setDocuments] = useState<KBDocument[]>([]);
   const [previewDoc, setPreviewDoc] = useState<KBDocument | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<KBDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -236,6 +238,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
       return prev.filter(x => x.id !== id);
     });
     if (previewDoc?.id === id) setPreviewDoc(null);
+    toast.success('Document deleted successfully');
 
     // Call delete API if document was registered
     if (doc?.documentId) {
@@ -489,7 +492,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/50 hover:bg-background/80"
-                        onClick={(e) => removeDocument(doc.id, e)}
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(doc); }}
                       >
                         <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                       </Button>
@@ -501,6 +504,32 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm bg-[#1C1C1C] border-[#2C2C2C] text-zinc-50">
+          <DialogHeader>
+            <DialogTitle>Delete Document</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &apos;{deleteTarget?.name}&apos;? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) {
+                  removeDocument(deleteTarget.id);
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Document Preview Modal */}
       <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>
