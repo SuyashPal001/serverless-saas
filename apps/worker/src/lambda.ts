@@ -17,7 +17,7 @@ export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
       console.log('Worker received job', {
         messageId: record.messageId,
         type: body?.type ?? 'unknown',
-        tenantId: body?.tenantId ?? 'unknown',
+        tenantId: (body?.payload as Record<string, unknown>)?.tenantId ?? body?.tenantId ?? 'unknown',
       });
 
       await route(body);
