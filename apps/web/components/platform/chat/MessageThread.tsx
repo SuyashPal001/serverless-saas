@@ -206,12 +206,12 @@ function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Reco
                         "flex flex-wrap gap-2 mt-2",
                         isUser ? "justify-end" : "justify-start"
                     )}>
-                        {message.attachments.map((file) => {
+                        {message.attachments.map((file, index) => {
                             const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl;
                             
                             if (file.type.startsWith('image/') && url) {
                                 return (
-                                    <div key={file.id} className="rounded-xl overflow-hidden border border-border/30 shadow-sm max-w-[220px]">
+                                    <div key={file.id ?? `att-${index}`} className="rounded-xl overflow-hidden border border-border/30 shadow-sm max-w-[220px]">
                                         <img
                                             src={url}
                                             alt={file.name}
@@ -223,20 +223,20 @@ function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Reco
 
                             if (file.type.startsWith('video/') && url) {
                                 return (
-                                    <video 
-                                        key={file.id} 
-                                        controls 
+                                    <video
+                                        key={file.id ?? `att-${index}`}
+                                        controls
                                         className="max-w-[220px] rounded-xl border border-border/30 shadow-sm"
-                                        src={url} 
+                                        src={url}
                                     />
                                 );
                             }
 
                             if (file.type.startsWith('audio/') && url) {
                                 return (
-                                    <MessageAudioPlayer 
-                                        key={file.id} 
-                                        url={url} 
+                                    <MessageAudioPlayer
+                                        key={file.id ?? `att-${index}`}
+                                        url={url}
                                         variant={isUser ? 'user' : 'assistant'}
                                     />
                                 );
@@ -244,16 +244,16 @@ function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Reco
 
                             if (file.type === 'application/pdf' && url) {
                                 return (
-                                    <div key={file.id} className="flex items-center gap-3 px-3 py-2 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium min-w-[180px]">
+                                    <div key={file.id ?? `att-${index}`} className="flex items-center gap-3 px-3 py-2 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium min-w-[180px]">
                                         <div className="h-8 w-8 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
                                             <FileText className="h-4 w-4 text-red-500" />
                                         </div>
                                         <div className="flex flex-col flex-1 truncate">
                                             <span className="truncate">{file.name}</span>
-                                            <a 
-                                                href={url} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer" 
+                                            <a
+                                                href={url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                                 className="text-primary hover:underline text-[10px] mt-0.5"
                                             >
                                                 Open PDF
@@ -266,7 +266,7 @@ function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Reco
                             // DOCX or Generic Fallback
                             const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                             return (
-                                <div key={file.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
+                                <div key={file.id ?? `att-${index}`} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
                                     <FileText className={cn("h-3 w-3", isDocx ? "text-blue-500" : "text-purple-500")} />
                                     <span className="truncate max-w-[120px]">{file.name}</span>
                                     {url && (
