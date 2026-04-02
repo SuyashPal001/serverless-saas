@@ -102,10 +102,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
     pollingRefs.current.set(localId, timeoutId);
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadSingleFile = async (file: File) => {
     const type = file.name.split('.').pop()?.toLowerCase() || 'unknown';
     const localId = crypto.randomUUID();
 
@@ -118,7 +115,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
       file,
     };
 
-    // Local preview setup (unchanged)
+    // Local preview setup
     if (type === 'pdf') {
       newDoc.previewUrl = URL.createObjectURL(file);
     } else if (type === 'txt') {
@@ -138,10 +135,6 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
     }
 
     setDocuments(prev => [newDoc, ...prev]);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
 
     // ── API upload flow ───────────────────────────────────────────────────────
 
@@ -208,6 +201,12 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
         d.id === localId ? { ...d, status: 'failed', isPolling: false } : d
       ));
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    files.forEach(file => { uploadSingleFile(file); });
   };
 
   const removeDocument = async (id: string, e?: React.MouseEvent) => {
@@ -428,6 +427,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
               ref={fileInputRef}
               className="hidden"
               accept=".pdf,.docx,.txt"
+              multiple
               onChange={handleFileUpload}
             />
           </div>
