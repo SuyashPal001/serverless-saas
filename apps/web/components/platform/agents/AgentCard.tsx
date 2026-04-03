@@ -28,9 +28,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Play, Pause, Trash2 } from "lucide-react";
+import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { AgentConfigSheet } from "./AgentConfigSheet";
 
 interface AgentCardProps {
     agent: Agent;
@@ -39,6 +40,7 @@ interface AgentCardProps {
 export function AgentCard({ agent }: AgentCardProps) {
     const queryClient = useQueryClient();
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
+    const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
 
     const formatRelativeTime = (date: string) => {
         const now = new Date();
@@ -110,6 +112,10 @@ export function AgentCard({ agent }: AgentCardProps) {
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setIsConfigSheetOpen(true)}>
+                                <Settings2 className="mr-2 h-4 w-4" />
+                                Configure
+                            </DropdownMenuItem>
                             {agent.status === "active" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
                                     <Pause className="mr-2 h-4 w-4" />
@@ -149,6 +155,12 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </div>
                 </CardContent>
             </Card>
+
+            <AgentConfigSheet
+                agent={agent}
+                open={isConfigSheetOpen}
+                onOpenChange={setIsConfigSheetOpen}
+            />
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
