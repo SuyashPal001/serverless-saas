@@ -7,7 +7,6 @@ import { api } from "@/lib/api";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
-import { AgentSelector } from "@/components/platform/chat/AgentSelector";
 import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall, MessageAttachment } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
 import { Attachment } from "@/types/agent-events";
@@ -51,7 +50,6 @@ export default function ChatPage() {
     const tenantSlug = params.tenant as string;
     const conversationId = searchParams.get("id");
     
-    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     
@@ -74,6 +72,17 @@ export default function ChatPage() {
     });
 
     const providers = providersData?.providers || [];
+
+    // Fetch agents for auto-selection
+    interface AgentsResponse {
+        data: Agent[];
+    }
+    const { data: agentsData } = useQuery<AgentsResponse>({
+        queryKey: ["agents"],
+        queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
+    });
+
+    const activeAgents = agentsData?.data?.filter(a => a.status === 'active') || [];
 
     // Fetch conversations
     const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
@@ -133,7 +142,7 @@ export default function ChatPage() {
 
     const agentEvents = useAgentEvents({
         conversationId: conversationId || undefined,
-        agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id,
+        agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
         onThinking: useCallback(() => {
             setIsThinking(true);
             setEventError(null);
@@ -240,6 +249,26 @@ export default function ChatPage() {
             toast.error(errorMsg);
         }, []),
         onCanvasUpdate: handleAgentCanvasUpdate,
+        onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
+            setIsThinking(false);
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+                const newMessage: Message = {
+                    id: crypto.randomUUID(),
+                    conversationId: conversationId!,
+                    role: 'assistant',
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    approvalRequest: {
+                        id: approvalId,
+                        toolName,
+                        description,
+                        arguments: args,
+                        status: 'pending'
+                    }
+                };
+                return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
+            });
+        }, [conversationId, queryClient]),
         onSessionEnded: useCallback((reason: string) => {
             setIsThinking(false);
             setActiveToolCalls(new Map());
@@ -249,7 +278,7 @@ export default function ChatPage() {
         }, [conversationId, queryClient]),
     });
 
-    const { isConnected, sendMessage: sendWsMessage } = agentEvents;
+    const { isConnected, sendMessage: sendWsMessage, sendApproval } = agentEvents;
 
     // Fetch messages
     const { data: messagesData, isLoading: isLoadingMessages, refetch: refetchMessages } = useQuery<MessagesResponse>({
@@ -268,13 +297,50 @@ export default function ChatPage() {
 
     const messages = messagesData?.data || [];
 
+    const handleApprove = useCallback(async (messageId: string, approvalId: string) => {
+        const success = await sendApproval(approvalId, 'approved');
+        if (success) {
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+                if (!old) return old;
+                return {
+                    data: old.data.map(m => m.id === messageId ? {
+                        ...m,
+                        approvalRequest: m.approvalRequest ? {
+                            ...m.approvalRequest,
+                            status: 'approved',
+                            decisionAt: new Date().toISOString()
+                        } : undefined
+                    } : m)
+                };
+            });
+        }
+    }, [conversationId, queryClient, sendApproval]);
+
+    const handleDismiss = useCallback(async (messageId: string, approvalId: string) => {
+        const success = await sendApproval(approvalId, 'dismissed');
+        if (success) {
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+                if (!old) return old;
+                return {
+                    data: old.data.map(m => m.id === messageId ? {
+                        ...m,
+                        approvalRequest: m.approvalRequest ? {
+                            ...m.approvalRequest,
+                            status: 'dismissed',
+                            decisionAt: new Date().toISOString()
+                        } : undefined
+                    } : m)
+                };
+            });
+        }
+    }, [conversationId, queryClient, sendApproval]);
+
     // Create conversation mutation
     const createConversation = useMutation({
         mutationFn: (agentId: string) => 
             api.post<{ data: Conversation }>("/api/v1/conversations", { agentId }),
         onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            setIsSelectorOpen(false);
             router.push(`/${tenantSlug}/dashboard/chat?id=${response.data.id}`);
             toast.success("Conversation started");
         },
@@ -338,7 +404,12 @@ export default function ChatPage() {
     };
 
     const handleNewChat = () => {
-        setIsSelectorOpen(true);
+        const firstAgent = activeAgents[0];
+        if (firstAgent) {
+            handleSelectAgent(firstAgent);
+        } else {
+            toast.error("No active agents available. Please create one first.");
+        }
     };
 
     const handleSelectAgent = (agent: Agent) => {
@@ -502,7 +573,7 @@ export default function ChatPage() {
                                                 <span className="flex items-center gap-1">
                                                     Agent: {selectedConversation.agent?.name || (isConnected ? "Connected" : "Connecting...")} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}
                                                 </span>
-                                                {selectedConversation.agent && (
+                                                {false && selectedConversation.agent && (
                                                     <Badge variant="outline" className="text-[10px] h-4 px-1.5 flex items-center gap-1 bg-muted/30 border-muted">
                                                         {(() => {
                                                             const agent = selectedConversation.agent;
@@ -530,7 +601,7 @@ export default function ChatPage() {
                                             variant={isCanvasOpen ? 'default' : 'outline'} 
                                             size="sm" 
                                             onClick={toggleCanvas} 
-                                            className="relative hidden sm:flex"
+                                            className="relative flex"
                                         >
                                             <PanelRight className="h-4 w-4 mr-2" />
                                             Canvas
@@ -567,6 +638,8 @@ export default function ChatPage() {
                                     isTyping={isThinking || sendMessage.isPending}
                                     activeToolCalls={Array.from(activeToolCalls.values())}
                                     error={eventError}
+                                    onApprove={handleApprove}
+                                    onDismiss={handleDismiss}
                                 />
 
                                 {/* Input */}
@@ -639,12 +712,6 @@ export default function ChatPage() {
                     </div>
                 </div>
             </div>
-
-            <AgentSelector 
-                open={isSelectorOpen} 
-                onOpenChange={setIsSelectorOpen}
-                onSelect={handleSelectAgent}
-            />
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent>

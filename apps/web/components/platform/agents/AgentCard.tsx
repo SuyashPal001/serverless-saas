@@ -130,7 +130,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                             )}
                             {(agent.status === "active" || agent.status === "paused") && (
                                 <DropdownMenuItem 
-                                    className="text-destructive focus:text-destructive"
+                                    className="text-muted-foreground focus:text-foreground cursor-pointer"
                                     onClick={() => setIsRetireDialogOpen(true)}
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -151,7 +151,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </div>
                     <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
                         <span>Model</span>
-                        <span className="font-medium text-foreground">{agent.model || "—"}</span>
+                        <span className="font-medium text-foreground">{agent.model || "Gemini 2.5 Flash"}</span>
                     </div>
                 </CardContent>
             </Card>
@@ -165,14 +165,14 @@ export function AgentCard({ agent }: AgentCardProps) {
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogTitle>Retire this agent?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This action cannot be undone. This will permanently retire the agent
-                            and it will no longer be available for use.
+                            This will permanently deactivate the agent and revoke its API 
+                            key. This cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel variant="ghost">Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={() => {
@@ -180,7 +180,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                                 setIsRetireDialogOpen(false);
                             }}
                         >
-                            Retire Agent
+                            Retire agent
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

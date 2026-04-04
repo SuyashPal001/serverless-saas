@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { LogOut, User, ChevronDown, Check, Plus } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
@@ -222,13 +223,34 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
 import { useSidebar } from "./SidebarContext"
 
 export function Topbar() {
-    const { tenantId, tenantSlug, plan, email, name } = useTenant()
+    const router = useRouter()
+    const pathname = usePathname()
+    const { tenantSlug, plan, email, name, role } = useTenant()
     const { isSidebarCollapsed } = useSidebar()
+    
+    const [workspaces, setWorkspaces] = React.useState<any[]>([])
+    const [isLoadingWorkspaces, setIsLoadingWorkspaces] = React.useState(true)
+    const [isDropdownOpen, setIsDropdownOpen] = React.useState(false)
+
+    React.useEffect(() => {
+        api.get<{ tenants: any[] }>('/api/v1/auth/tenants')
+            .then((data) => setWorkspaces(data.tenants || []))
+            .catch(console.error)
+            .finally(() => setIsLoadingWorkspaces(false))
+    }, [])
+
+    const currentWorkspace = workspaces.find(w => w.slug === tenantSlug) || workspaces.find(w => w.isCurrent)
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
         if (email) return email[0].toUpperCase()
         return "US"
+    }
+
+    const getAvatarBg = () => {
+        if (role === 'platform_admin') return "bg-[#ff7f50]" // Coral
+        if (role === 'member') return "bg-blue-500"
+        return "bg-zinc-500" // Admin/Owner default
     }
 
     const planColors: Record<string, string> = {
@@ -239,6 +261,7 @@ export function Topbar() {
     }
 
     const currentPlanColor = planColors[plan?.toLowerCase()] || planColors.free
+    const isStarterPlan = ['free', 'starter'].includes(plan?.toLowerCase() || '')
 
     return (
         <header className={cn(
@@ -247,30 +270,88 @@ export function Topbar() {
         )}>
             <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} />
 
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3">
-                    <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium leading-none text-foreground">{name || "User"}</p>
-                        <p className="text-xs text-muted-foreground">{email || "user@platform.com"}</p>
-                    </div>
-                    <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center border border-border">
-                        <span className="text-xs font-bold text-accent-foreground">
-                            {getInitials()}
-                        </span>
-                    </div>
-                </div>
+            <div className="flex items-center gap-4">
+                <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+                    <DropdownMenuTrigger className="focus:outline-none">
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all hover:bg-accent/50 group max-w-[220px]">
+                            <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-border shadow-sm overflow-hidden",
+                                getAvatarBg()
+                            )}>
+                                <span className="text-xs font-bold text-white">
+                                    {getInitials()}
+                                </span>
+                            </div>
+                            <div className="flex flex-col min-w-0 text-left hidden sm:flex">
+                                <p className="text-[13px] font-medium text-foreground truncate leading-none mb-1">
+                                    {name || "User"}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate leading-none">
+                                    {email || "user@platform.com"}
+                                </p>
+                            </div>
+                            <ChevronDown className={cn(
+                                "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ml-1",
+                                isDropdownOpen && "rotate-180"
+                            )} />
+                        </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-[240px] p-0 overflow-hidden bg-card border-border shadow-md">
+                        {/* Header Block - Non-clickable */}
+                        <div className="flex flex-col space-y-0.5 p-3 px-[12px] bg-accent/5">
+                            <p className="text-[13px] font-medium text-foreground truncate">{name || "User"}</p>
+                            <p className="text-[12px] text-muted-foreground truncate overflow-hidden whitespace-nowrap">
+                                {email || "user@platform.com"}
+                            </p>
+                        </div>
 
-                <div className="w-px h-4 bg-border" />
+                        <DropdownMenuSeparator className="m-0 bg-border/40" />
 
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => signOut()}
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Sign out"
-                >
-                    <LogOut className="w-4 h-4" />
-                </Button>
+                        {/* Metadata Section */}
+                        <div className="p-[8px] px-[12px] space-y-1">
+                            <p className="text-[12px] text-muted-foreground truncate leading-tight">
+                                {isLoadingWorkspaces ? "..." : (currentWorkspace?.name || tenantSlug)}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[12px] leading-tight">
+                                <span className="text-foreground capitalize">{plan || "Free"}</span>
+                                {isStarterPlan && (
+                                    <>
+                                        <span className="text-muted-foreground/30 font-light translate-y-[-1px]">·</span>
+                                        <Link 
+                                            href={`/${tenantSlug}/dashboard/billing`}
+                                            className="text-blue-500/80 hover:text-blue-400 font-medium transition-colors"
+                                        >
+                                            Upgrade
+                                        </Link>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        <DropdownMenuSeparator className="m-0 bg-border/40" />
+
+                        {/* Navigation Section */}
+                        <div className="p-[4px] px-[4px]">
+                            <DropdownMenuItem 
+                                className="flex items-center px-[12px] py-[8px] cursor-pointer text-[13px] rounded-sm focus:bg-accent/50 focus:text-accent-foreground"
+                                onClick={() => router.push(`/${tenantSlug}/dashboard/settings/profile`)}
+                            >
+                                <User className="mr-2 h-4 w-4 opacity-70" />
+                                <span>Profile settings</span>
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuSeparator className="my-[4px] bg-border/40 mx-[-4px]" />
+                            
+                            <DropdownMenuItem 
+                                className="flex items-center px-[12px] py-[8px] cursor-pointer text-[13px] rounded-sm text-muted-foreground hover:text-foreground focus:bg-accent/50 focus:text-accent-foreground group"
+                                onClick={() => signOut()}
+                            >
+                                <LogOut className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+                                <span>Sign out</span>
+                            </DropdownMenuItem>
+                        </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </header>
     )

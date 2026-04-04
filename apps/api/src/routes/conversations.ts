@@ -246,3 +246,31 @@ conversationsRoutes.delete('/:id', async (c) => {
 
     return c.json({ success: true });
 });
+
+// DELETE /conversations/:id/permanent — hard delete
+conversationsRoutes.delete('/:id/permanent', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!permissions.includes('conversations:delete')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const id = c.req.param('id');
+
+    const [existing] = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db.delete(conversations)
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId)));
+
+    return c.json({ success: true });
+});

@@ -38,6 +38,7 @@ interface ConversationListProps {
 
 export function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const queryClient = useQueryClient();
     const router = useRouter();
     const params = useParams();
@@ -59,6 +60,20 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
         },
         onError: (error: any) => {
             toast.error(error.data?.message || "Failed to archive conversation");
+        }
+    });
+
+    const hardDeleteMutation = useMutation({
+        mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}/permanent`),
+        onSuccess: (_, deletedId) => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            toast.success("Conversation deleted");
+            if (selectedId === deletedId) {
+                router.push(`/${tenantSlug}/dashboard/chat`);
+            }
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || "Failed to delete conversation");
         }
     });
 
@@ -136,10 +151,11 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-[160px] rounded-lg">
-                                        <DropdownMenuItem 
+                                        <DropdownMenuItem
                                             className="cursor-pointer rounded-lg mx-1 my-0.5"
                                             onClick={(e) => {
                                                 e.stopPropagation();
+                                                setActionType('archive');
                                                 setDeleteId(conversation.id);
                                             }}
                                         >
@@ -147,10 +163,11 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                             Archive
                                         </DropdownMenuItem>
                                         <div className="h-px bg-border my-1 mx-2" />
-                                        <DropdownMenuItem 
+                                        <DropdownMenuItem
                                             className="text-red-500 focus:text-red-500 focus:bg-red-500/10 cursor-pointer rounded-lg mx-1 my-0.5"
                                             onClick={(e) => {
                                                 e.stopPropagation();
+                                                setActionType('delete');
                                                 setDeleteId(conversation.id);
                                             }}
                                         >
@@ -172,9 +189,12 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
             <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Archive Conversation?</AlertDialogTitle>
+                        <AlertDialogTitle>{actionType === 'delete' ? 'Delete Conversation?' : 'Archive Conversation?'}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will move the conversation to your archives. You can still access it later if needed.
+                            {actionType === 'delete'
+                                ? 'This will permanently delete the conversation and all its messages. This cannot be undone.'
+                                : 'This will move the conversation to your archives. You can still access it later if needed.'
+                            }
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -183,12 +203,16 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={() => {
                                 if (deleteId) {
-                                    deleteMutation.mutate(deleteId);
+                                    if (actionType === 'delete') {
+                                        hardDeleteMutation.mutate(deleteId);
+                                    } else {
+                                        deleteMutation.mutate(deleteId);
+                                    }
                                     setDeleteId(null);
                                 }
                             }}
                         >
-                            Archive
+                            {actionType === 'delete' ? 'Delete' : 'Archive'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

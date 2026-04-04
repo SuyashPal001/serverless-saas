@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
     LayoutDashboard,
     Users,
@@ -17,12 +17,16 @@ import {
     Sliders,
     Webhook,
     FolderOpen,
-    Plug
+    Plug,
+    Lock,
+    ChevronRight,
+    PanelLeftClose,
+    PanelLeftOpen,
+    LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { useNotifications } from "@/lib/notifications-context"
-import { canRead } from "@/lib/permissions"
 import { useSidebar } from "./SidebarContext"
 import {
     Tooltip,
@@ -30,123 +34,153 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
+import { signOut } from "@/lib/auth"
 
-interface SidebarItemProps {
-    href: string
-    label: string
-    icon: React.ElementType
-    isCollapsed?: boolean
+function UpgradeModal({ open, onOpenChange, tenantSlug }: { open: boolean, onOpenChange: (open: boolean) => void, tenantSlug: string }) {
+    const router = useRouter()
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Lock className="w-5 h-5 text-primary" />
+                        Upgrade Required
+                    </DialogTitle>
+                    <DialogDescription className="pt-2">
+                        This feature requires the <strong>Business</strong> plan. Upgrade now to unlock advanced branding and integrations.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="pt-4">
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                    <Button onClick={() => {
+                        onOpenChange(false)
+                        router.push(`/${tenantSlug}/dashboard/billing`)
+                    }}>
+                        Upgrade
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
 }
 
-function SidebarItem({ href, label, icon: Icon, isCollapsed }: SidebarItemProps) {
+interface SidebarNavLinkProps {
+    item: SidebarItemType
+    isCollapsed?: boolean
+    unreadCount?: number
+    onLockedClick?: () => void
+}
+
+function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: SidebarNavLinkProps) {
     const pathname = usePathname()
-    const isActive = pathname === href
+    const isActive = pathname === item.href
+    const Icon = item.icon
 
     const content = (
-        <Link
-            href={href}
+        <div
             className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                isActive
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all group relative",
+                item.locked ? "opacity-50 cursor-pointer" : "cursor-pointer",
+                isActive && !item.locked
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
                 isCollapsed && "justify-center px-2"
             )}
+            onClick={(e) => {
+                if (item.locked) {
+                    e.preventDefault()
+                    onLockedClick?.()
+                }
+            }}
         >
             <Icon className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>{label}</span>}
-        </Link>
-    )
-
-    if (isCollapsed) {
-        return (
-            <Tooltip delayDuration={0}>
-                <TooltipTrigger asChild>
-                    {content}
-                </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2">
-                    {label}
-                </TooltipContent>
-            </Tooltip>
-        )
-    }
-
-    return content
-}
-
-function NotificationsItem({ href, unreadCount, isCollapsed }: { href: string; unreadCount: number; isCollapsed?: boolean }) {
-    const pathname = usePathname()
-    const isActive = pathname === href
-
-    const content = (
-        <Link
-            href={href}
-            className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative",
-                isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                isCollapsed && "justify-center px-2"
+            
+            {!isCollapsed && (
+                <div className="flex items-center justify-between flex-1 min-w-0">
+                    <span className="truncate">{item.label}</span>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {item.showBusinessBadge && (
+                            <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-tighter bg-purple-500/10 text-purple-500 border-purple-500/20">
+                                business
+                            </Badge>
+                        )}
+                        {item.locked && <Lock className="w-3 h-3 text-muted-foreground" />}
+                        {item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
+                            <span className="bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold">
+                                {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                        )}
+                    </div>
+                </div>
             )}
-        >
-            <Bell className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>Notifications</span>}
-            {unreadCount > 0 && (
-                <span className={cn(
-                    "bg-primary text-primary-foreground rounded-full text-[10px] flex items-center justify-center font-bold",
-                    isCollapsed 
-                        ? "absolute -top-1 -right-1 h-4 w-4" 
-                        : "ml-auto px-1.5 py-0.5 min-w-[1.25rem] leading-tight"
-                )}>
+
+            {isCollapsed && item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold border-2 border-card">
                     {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
             )}
-        </Link>
+        </div>
     )
 
-    if (isCollapsed) {
+    if (item.locked) {
         return (
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
                     {content}
                 </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2">
-                    Notifications
+                <TooltipContent side="right" className="ml-2 font-medium">
+                    {isCollapsed ? `${item.label} (Locked)` : "Upgrade to Business to unlock"}
                 </TooltipContent>
             </Tooltip>
         )
     }
 
-    return content
+    if (isCollapsed) {
+        return (
+            <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                    <Link href={item.href}>{content}</Link>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2">
+                    {item.label}
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
+
+    return <Link href={item.href}>{content}</Link>
 }
 
 export function Sidebar() {
-    const { tenantSlug, role, permissions = [] } = useTenant()
+    const { tenantSlug, role, plan, name, email } = useTenant()
     const { unreadCount } = useNotifications()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = React.useState(false)
 
-    const base = `/${tenantSlug}/dashboard`
+    const sidebarItems = getSidebarItems(role, plan, tenantSlug || '')
 
-    const navItems = [
-        { href: `${base}`, label: "Dashboard", icon: LayoutDashboard, show: true },
-        { href: `${base}/settings/members`, label: "Members", icon: Users, show: canRead(permissions, "members") },
-        { href: `${base}/settings/roles`, label: "Roles", icon: Shield, show: canRead(permissions, "roles") },
-        { href: `${base}/billing`, label: "Billing", icon: CreditCard, show: canRead(permissions, "billing") },
-        { href: `${base}/api-keys`, label: "API Keys", icon: Key, show: canRead(permissions, "api_keys") },
-        { href: `${base}/agents`, label: "Agents", icon: Bot, show: canRead(permissions, "agents") },
-        { href: `${base}/chat`, label: "Chat", icon: MessageSquare, show: canRead(permissions, "conversations") },
-        { href: `${base}/webhooks`, label: "Webhooks", icon: Webhook, show: canRead(permissions, "webhooks") },
-        { href: `${base}/files`, label: "Files", icon: FolderOpen, show: canRead(permissions, "files") },
-        { href: `${base}/integrations`, label: "Integrations", icon: Plug, show: canRead(permissions, "integrations") },
-        { href: `${base}/audit`, label: "Audit Log", icon: FileText, show: canRead(permissions, "audit_log") },
-    ]
+    const getInitials = () => {
+        if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+        if (email) return email[0].toUpperCase()
+        return "US"
+    }
 
-    const opsItems = [
-        { href: `${base}/ops/tenants`, label: "All Tenants", icon: Building2 },
-        { href: `${base}/ops/overrides`, label: "Feature Overrides", icon: Sliders },
-    ]
+    const getAvatarBg = () => {
+        if (role === 'platform_admin') return "bg-[#ff7f50]" // Coral
+        if (role === 'member') return "bg-blue-500"
+        return "bg-zinc-500" // Admin/Owner default
+    }
 
     return (
         <TooltipProvider>
@@ -154,6 +188,7 @@ export function Sidebar() {
                 "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
                 isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
             )}>
+                {/* Logo Section */}
                 <div className={cn(
                     "flex items-center gap-2 mb-8 transition-all px-2",
                     isSidebarCollapsed ? "justify-center" : "px-2"
@@ -170,40 +205,37 @@ export function Sidebar() {
                     )}
                 </div>
 
-                <nav className="flex-1 space-y-1">
-                    {navItems.filter(item => item.show).map((item) => (
-                        <SidebarItem 
-                            key={item.href} 
-                            href={item.href} 
-                            label={item.label} 
-                            icon={item.icon} 
-                            isCollapsed={isSidebarCollapsed} 
-                        />
-                    ))}
+                {/* Navigation Items */}
+                <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar pr-1 -mr-1">
+                    {sidebarItems.map((item, index) => {
+                        if (item.isDivider) {
+                            return !isSidebarCollapsed && (
+                                <div key={`divider-${index}`} className="my-4 px-3">
+                                    <div className="h-px bg-border/50 w-full" />
+                                </div>
+                            )
+                        }
 
-                    {canRead(permissions, "notifications") && (
-                        <NotificationsItem
-                            href={`${base}/notifications`}
-                            unreadCount={unreadCount}
-                            isCollapsed={isSidebarCollapsed}
-                        />
-                    )}
+                        return (
+                            <React.Fragment key={item.href || `section-${index}`}>
+                                {item.sectionLabel && !isSidebarCollapsed && (
+                                    <p className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 font-mono">
+                                        {item.sectionLabel}
+                                    </p>
+                                )}
+                                <SidebarNavLink 
+                                    item={item} 
+                                    isCollapsed={isSidebarCollapsed} 
+                                    unreadCount={item.label === "Notifications" ? unreadCount : undefined}
+                                    onLockedClick={() => setIsUpgradeModalOpen(true)}
+                                />
+                            </React.Fragment>
+                        )
+                    })}
                 </nav>
 
-                <div className="mt-auto pt-4 border-t border-border/50">
-                    {role === "platform_admin" && !isSidebarCollapsed && (
-                        <div className="mb-4">
-                            <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                                Ops
-                            </p>
-                            <nav className="space-y-1">
-                                {opsItems.map((item) => (
-                                    <SidebarItem key={item.href} {...item} isCollapsed={isSidebarCollapsed} />
-                                ))}
-                            </nav>
-                        </div>
-                    )}
-                    
+                {/* Footer Section */}
+                <div className="mt-auto pt-4">
                     <Button
                         variant="ghost"
                         size="icon"
@@ -215,12 +247,19 @@ export function Sidebar() {
                         ) : (
                             <div className="flex items-center gap-3 w-full px-3">
                                 <PanelLeftClose className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
-                                <span className="text-sm font-medium">Collapse</span>
+                                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">Collapse</span>
                             </div>
                         )}
                     </Button>
                 </div>
             </aside>
+
+            {/* Global Upgrade Modal */}
+            <UpgradeModal 
+                open={isUpgradeModalOpen} 
+                onOpenChange={setIsUpgradeModalOpen}
+                tenantSlug={tenantSlug || ''}
+            />
         </TooltipProvider>
     )
 }

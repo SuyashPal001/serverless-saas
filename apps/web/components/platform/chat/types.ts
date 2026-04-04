@@ -12,6 +12,15 @@ export interface ToolCall {
     durationMs?: number;
 }
 
+export interface ApprovalRequest {
+    id: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    description: string;
+    status: 'pending' | 'approved' | 'dismissed';
+    decisionAt?: string;
+}
+
 export interface MessageAttachment {
     id: string;        // local UI id (uuid)
     fileId?: string;   // S3 fileId — used to re-fetch presigned URL on reload
@@ -28,6 +37,7 @@ export interface Message {
     content: string;
     createdAt: string;
     toolCalls?: ToolCall[];
+    approvalRequest?: ApprovalRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
 }

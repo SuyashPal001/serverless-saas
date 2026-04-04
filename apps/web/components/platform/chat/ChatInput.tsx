@@ -481,7 +481,7 @@ export function ChatInput({
                                                 <ImageIcon className="h-4 w-4" />
                                                 <span>Media</span>
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="gap-2 cursor-pointer py-2">
+                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                 <Video className="h-4 w-4" />
                                                 <span>Video</span>
                                             </DropdownMenuItem>
@@ -493,10 +493,10 @@ export function ChatInput({
                                         </DropdownMenuContent>
                                     </DropdownMenu>
 
-                                    <div className="h-4 w-[1px] bg-border/30 mx-1" />
+                                    <div className="hidden h-4 w-[1px] bg-border/30 mx-1" />
 
                                     {/* Model Selector button */}
-                                    <DropdownMenu>
+                                    {false && <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground gap-1.5 rounded-lg">
                                                 <span className="opacity-50">
@@ -532,7 +532,7 @@ export function ChatInput({
                                                 </DropdownMenuItem>
                                             ))}
                                         </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    </DropdownMenu>}
                                 </div>
 
                                 {/* Right action buttons */}

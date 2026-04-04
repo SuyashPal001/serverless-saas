@@ -22,7 +22,7 @@ export function AgentsView() {
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
-                        <p className="text-muted-foreground mt-2">Manage your autonomous agents.</p>
+                        <p className="text-muted-foreground mt-2">Configure and manage your AI agents</p>
                     </div>
                 </div>
                 <Alert variant="destructive">
@@ -41,7 +41,7 @@ export function AgentsView() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
-                    <p className="text-muted-foreground mt-2">Manage your autonomous agents.</p>
+                    <p className="text-muted-foreground mt-2">Configure and manage your AI agents</p>
                 </div>
                 <CreateAgentDialog>
                     <Button>

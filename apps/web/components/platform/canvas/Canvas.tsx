@@ -392,7 +392,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand }: CanvasProps
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto flex flex-col">
         {/* Browser Viewer */}
-        <div className="flex-none p-4 pb-3">
+        <div className="hidden flex-none p-4 pb-3">
           <CanvasViewer
             screenshot={state.currentScreenshot}
             url={state.currentUrl}

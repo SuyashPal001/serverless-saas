@@ -13,7 +13,7 @@ export interface UseAgentEventsOptions {
   onToolCalling?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, toolCallId: string, result: unknown, error?: string) => void;
   onCanvasUpdate?: (action: string, data: Record<string, unknown>) => void;
-  onApprovalRequired?: (approvalId: string, action: string, description: string) => void;
+  onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
   onError?: (code: string, message: string, recoverable: boolean) => void;
   onSessionEnded?: (reason: string, usage?: Record<string, unknown>) => void;
 }
@@ -160,6 +160,17 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 onErrorRef.current?.('RELAY_ERROR', event.message, false);
                 break;
 
+              case 'approval_request':
+                // Agent needs approval before proceeding with a tool
+                console.log('[useAgentEvents] Approval requested:', event.approvalId, event.toolName);
+                onApprovalRequiredRef.current?.(
+                  event.approvalId, 
+                  event.toolName, 
+                  event.description, 
+                  event.arguments || {}
+                );
+                break;
+
               case 'pong':
                 // Keep-alive response
                 break;
@@ -258,9 +269,21 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     return false;
   }, []);
 
+  const sendApproval = useCallback(async (approvalId: string, decision: 'approved' | 'dismissed') => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: decision === 'approved' ? 'approve' : 'dismiss',
+        approvalId,
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
   return {
     isConnected,
     sessionId: sessionIdRef.current,
     sendMessage,
+    sendApproval,
   };
 }

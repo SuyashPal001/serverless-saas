@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
 import { ToolCallCard } from "./ToolCallCard";
+import { ApprovalCard } from "./ApprovalCard";
 import { StreamingMessage } from "./StreamingMessage";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
 import { api } from "@/lib/api";
@@ -18,9 +19,11 @@ interface MessageThreadProps {
     isTyping?: boolean;
     activeToolCalls?: Message["toolCalls"];
     error?: string | null;
+    onApprove?: (messageId: string, approvalId: string) => void;
+    onDismiss?: (messageId: string, approvalId: string) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error, onApprove, onDismiss }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
 
@@ -94,7 +97,13 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
                 )}
 
                 {messages.map((message) => (
-                    <MessageItem key={message.id} message={message} freshUrls={freshUrls} />
+                    <MessageItem 
+                        key={message.id} 
+                        message={message} 
+                        freshUrls={freshUrls} 
+                        onApprove={onApprove}
+                        onDismiss={onDismiss}
+                    />
                 ))}
 
                 {isTyping && (
@@ -151,7 +160,17 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
     );
 }
 
-function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Record<string, string> }) {
+function MessageItem({ 
+    message, 
+    freshUrls, 
+    onApprove, 
+    onDismiss 
+}: { 
+    message: Message; 
+    freshUrls: Record<string, string>;
+    onApprove?: (messageId: string, approvalId: string) => void;
+    onDismiss?: (messageId: string, approvalId: string) => void;
+}) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system' || message.role === 'tool';
@@ -278,6 +297,14 @@ function MessageItem({ message, freshUrls }: { message: Message; freshUrls: Reco
                             );
                         })}
                     </div>
+                )}
+                
+                {false && message.approvalRequest && (
+                    <ApprovalCard 
+                        request={message.approvalRequest}
+                        onApprove={() => onApprove?.(message.id, message.approvalRequest!.id)}
+                        onDismiss={() => onDismiss?.(message.id, message.approvalRequest!.id)}
+                    />
                 )}
                 
                 {message.toolCalls && message.toolCalls.length > 0 && (
