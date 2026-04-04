@@ -108,6 +108,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             type: z.string(),
             size: z.number().optional(),
         })).nullish(),
+        createdAt: z.string().datetime().optional(),
     });
 
     const body = await c.req.json();
@@ -125,6 +126,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             role: result.data.role,
             content: result.data.content,
             attachments: result.data.attachments ?? null,
+            createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();
 
