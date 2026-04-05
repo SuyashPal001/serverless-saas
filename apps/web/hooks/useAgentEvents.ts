@@ -8,8 +8,8 @@ export interface UseAgentEventsOptions {
   conversationId?: string;
   agentId?: string;
   onThinking?: () => void;
-  onMessageDelta?: (delta: string, messageId: string) => void;
-  onMessageComplete?: (content: string, messageId: string) => void;
+  onMessageDelta?: (delta: string, messageId: string, responseConversationId?: string) => void;
+  onMessageComplete?: (content: string, messageId: string, responseConversationId?: string) => void;
   onToolCalling?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, toolCallId: string, result: unknown, error?: string) => void;
   onCanvasUpdate?: (action: string, data: Record<string, unknown>) => void;
@@ -43,6 +43,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentMessageIdRef = useRef<string | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   // Stable refs for all callbacks — the effect reads from these at call time
   // so the WS is never torn down just because a callback prop changed identity.
@@ -74,7 +75,9 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     let isMounted = true;
 
     const connect = async () => {
-      if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+      if (!isMounted || (wsRef.current &&
+          (wsRef.current.readyState === WebSocket.OPEN ||
+           wsRef.current.readyState === WebSocket.CONNECTING))) {
         return;
       }
 
@@ -140,9 +143,9 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 // Streaming chunk - relay diffs for us
                 // Generate a stable messageId for this stream if we don't have one
                 if (!currentMessageIdRef.current) {
-                  currentMessageIdRef.current = crypto.randomUUID();
+                  currentMessageIdRef.current = event.messageId || crypto.randomUUID();
                 }
-                onMessageDeltaRef.current?.(event.text, currentMessageIdRef.current);
+                onMessageDeltaRef.current?.(event.text, currentMessageIdRef.current, event.conversationId);
                 break;
 
               case 'done':
@@ -150,7 +153,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 // Use the captured messageId and clear it for the next message
                 if (currentMessageIdRef.current) {
                   // Pass final text if relay sends it, otherwise pass empty string to trigger preservation
-                  onMessageCompleteRef.current?.(event.text || '', currentMessageIdRef.current);
+                  onMessageCompleteRef.current?.(event.text || '', currentMessageIdRef.current, event.conversationId);
                   currentMessageIdRef.current = null;
                 }
                 break;
@@ -169,6 +172,11 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                   event.description, 
                   event.arguments || {}
                 );
+                break;
+
+              case 'ready':
+                // Relay is ready to accept messages
+                console.log('[useAgentEvents] Relay ready');
                 break;
 
               case 'pong':
@@ -224,6 +232,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       }
     };
 
+    connectRef.current = connect;
     connect();
 
     return () => {
@@ -238,13 +247,20 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   }, []);
 
   const sendMessage = useCallback(async (text: string, attachments?: Attachment[]) => {
+    // If socket is dead, kick off reconnect before waiting
+    const ws = wsRef.current;
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      retryCountRef.current = 0; // reset retry counter so reconnect is allowed
+      connectRef.current();
+    }
+
     const waitForOpen = (): Promise<boolean> => {
       return new Promise((resolve) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           resolve(true);
           return;
         }
-        const timeout = setTimeout(() => resolve(false), 5000);
+        const timeout = setTimeout(() => resolve(false), 10000);
         const interval = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             clearTimeout(timeout);
@@ -265,7 +281,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
       }));
       return true;
     }
-    console.error('WebSocket not open after 5s. Cannot send message.');
+    console.error('WebSocket not open after 10s. Cannot send message.');
     return false;
   }, []);
 

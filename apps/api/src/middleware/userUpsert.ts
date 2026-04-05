@@ -37,6 +37,25 @@ export const userUpsertMiddleware = async (c: Context, next: Next) => {
         return c.json({ error: 'Invalid JWT payload' }, 401);
     }
 
+    // Access Tokens (used by the relay when calling internal endpoints) do not carry
+    // an email claim — only ID Tokens do. In that case, the user must already exist;
+    // skip the upsert and look them up by cognitoId.
+    if (!email) {
+        const [existingUser] = await db
+            .select()
+            .from(users)
+            .where(eq(users.cognitoId, cognitoId))
+            .limit(1);
+
+        if (!existingUser) {
+            console.log('401 reason: no email claim and user not found', { cognitoId });
+            return c.json({ error: 'User not found' }, 401);
+        }
+
+        c.set('userId', existingUser.id);
+        return next();
+    }
+
     try {
         const [user] = await db.insert(users)
             .values({ cognitoId, email, name: name || "" })

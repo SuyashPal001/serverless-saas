@@ -1,20 +1,20 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
-import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall, MessageAttachment } from "@/components/platform/chat/types";
+import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
 import { Attachment } from "@/types/agent-events";
-import { useAgentEvents } from "@/hooks/useAgentEvents";
+import { useChat } from "@/hooks/useChat";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { useCanvas } from "@/hooks/useCanvas";
 import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas/types";
-import { VoiceButton, VoiceModal } from "@/components/platform/voice";
+import { VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
 import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
 import { useSidebar } from "@/components/platform/SidebarContext";
@@ -46,13 +46,17 @@ export default function ChatPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const queryClient = useQueryClient();
-    
+
     const tenantSlug = params.tenant as string;
     const conversationId = searchParams.get("id");
-    
+    // Stable ref so callbacks always target the correct query cache key,
+    // even if the component re-renders while a stream is in flight.
+    const conversationIdRef = useRef(conversationId);
+    conversationIdRef.current = conversationId;
+
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
-    
+
     interface LLMProvider {
         id: string;
         provider: string;
@@ -73,7 +77,6 @@ export default function ChatPage() {
 
     const providers = providersData?.providers || [];
 
-    // Fetch agents for auto-selection
     interface AgentsResponse {
         data: Agent[];
     }
@@ -84,7 +87,6 @@ export default function ChatPage() {
 
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') || [];
 
-    // Fetch conversations
     const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
         queryKey: ["conversations"],
         queryFn: () => api.get<ConversationsResponse>("/api/v1/conversations"),
@@ -92,9 +94,6 @@ export default function ChatPage() {
 
     const conversations = conversationsData?.data || [];
 
-    // Fetch the active conversation directly when conversationId is in the URL.
-    // This prevents messages being hidden while the list is still loading or if
-    // the list query fails — selectedConversation should not depend on the list.
     const { data: activeConversationData } = useQuery<{ data: Conversation }>({
         queryKey: ["conversation", conversationId],
         queryFn: () => api.get<{ data: Conversation }>(`/api/v1/conversations/${conversationId}`),
@@ -112,7 +111,6 @@ export default function ChatPage() {
         toggleCanvas,
         toggleExpand,
         handleCanvasUpdate,
-        resetCanvas,
     } = useCanvas();
 
     const handleAgentCanvasUpdate = useCallback((action: string, data: Record<string, unknown>) => {
@@ -127,34 +125,21 @@ export default function ChatPage() {
         handleTap,
     } = useVoice({ conversationId: conversationId || undefined });
 
-    const [isThinking, setIsThinking] = useState(false);
-    const [isStreaming, setIsStreaming] = useState(false);
-    const stopFlagRef = useRef(false);
     const [eventError, setEventError] = useState<string | null>(null);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
 
-    const handleStopStreaming = useCallback(() => {
-        stopFlagRef.current = true;
-        setIsStreaming(false);
-        setIsThinking(false);
-        toast.info("Message generation stopped");
-    }, []);
-
-    const agentEvents = useAgentEvents({
+    // -------------------------------------------------------------------------
+    // SSE chat hook — replaces WebSocket-based useAgentEvents
+    // -------------------------------------------------------------------------
+    const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming } = useChat({
         conversationId: conversationId || undefined,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
-        onThinking: useCallback(() => {
-            setIsThinking(true);
-            setEventError(null);
-        }, []),
-        onMessageDelta: useCallback((delta: string, messageId: string) => {
-            if (stopFlagRef.current) return;
-            setIsThinking(false);
-            setIsStreaming(true);
-            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+
+        onDelta: useCallback((delta: string, messageId: string) => {
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
                 const existingIndex = newData.findIndex(m => m.id === messageId);
-                
+
                 if (existingIndex >= 0) {
                     newData[existingIndex] = {
                         ...newData[existingIndex],
@@ -164,7 +149,7 @@ export default function ChatPage() {
                 } else {
                     newData.push({
                         id: messageId,
-                        conversationId: conversationId!,
+                        conversationId: conversationIdRef.current!,
                         role: 'assistant',
                         content: delta,
                         createdAt: new Date().toISOString(),
@@ -172,48 +157,57 @@ export default function ChatPage() {
                     });
                 }
 
-                // Bug 3: Sort messages by createdAt
-                return { 
-                    data: [...newData].sort((a, b) => 
+                return {
+                    data: [...newData].sort((a, b) =>
                         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                    ) 
+                    ),
                 };
             });
-        }, [conversationId, queryClient]),
-        onMessageComplete: useCallback((content: string, messageId: string) => {
-            setIsThinking(false);
-            setIsStreaming(false);
-            stopFlagRef.current = false;
-            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+        }, [queryClient]),
+
+        onDone: useCallback((fullText: string, messageId: string) => {
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
                 const existingIndex = newData.findIndex(m => m.id === messageId);
 
                 if (existingIndex >= 0) {
                     newData[existingIndex] = {
                         ...newData[existingIndex],
-                        content: content || newData[existingIndex].content,
+                        content: fullText || newData[existingIndex].content,
                         isStreaming: false,
                     };
                 } else {
                     newData.push({
                         id: messageId,
-                        conversationId: conversationId!,
+                        conversationId: conversationIdRef.current!,
                         role: 'assistant',
-                        content,
+                        content: fullText,
                         createdAt: new Date().toISOString(),
                         isStreaming: false,
                     });
                 }
 
-                // Bug 3: Sort messages by createdAt
-                return { 
-                    data: [...newData].sort((a, b) => 
+                return {
+                    data: [...newData].sort((a, b) =>
                         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                    ) 
+                    ),
                 };
             });
-        }, [conversationId, queryClient]),
-        onToolCalling: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
+            setActiveToolCalls(new Map());
+            // Delay sync so the relay's DB writes have time to land before we refetch.
+            // The cache already has the correct optimistic state, so this is just a
+            // background reconciliation — not needed for correctness.
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ["messages", conversationIdRef.current] });
+            }, 2000);
+        }, [queryClient]),
+
+        onError: useCallback((code: string, message: string) => {
+            setEventError(`[${code}] ${message}`);
+            toast.error(message);
+        }, []),
+
+        onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             setActiveToolCalls(prev => {
                 const next = new Map(prev);
                 next.set(toolCallId, {
@@ -225,36 +219,12 @@ export default function ChatPage() {
                 return next;
             });
         }, []),
-        onToolResult: useCallback((toolName: string, toolCallId: string, result: unknown, error?: string) => {
-            setActiveToolCalls(prev => {
-                const next = new Map(prev);
-                const existing = next.get(toolCallId);
-                if (existing) {
-                    next.set(toolCallId, {
-                        ...existing,
-                        result,
-                        error,
-                        isLoading: false,
-                    });
-                }
-                return next;
-            });
-        }, []),
-        onError: useCallback((code: string, message: string | object, recoverable: boolean) => {
-            setIsThinking(false);
-            setIsStreaming(false);
-            stopFlagRef.current = false;
-            const errorMsg = typeof message === 'string' ? message : (message as any)?.message || JSON.stringify(message);
-            setEventError(`[${code}] ${errorMsg}`);
-            toast.error(errorMsg);
-        }, []),
-        onCanvasUpdate: handleAgentCanvasUpdate,
+
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
-            setIsThinking(false);
-            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
+            queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newMessage: Message = {
                     id: crypto.randomUUID(),
-                    conversationId: conversationId!,
+                    conversationId: conversationIdRef.current!,
                     role: 'assistant',
                     content: '',
                     createdAt: new Date().toISOString(),
@@ -263,33 +233,32 @@ export default function ChatPage() {
                         toolName,
                         description,
                         arguments: args,
-                        status: 'pending'
-                    }
+                        status: 'pending',
+                    },
                 };
                 return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
             });
-        }, [conversationId, queryClient]),
-        onSessionEnded: useCallback((reason: string) => {
-            setIsThinking(false);
-            setActiveToolCalls(new Map());
-            // Make sure we have the final DB state
-            queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-            // resetCanvas(); // Optional
-        }, [conversationId, queryClient]),
+        }, [queryClient]),
     });
 
-    const { isConnected, sendMessage: sendWsMessage, sendApproval } = agentEvents;
+    // Abort any in-flight SSE stream when the user navigates to a different conversation.
+    useEffect(() => {
+        return () => { cancel(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [conversationId]);
 
+    // -------------------------------------------------------------------------
     // Fetch messages
+    // -------------------------------------------------------------------------
     const { data: messagesData, isLoading: isLoadingMessages, refetch: refetchMessages } = useQuery<MessagesResponse>({
         queryKey: ["messages", conversationId],
         queryFn: async () => {
             const response = await api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`);
             return {
                 ...response,
-                data: [...response.data].sort((a, b) => 
+                data: [...response.data].sort((a, b) =>
                     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                )
+                ),
             };
         },
         enabled: !!conversationId,
@@ -297,6 +266,9 @@ export default function ChatPage() {
 
     const messages = messagesData?.data || [];
 
+    // -------------------------------------------------------------------------
+    // Approval handlers
+    // -------------------------------------------------------------------------
     const handleApprove = useCallback(async (messageId: string, approvalId: string) => {
         const success = await sendApproval(approvalId, 'approved');
         if (success) {
@@ -307,10 +279,10 @@ export default function ChatPage() {
                         ...m,
                         approvalRequest: m.approvalRequest ? {
                             ...m.approvalRequest,
-                            status: 'approved',
-                            decisionAt: new Date().toISOString()
-                        } : undefined
-                    } : m)
+                            status: 'approved' as const,
+                            decisionAt: new Date().toISOString(),
+                        } : undefined,
+                    } : m),
                 };
             });
         }
@@ -326,18 +298,20 @@ export default function ChatPage() {
                         ...m,
                         approvalRequest: m.approvalRequest ? {
                             ...m.approvalRequest,
-                            status: 'dismissed',
-                            decisionAt: new Date().toISOString()
-                        } : undefined
-                    } : m)
+                            status: 'dismissed' as const,
+                            decisionAt: new Date().toISOString(),
+                        } : undefined,
+                    } : m),
                 };
             });
         }
     }, [conversationId, queryClient, sendApproval]);
 
-    // Create conversation mutation
+    // -------------------------------------------------------------------------
+    // Conversation mutations
+    // -------------------------------------------------------------------------
     const createConversation = useMutation({
-        mutationFn: (agentId: string) => 
+        mutationFn: (agentId: string) =>
             api.post<{ data: Conversation }>("/api/v1/conversations", { agentId }),
         onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -348,10 +322,9 @@ export default function ChatPage() {
             const message = error.data?.error;
             const errorMsg = typeof message === 'string' ? message : message?.message || "Failed to start conversation";
             toast.error(errorMsg);
-        }
+        },
     });
 
-    // Update agent mutation for model changes
     const updateAgentMutation = useMutation({
         mutationFn: (values: { llmProviderId: string }) => {
             const agentId = selectedConversation?.agentId || selectedConversation?.agent?.id;
@@ -364,41 +337,26 @@ export default function ChatPage() {
         },
         onError: (error: any) => {
             toast.error(error.data?.message || error.message || "Failed to update model");
-        }
+        },
     });
 
-    // Send message mutation
-    const sendMessage = useMutation({
-        mutationFn: (content: string) => {
-            // Optimistically update local cache with the user message
-            queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
-                const newMessage: Message = {
-                    id: crypto.randomUUID(),
-                    conversationId: conversationId!,
-                    role: 'user',
-                    content,
-                    createdAt: new Date().toISOString()
-                };
-                return old ? { data: [...old.data, newMessage] } : { data: [newMessage] };
-            });
-            setIsThinking(true);
-            stopFlagRef.current = false;
-            setEventError(null);
-            return api.post<Message>(`/api/v1/conversations/${conversationId}/messages`, { content });
-        },
-        onSuccess: () => {
-            // Realtime updates handled by websocket
+    const deleteConversation = useMutation({
+        mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
+        onSuccess: (_, deletedId) => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            toast.success("Conversation archived");
+            if (conversationId === deletedId) {
+                router.push(`/${tenantSlug}/dashboard/chat`);
+            }
         },
         onError: (error: any) => {
-            setIsThinking(false);
-            const message = error.data?.error;
-            const errorMsg = typeof message === 'string' ? message : message?.message || "Failed to send message";
-            toast.error(errorMsg);
-            // Remove the optimistic message on error
-            refetchMessages();
-        }
+            toast.error(error.data?.message || "Failed to archive conversation");
+        },
     });
 
+    // -------------------------------------------------------------------------
+    // Handlers
+    // -------------------------------------------------------------------------
     const handleSelectConversation = (conv: Conversation) => {
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);
     };
@@ -416,20 +374,6 @@ export default function ChatPage() {
         createConversation.mutate(agent.id);
     };
 
-    const deleteConversation = useMutation({
-        mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
-        onSuccess: (_, deletedId) => {
-            queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            toast.success("Conversation archived");
-            if (conversationId === deletedId) {
-                router.push(`/${tenantSlug}/dashboard/chat`);
-            }
-        },
-        onError: (error: any) => {
-            toast.error(error.data?.message || "Failed to archive conversation");
-        }
-    });
-
     const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
@@ -437,8 +381,6 @@ export default function ChatPage() {
         if (!selectedConversation?.title && messages.length === 0 && content.trim()) {
             const words = content.trim().split(/\s+/);
             const newTitle = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
-            
-            // Fire and forget title update
             api.patch(`/api/v1/conversations/${conversationId}`, { title: newTitle })
                 .then(() => {
                     queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -447,14 +389,12 @@ export default function ChatPage() {
                 .catch(console.error);
         }
 
-        // Enrich image attachments with presigned S3 URLs so the GCP relay can fetch them
-        console.log('[presigned-url] enriching', attachments?.length, 'attachments');
+        // Enrich attachments with presigned S3 URLs so the relay can fetch them
         let enrichedAttachments = attachments;
         if (attachments && attachments.length > 0) {
             enrichedAttachments = await Promise.all(
                 attachments.map(async (att) => {
-                    console.log('[presigned-url] att:', att.type, att.fileId, !!att.type?.startsWith('video/'))
-                    if (att.type?.startsWith('image/') || 
+                    if (att.type?.startsWith('image/') ||
                         att.type?.startsWith('video/') ||
                         att.type?.startsWith('audio/') ||
                         att.type === 'application/pdf' ||
@@ -473,11 +413,8 @@ export default function ChatPage() {
                 })
             );
         }
-        console.log('[presigned-url] enriched:', enrichedAttachments?.map(a => ({
-            fileId: a.fileId, hasPresignedUrl: !!(a as any).presignedUrl
-        })));
 
-        // 1. Optimistic update
+        // Optimistic user message
         queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
             const newMessage: Message = {
                 id: crypto.randomUUID(),
@@ -490,33 +427,26 @@ export default function ChatPage() {
                     name: a.name,
                     type: a.type,
                     size: a.size,
-                    previewUrl: a.previewUrl
+                    previewUrl: a.previewUrl,
                 })),
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
             };
             const newData = old ? [...old.data, newMessage] : [newMessage];
-            // Bug 3: Sort messages by createdAt
             return {
                 data: newData.sort((a, b) =>
                     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                )
+                ),
             };
         });
 
-        setIsThinking(true);
         setEventError(null);
 
-        // 2. Send via WebSocket for real-time interaction
-        const sent = await sendWsMessage(content, enrichedAttachments);
-        if (!sent) {
-            toast.error("Failed to send message. Please check your connection.");
-            setIsThinking(false);
-            setIsStreaming(false);
-            // Optionally refetch to restore state
-            queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        }
+        await sendChatMessage(content, enrichedAttachments);
     };
 
+    // -------------------------------------------------------------------------
+    // Render
+    // -------------------------------------------------------------------------
     return (
         <div className="flex bg-background h-[calc(100vh-64px)] overflow-hidden relative w-full">
             <div className="flex flex-1 overflow-hidden relative">
@@ -525,7 +455,7 @@ export default function ChatPage() {
                     "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-background/50 backdrop-blur-sm z-20 overflow-hidden relative",
                     isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-1/4 min-w-[280px] opacity-100 translate-x-0"
                 )}>
-                    <ConversationList 
+                    <ConversationList
                         selectedId={conversationId || undefined}
                         onSelect={handleSelectConversation}
                         onNewChat={handleNewChat}
@@ -571,19 +501,16 @@ export default function ChatPage() {
                                             </div>
                                             <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-3">
                                                 <span className="flex items-center gap-1">
-                                                    Agent: {selectedConversation.agent?.name || (isConnected ? "Connected" : "Connecting...")} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}
+                                                    Agent: {selectedConversation.agent?.name || "Ready"} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}
                                                 </span>
                                                 {false && selectedConversation.agent && (
                                                     <Badge variant="outline" className="text-[10px] h-4 px-1.5 flex items-center gap-1 bg-muted/30 border-muted">
                                                         {(() => {
                                                             const agent = selectedConversation.agent;
                                                             if (providers.length === 0) return agent.model || "Loading Model...";
-                                                            
-                                                            const provider = providers.find(p => p.id === agent.llmProviderId) 
+                                                            const provider = providers.find(p => p.id === agent.llmProviderId)
                                                                 || providers.find(p => p.isDefault);
-                                                            
                                                             if (!provider) return agent.model || "Platform Default";
-                                                            
                                                             return (
                                                                 <>
                                                                     {provider.status === 'coming_soon' && <Lock className="h-2 w-2" />}
@@ -597,10 +524,10 @@ export default function ChatPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Button 
-                                            variant={isCanvasOpen ? 'default' : 'outline'} 
-                                            size="sm" 
-                                            onClick={toggleCanvas} 
+                                        <Button
+                                            variant={isCanvasOpen ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={toggleCanvas}
                                             className="relative flex"
                                         >
                                             <PanelRight className="h-4 w-4 mr-2" />
@@ -619,7 +546,7 @@ export default function ChatPage() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem 
+                                                <DropdownMenuItem
                                                     className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                                                     onClick={() => setIsDeleteDialogOpen(true)}
                                                 >
@@ -632,10 +559,10 @@ export default function ChatPage() {
                                 </div>
 
                                 {/* Messages */}
-                                <MessageThread 
-                                    messages={messages} 
-                                    isLoading={isLoadingMessages} 
-                                    isTyping={isThinking || sendMessage.isPending}
+                                <MessageThread
+                                    messages={messages}
+                                    isLoading={isLoadingMessages}
+                                    isTyping={isStreaming}
                                     activeToolCalls={Array.from(activeToolCalls.values())}
                                     error={eventError}
                                     onApprove={handleApprove}
@@ -644,21 +571,19 @@ export default function ChatPage() {
 
                                 {/* Input */}
                                 <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                    <ChatInput 
-                                        onSend={handleSendMessage} 
-                                        onStop={handleStopStreaming}
+                                    <ChatInput
+                                        onSend={handleSendMessage}
+                                        onStop={cancel}
                                         onVoiceClick={openVoice}
                                         onMediaClick={(type) => toast.info(`Adding ${type}...`)}
-                                        isLoading={sendMessage.isPending} 
-                                        isStreaming={isStreaming || isThinking}
+                                        isLoading={false}
+                                        isStreaming={isStreaming}
                                         disabled={selectedConversation.status !== 'active'}
                                         providers={providers}
                                         llmProviderId={selectedConversation.agent?.llmProviderId}
                                         onModelChange={(providerId) => {
                                             if (selectedConversation.agent?.id) {
-                                                updateAgentMutation.mutate({ 
-                                                    llmProviderId: providerId 
-                                                });
+                                                updateAgentMutation.mutate({ llmProviderId: providerId });
                                             }
                                         }}
                                     />
@@ -681,13 +606,13 @@ export default function ChatPage() {
                                     {isErrorConversations ? "Failed to load chats" : "Select a conversation"}
                                 </h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">
-                                    {isErrorConversations 
+                                    {isErrorConversations
                                         ? "There was an error loading your conversations. Please try again."
                                         : "Select an existing conversation from the list or start a new one to interact with your agents."}
                                 </p>
-                                <Button 
-                                    onClick={isErrorConversations ? () => queryClient.invalidateQueries({ queryKey: ["conversations"] }) : handleNewChat} 
-                                    size="lg" 
+                                <Button
+                                    onClick={isErrorConversations ? () => queryClient.invalidateQueries({ queryKey: ["conversations"] }) : handleNewChat}
+                                    size="lg"
                                     className="rounded-full shadow-lg h-12 px-6 gap-2"
                                 >
                                     {isErrorConversations ? (
@@ -702,7 +627,7 @@ export default function ChatPage() {
                             </div>
                         )}
                     </div>
-                    
+
                     {/* Canvas Panel */}
                     <div className={cn(
                         "transition-all overflow-hidden h-full z-10 bg-background",

@@ -6,6 +6,8 @@ import { Message } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ToolCallCard } from "./ToolCallCard";
 import { ApprovalCard } from "./ApprovalCard";
 import { StreamingMessage } from "./StreamingMessage";
@@ -82,8 +84,8 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
     }
 
     return (
-        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-6 pb-4">
+        <div ref={scrollRef} className="flex-1 px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
+            <div className="max-w-4xl mx-auto space-y-8 pb-4">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -107,18 +109,19 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
                 ))}
 
                 {isTyping && (
-                    <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                            <Bot className="h-4 w-4" />
-                        </div>
-                        <div className="bg-muted rounded-2xl px-4 py-2 mt-1 border border-border/50">
-                            <div className="flex gap-1 h-4 items-center">
-                                <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:-0.3s]" />
-                                <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:-0.15s]" />
-                                <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce" />
-                            </div>
-                        </div>
-                    </div>
+                    <ThinkingIndicator label={
+                        (() => {
+                            const toolLabelMap: Record<string, string> = {
+                                web_search: 'Searching the web...',
+                                retrieve_documents: 'Reading documents...',
+                                code_execution: 'Running code...',
+                                browser: 'Browsing the web...',
+                                send_email: 'Sending email...',
+                            };
+                            const activeTool = activeToolCalls?.find(t => t.isLoading)?.toolName;
+                            return activeTool ? (toolLabelMap[activeTool] ?? `Using ${activeTool}...`) : 'Thinking...';
+                        })()
+                    } />
                 )}
 
                 {activeToolCalls && activeToolCalls.length > 0 && (
@@ -188,7 +191,7 @@ function MessageItem({
 
     return (
         <div className={cn(
-            "flex items-start gap-3",
+            "flex items-start gap-4",
             isUser ? "flex-row-reverse" : "flex-row"
         )}>
             <div className={cn(
@@ -199,15 +202,15 @@ function MessageItem({
             </div>
             
             <div className={cn(
-                "flex flex-col gap-1 w-full flex-1 max-w-[80%]",
-                isUser ? "items-end" : "items-start"
+                "flex flex-col gap-1 flex-1",
+                isUser ? "items-end max-w-[75%]" : "items-start w-full"
             )}>
                 {(message.content.trim() || (isAssistant && message.isStreaming)) && (
                     <div className={cn(
-                        "rounded-2xl px-4 py-2.5 text-sm shadow-sm",
-                        isUser 
-                            ? "bg-primary text-primary-foreground rounded-tr-none" 
-                            : "bg-muted text-foreground rounded-tl-none border border-border/50"
+                        "text-sm",
+                        isUser
+                            ? "rounded-2xl px-4 py-2.5 shadow-sm bg-primary text-primary-foreground rounded-tr-none"
+                            : "leading-7 w-full"
                     )}>
                         {isAssistant && message.isStreaming ? (
                             <StreamingMessage 
@@ -215,7 +218,27 @@ function MessageItem({
                                 content={message.content} 
                             />
                         ) : (
-                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                            <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                                ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
+                                li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                                pre: ({ children }) => <pre className="bg-muted p-4 rounded-lg overflow-x-auto mb-3 text-sm font-mono">{children}</pre>,
+                                code: ({ className, children, ...props }: any) => !className
+                                    ? <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                                    : <code className={className} {...props}>{children}</code>,
+                                h1: ({ children }) => <h1 className="font-semibold mb-2 mt-4 text-lg">{children}</h1>,
+                                h2: ({ children }) => <h2 className="font-semibold mb-2 mt-4 text-base">{children}</h2>,
+                                h3: ({ children }) => <h3 className="font-semibold mb-2 mt-4 text-sm">{children}</h3>,
+                                a: ({ href, children }) => <a href={href} className="text-primary underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                                blockquote: ({ children }) => <blockquote className="border-l-4 border-muted pl-4 italic mb-3">{children}</blockquote>,
+                            }}
+                        >
+                            {message.content}
+                        </ReactMarkdown>
                         )}
                     </div>
                 )}
@@ -327,6 +350,24 @@ function MessageItem({
                 <span className="text-[10px] text-muted-foreground px-1 mt-1">
                     {format(new Date(message.createdAt), 'h:mm a')}
                 </span>
+            </div>
+        </div>
+    );
+}
+
+function ThinkingIndicator({ label = 'Thinking...' }: { label?: string }) {
+    return (
+        <div className="flex items-start gap-4 animate-in fade-in duration-300">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
+                <Bot className="h-4 w-4" />
+            </div>
+            <div className="flex items-center gap-2 pt-1.5">
+                <span className="flex gap-1 items-center">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" />
+                </span>
+                <span className="text-sm text-muted-foreground">{label}</span>
             </div>
         </div>
     );
