@@ -1,7 +1,6 @@
-import { generateText } from 'ai';
-import { createVertex } from '@ai-sdk/google-vertex';
+import { generateTextVertex } from '@serverless-saas/ai';
 import { db } from '../db';
-import { evalResults } from '@serverless-saas/database/schema/conversations';
+import { evalResults } from '@serverless-saas/database';
 
 export interface EvalAutoPayload {
   conversationId: string;
@@ -19,25 +18,7 @@ interface EvalScores {
   reasoning: string;
 }
 
-function buildProvider() {
-  const saKeyRaw = process.env.GCP_SA_KEY;
-  if (saKeyRaw) {
-    const credentials = JSON.parse(saKeyRaw) as { project_id: string };
-    return createVertex({
-      project: credentials.project_id,
-      location: process.env.GCP_LOCATION ?? 'us-central1',
-      googleAuthOptions: { credentials },
-    });
-  }
-  return createVertex({
-    project: process.env.GCP_PROJECT_ID,
-    location: process.env.GCP_LOCATION ?? 'us-central1',
-  });
-}
-
 async function scoreWithGemini(payload: EvalAutoPayload): Promise<EvalScores> {
-  const vertex = buildProvider();
-
   const chunksText = payload.retrievedChunks
     .map((c, i) => `[${i + 1}] ${c}`)
     .join('\n\n');
@@ -59,8 +40,7 @@ Score each dimension 1-5:
 Respond in JSON only:
 { "faithfulness": 3, "relevance": 4, "completeness": 5, "reasoning": "..." }`;
 
-  const { text } = await generateText({
-    model: vertex('gemini-2.0-flash'),
+  const text = await generateTextVertex({
     prompt,
     temperature: 0,
   });

@@ -39,3 +39,4 @@ export * from './embeddings';
 export * from './cache';
 export * from './retrieve';
 export * from './format';
+export * from './llm';
