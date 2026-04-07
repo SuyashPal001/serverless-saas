@@ -117,3 +117,49 @@ export const agentPoliciesRelations = relations(agentPolicies, ({ one }) => ({
     references: [tenants.id],
   }),
 }));
+
+// ── Evals tables ──────────────────────────────────────────────────────────────
+
+export const feedbackRatingEnum = pgEnum('feedback_rating', ['up', 'down']);
+
+export const conversationFeedback = pgTable('conversation_feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  messageId: uuid('message_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  userId: uuid('user_id').references(() => users.id),
+  rating: feedbackRatingEnum('rating').notNull(),
+  comment: text('comment'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  uniqueMessageUser: unique().on(t.messageId, t.userId),
+}));
+
+export const conversationMetrics = pgTable('conversation_metrics', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  conversationId: uuid('conversation_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  ragFired: boolean('rag_fired').notNull().default(false),
+  ragChunksRetrieved: integer('rag_chunks_retrieved').notNull().default(0),
+  responseTimeMs: integer('response_time_ms'),
+  totalTokens: integer('total_tokens').notNull().default(0),
+  totalCostCents: integer('total_cost_cents').notNull().default(0),
+  userMessageCount: integer('user_message_count').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  uniqueConversation: unique().on(t.conversationId),
+}));
+
+export const evalDimensionEnum = pgEnum('eval_dimension', ['faithfulness', 'relevance', 'completeness']);
+
+export const evalResults = pgTable('eval_results', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  dimension: evalDimensionEnum('dimension').notNull(),
+  score: integer('score').notNull(), // 1–5
+  reasoning: text('reasoning'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});

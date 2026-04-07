@@ -87,10 +87,10 @@ entitlementsRoutes.get('/', async (c) => {
         const agentsEntitlement = entitlementsByKey['agents'] || { enabled: false, valueLimit: 0, unlimited: false };
 
         // Collect boolean feature flags keyed by feature.key (e.g. multi_llm_claude: true/false)
-        const features: Record<string, boolean> = {};
+        const featureFlags: Record<string, boolean> = {};
         for (const feature of featureRows) {
             if (feature.type === 'boolean') {
-                features[feature.key] = entitlementsByKey[feature.key]?.enabled ?? false;
+                featureFlags[feature.key] = entitlementsByKey[feature.key]?.enabled ?? false;
             }
         }
 
@@ -110,7 +110,7 @@ entitlementsRoutes.get('/', async (c) => {
                 limit: agentsEntitlement.valueLimit ?? 0,
                 unlimited: agentsEntitlement.unlimited ?? false,
             },
-            features,
+            features: featureFlags,
         });
     } catch (err: any) {
         console.error('Get entitlements error:', err);

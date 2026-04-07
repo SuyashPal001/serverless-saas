@@ -1,19 +1,20 @@
-import { 
-    LayoutDashboard, 
-    Users, 
-    Shield, 
-    CreditCard, 
-    Key, 
-    Bot, 
-    MessageSquare, 
-    Bell, 
-    FileText, 
-    Building2, 
-    Sliders, 
-    Webhook, 
-    FolderOpen, 
+import {
+    LayoutDashboard,
+    Users,
+    Shield,
+    CreditCard,
+    Key,
+    Bot,
+    MessageSquare,
+    Bell,
+    FileText,
+    Building2,
+    Sliders,
+    Webhook,
+    FolderOpen,
     Plug,
-    Palette
+    Palette,
+    BarChart2
 } from "lucide-react";
 import React from 'react';
 
@@ -58,15 +59,20 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
         
         items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
-        items.push({ 
-            label: "Notifications", 
-            href: `${base}/notifications`, 
-            icon: Bell 
+        items.push({
+            label: "Notifications",
+            href: `${base}/notifications`,
+            icon: Bell
         });
-        items.push({ 
-            label: "Audit log", 
-            href: `${base}/audit`, 
-            icon: FileText 
+        items.push({
+            label: "Audit log",
+            href: `${base}/audit`,
+            icon: FileText
+        });
+        items.push({
+            label: "Evals",
+            href: `${base}/evals`,
+            icon: BarChart2
         });
 
         // 2. SETTINGS SECTION

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText } from "lucide-react";
+import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown, Send } from "lucide-react";
 import { Message } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -191,7 +191,7 @@ function MessageItem({
 
     return (
         <div className={cn(
-            "flex items-start gap-4",
+            "flex items-start gap-4 group/msg",
             isUser ? "flex-row-reverse" : "flex-row"
         )}>
             <div className={cn(
@@ -347,10 +347,118 @@ function MessageItem({
                     </div>
                 )}
                 
+                {isAssistant && !message.isStreaming && (
+                    <MessageFeedback messageId={message.id} conversationId={message.conversationId} />
+                )}
+
                 <span className="text-[10px] text-muted-foreground px-1 mt-1">
                     {format(new Date(message.createdAt), 'h:mm a')}
                 </span>
             </div>
+        </div>
+    );
+}
+
+function MessageFeedback({ messageId, conversationId }: { messageId: string; conversationId: string }) {
+    const [rating, setRating] = useState<'up' | 'down' | null>(null);
+    const [pendingDown, setPendingDown] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const submit = async (r: 'up' | 'down', comment?: string) => {
+        setSubmitting(true);
+        try {
+            await api.post(`/api/v1/conversations/${conversationId}/messages/${messageId}/feedback`, {
+                rating: r,
+                ...(comment ? { comment } : {}),
+            });
+            setRating(r);
+        } catch {
+            // silent — optimistic state already shown
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleUp = () => {
+        if (rating !== null || pendingDown) return;
+        setRating('up');
+        submit('up');
+    };
+
+    const handleDown = () => {
+        if (rating !== null || pendingDown) return;
+        setPendingDown(true);
+    };
+
+    const handleCommentSubmit = () => {
+        if (submitting) return;
+        setPendingDown(false);
+        setRating('down');
+        submit('down', commentText.trim() || undefined);
+    };
+
+    const isRated = rating !== null;
+    const showDown = rating === 'down' || pendingDown;
+
+    return (
+        <div className="mt-1 flex flex-col gap-2">
+            <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150">
+                <button
+                    onClick={handleUp}
+                    disabled={isRated || pendingDown || submitting}
+                    className={cn(
+                        "p-1 rounded hover:bg-muted/50 transition-colors",
+                        rating === 'up' ? "text-emerald-500" : "text-muted-foreground/50 hover:text-muted-foreground",
+                        (isRated || pendingDown) && "cursor-default"
+                    )}
+                    aria-label="Thumbs up"
+                >
+                    <ThumbsUp className={cn("h-3.5 w-3.5", rating === 'up' && "fill-current")} />
+                </button>
+                <button
+                    onClick={handleDown}
+                    disabled={isRated || pendingDown || submitting}
+                    className={cn(
+                        "p-1 rounded hover:bg-muted/50 transition-colors",
+                        showDown ? "text-red-500" : "text-muted-foreground/50 hover:text-muted-foreground",
+                        (isRated || pendingDown) && "cursor-default"
+                    )}
+                    aria-label="Thumbs down"
+                >
+                    <ThumbsDown className={cn("h-3.5 w-3.5", rating === 'down' && "fill-current")} />
+                </button>
+            </div>
+
+            {pendingDown && (
+                <div className="flex items-start gap-2 max-w-sm animate-in slide-in-from-top-1 duration-150">
+                    <textarea
+                        autoFocus
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value.slice(0, 200))}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleCommentSubmit();
+                            }
+                            if (e.key === 'Escape') {
+                                setPendingDown(false);
+                            }
+                        }}
+                        placeholder="What went wrong? (optional, Enter to submit)"
+                        rows={2}
+                        className="flex-1 resize-none text-xs rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button
+                        onClick={handleCommentSubmit}
+                        disabled={submitting}
+                        className="mt-0.5 p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        aria-label="Submit"
+                    >
+                        <Send className="h-3 w-3" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

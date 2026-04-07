@@ -41,6 +41,8 @@ import { widgetRoutes } from './routes/widget';
 import { sessionsRoutes } from './routes/sessions';
 import documentsRoutes from './routes/documents';
 import internalRetrieveRoute from './routes/internal/retrieve';
+import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
+import internalEvalsRoute from './routes/internal/evals';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -124,12 +126,15 @@ api.route('/files', filesRoutes);
 api.route('/integrations', integrationsRoutes);
 api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
+api.route('/conversations', evalsFeedbackRoutes);
+api.route('/evals', evalsRoutes);
 api.route('/sessions', sessionsRoutes);
 api.route('/llm-providers', llmProvidersRoutes);
 api.route('/documents', documentsRoutes);
 
 const internalApi = new Hono<AppEnv>();
 internalApi.route('/internal', internalRetrieveRoute);
+internalApi.route('/internal/evals', internalEvalsRoute);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);

@@ -215,6 +215,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ai-sdk/google-vertex':
+        specifier: ^1.0.4
+        version: 1.0.4(@google-cloud/vertexai@1.10.2(@modelcontextprotocol/sdk@1.27.1(zod@4.3.6)))(zod@4.3.6)
       '@aws-sdk/client-s3':
         specifier: ^3.1014.0
         version: 3.1014.0
@@ -239,6 +242,9 @@ importers:
       '@serverless-saas/notifications':
         specifier: workspace:*
         version: link:../../packages/foundation/notifications
+      ai:
+        specifier: ^4.3.19
+        version: 4.3.19(react@19.2.3)(zod@4.3.6)
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.11.6)(@types/react@19.2.14)(postgres@3.4.8)(react@19.2.3)
