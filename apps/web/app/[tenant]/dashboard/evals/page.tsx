@@ -5,17 +5,20 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 import {
     Card,
     CardContent,
     CardHeader,
     CardTitle,
     CardDescription,
+    CardFooter,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ThumbsUp, ThumbsDown, TrendingUp, Zap, Clock, DollarSign } from "lucide-react";
+import { ThumbsUp, ThumbsDown, TrendingUp, Zap, Clock, DollarSign, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -242,13 +245,40 @@ function ConversationMetricsTab() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EvalsPage() {
-    const { tenantId } = useTenant();
+    const { tenantId, plan, slug } = useTenant();
+    const isFree = plan.toLowerCase() === 'free';
 
     const { data: summary, isLoading } = useQuery<EvalsSummary>({
         queryKey: ["evals-summary", tenantId],
         queryFn: () => api.get("/api/v1/evals/summary"),
         staleTime: 60 * 1000,
+        enabled: !isFree,
     });
+
+    if (isFree) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Card className="max-w-md w-full">
+                    <CardHeader className="text-center">
+                        <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                            <Lock className="w-6 h-6 text-primary" />
+                        </div>
+                        <CardTitle>Upgrade Required</CardTitle>
+                        <CardDescription className="pt-2">
+                            Evals are available on Starter, Business, and Enterprise plans. Upgrade now to unlock quality metrics and user feedback for your AI agents.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardFooter className="flex justify-center pb-8">
+                        <Button asChild>
+                            <Link href={`/${slug}/dashboard/billing`}>
+                                View Plans & Upgrade
+                            </Link>
+                        </Button>
+                    </CardFooter>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">

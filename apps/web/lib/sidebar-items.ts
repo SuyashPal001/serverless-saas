@@ -23,7 +23,7 @@ export interface SidebarItem {
     href: string;
     icon: React.ElementType;
     roles?: string[];
-    planRequired?: 'business' | 'enterprise';
+    planRequired?: 'starter' | 'business' | 'enterprise';
     locked?: boolean;
     showBusinessBadge?: boolean;
     sectionLabel?: string;
@@ -34,6 +34,7 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
     const base = `/${tenantSlug}/dashboard`;
     const isPlatformAdmin = role === 'platform_admin';
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
+    const isStarterOrHigher = ['starter', 'business', 'enterprise'].includes(plan.toLowerCase());
     const isBusinessOrHigher = ['business', 'enterprise'].includes(plan.toLowerCase());
 
     const items: SidebarItem[] = [];
@@ -72,7 +73,9 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
         items.push({
             label: "Evals",
             href: `${base}/evals`,
-            icon: BarChart2
+            icon: BarChart2,
+            planRequired: 'starter',
+            locked: !isStarterOrHigher,
         });
 
         // 2. SETTINGS SECTION
