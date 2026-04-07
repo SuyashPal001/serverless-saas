@@ -17,15 +17,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { 
-    Tooltip, 
-    TooltipTrigger, 
-    TooltipContent, 
-    TooltipProvider 
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    TooltipProvider
 } from '@/components/ui/tooltip';
 import { Loader2, Info, Lock, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Agent } from './types';
+import { useTenant } from '@/app/[tenant]/tenant-provider';
 
 interface AgentSkill {
     id: string;
@@ -51,6 +59,31 @@ interface AgentConfigSheetProps {
     onOpenChange: (open: boolean) => void;
 }
 
+const MODEL_OPTIONS = [
+    {
+        value: 'google/gemini-2.5-flash',
+        label: 'Gemini 2.5 Flash',
+        description: 'Fast and cost-efficient. Available on all plans.',
+        minPlan: 'free',
+    },
+    {
+        value: 'claude-sonnet-4-5',
+        label: 'Claude Sonnet',
+        description: 'Balanced performance and capability.',
+        minPlan: 'pro',
+    },
+    {
+        value: 'claude-haiku-3-5',
+        label: 'Claude Haiku',
+        description: 'Fastest Claude model for simple tasks.',
+        minPlan: 'pro',
+    },
+] as const;
+
+const PLAN_RANK: Record<string, number> = { free: 0, pro: 1, enterprise: 2 };
+
+const DEFAULT_MODEL = 'google/gemini-2.5-flash';
+
 const AVAILABLE_TOOLS = [
     { name: 'retrieve_documents', label: 'Knowledge base', description: 'Search tenant documents via RAG', locked: true },
     { name: 'web_search', label: 'Web search', description: 'Search the web for current information', locked: false },
@@ -61,12 +94,22 @@ const AVAILABLE_TOOLS = [
 
 export function AgentConfigSheet({ agent, open, onOpenChange }: AgentConfigSheetProps) {
     const queryClient = useQueryClient();
+    const { plan, tenantId } = useTenant();
+
+    // Reuse the same query key as EntitlementsSummary — TanStack Query shares the cache
+    const { data: entitlementsData } = useQuery<{ features?: Record<string, boolean> }>({
+        queryKey: ['entitlements', tenantId],
+        queryFn: () => api.get('/api/v1/entitlements'),
+        staleTime: 5 * 60 * 1000,
+    });
+    const claudeEnabled = entitlementsData?.features?.['multi_llm_claude'] ?? false;
 
     const [agentName, setAgentName] = useState(agent.name);
     const [systemPrompt, setSystemPrompt] = useState('');
     const [temperature, setTemperature] = useState(0.7);
     const [maxTokens, setMaxTokens] = useState(2048);
-    
+    const [selectedModel, setSelectedModel] = useState(agent.model ?? DEFAULT_MODEL);
+
     // Tools & Policy state
     const [enabledTools, setEnabledTools] = useState<string[]>(['retrieve_documents']);
     const [requiresApproval, setRequiresApproval] = useState<string[]>([]);
@@ -90,6 +133,7 @@ export function AgentConfigSheet({ agent, open, onOpenChange }: AgentConfigSheet
     useEffect(() => {
         if (open) {
             setAgentName(agent.name);
+            setSelectedModel(agent.model ?? DEFAULT_MODEL);
         }
         if (existingSkill) {
             setSystemPrompt(existingSkill.systemPrompt ?? '');
@@ -141,17 +185,22 @@ export function AgentConfigSheet({ agent, open, onOpenChange }: AgentConfigSheet
         },
     });
 
-    // Mutation for agent metadata (name)
+    // Mutation for agent metadata (name, model)
     const agentMutation = useMutation({
-        mutationFn: (params: { name: string }) => 
+        mutationFn: (params: { name?: string; model?: string }) =>
             api.patch(`/api/v1/agents/${agent.id}`, params),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['agents'] });
         },
         onError: (err: any) => {
-            toast.error(err?.data?.error ?? 'Failed to update agent name');
+            toast.error(err?.data?.error ?? 'Failed to update agent');
         },
     });
+
+    const handleModelChange = (value: string) => {
+        setSelectedModel(value);
+        agentMutation.mutate({ model: value });
+    };
 
     const handleToolToggle = (toolName: string, checked: boolean) => {
         let newTools = [...enabledTools];
@@ -219,6 +268,59 @@ export function AgentConfigSheet({ agent, open, onOpenChange }: AgentConfigSheet
                                 readOnly
                                 className="bg-muted/20 focus:bg-background transition-colors"
                             />
+                        </div>
+
+                        {/* Model selector */}
+                        <div className="space-y-3">
+                            <Label className="text-[11px] font-bold tracking-wider text-muted-foreground/70">Model</Label>
+                            <TooltipProvider>
+                                <Select
+                                    value={selectedModel}
+                                    onValueChange={handleModelChange}
+                                    disabled={agentMutation.isPending}
+                                >
+                                    <SelectTrigger className="bg-muted/20">
+                                        <SelectValue placeholder="Select model" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {MODEL_OPTIONS.filter((opt) =>
+                                            opt.minPlan === 'free' || claudeEnabled
+                                        ).map((opt) => {
+                                            const planRank = PLAN_RANK[plan] ?? 0;
+                                            const requiredRank = PLAN_RANK[opt.minPlan] ?? 0;
+                                            const locked = planRank < requiredRank;
+                                            return (
+                                                <Tooltip key={opt.value}>
+                                                    <TooltipTrigger asChild>
+                                                        <div>
+                                                            <SelectItem
+                                                                value={opt.value}
+                                                                disabled={locked}
+                                                                className={cn(locked && 'opacity-40 cursor-not-allowed')}
+                                                            >
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <span className="font-medium">{opt.label}</span>
+                                                                    <span className="text-xs text-muted-foreground">{opt.description}</span>
+                                                                </div>
+                                                            </SelectItem>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    {locked && (
+                                                        <TooltipContent>
+                                                            Requires Pro plan or higher
+                                                        </TooltipContent>
+                                                    )}
+                                                </Tooltip>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                            </TooltipProvider>
+                            {agentMutation.isPending && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                                </p>
+                            )}
                         </div>
 
                         {/* System Prompt */}

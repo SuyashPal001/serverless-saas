@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## AI Assistant Rules
+
+### Machine Targeting
+- Claude Code runs on Mac only. Never SSH to GCP VM or Linux VM.
+- Gemini CLI runs on GCP VM. All relay/OpenClaw/pm2 work goes here.
+- If a prompt asks to grep /opt/ or ~/.openclaw/ — that is GCP VM work, not Mac work.
+- If a prompt asks to grep /opt/ or run sam build/deploy — that is Linux VM work, not Mac work.
+
 ## Project Overview
 
 Multi-tenant serverless SaaS foundation built on AWS Lambda, Next.js, and Hono. The architecture separates infrastructure (Terraform) from Lambda definitions (SAM), with a monorepo structure managed by pnpm workspaces.
@@ -524,3 +532,33 @@ markdown### What's Working
 - Protocol: OpenClaw (`delta`, `done`, `error`)
 - Message Format: `{ message: '...' }` (plain object)
 - Heartbeat: `{ type: 'ping' }` every 5 minutes
+
+## RAG Architecture (v2 — April 7, 2026)
+
+### Problem Fixed
+Auto-injection was polluting every message with irrelevant chunks (score threshold was 0.1, should be 0.5). RAG now only runs when OpenClaw explicitly calls the retrieve_documents tool.
+
+### New Pipeline (GCP VM relay only — no Mac/Lambda changes)
+- Score threshold: 0.5 (was 0.1)
+- Auto-injection: REMOVED
+- Query rewriting: /opt/agent-relay/src/rag/queryRewrite.ts — resolves pronouns before search
+- Relevance gate: /opt/agent-relay/src/rag/relevanceGate.ts — scores chunks 0-3, drops below 2
+- Pipeline orchestration: /opt/agent-relay/src/rag/index.ts
+- Gemini Flash helper: /opt/agent-relay/src/llm/quickCall.ts
+
+### What Did NOT Change (Mac/Lambda — already working)
+- Document ingestion worker (Worker Lambda)
+- Chunking: 1000 chars, 200 overlap
+- Vertex AI text-embedding-004, 768 dimensions
+- pgvector on Neon
+- Hybrid search + RRF in /internal/retrieve endpoint
+- retrieve_documents OpenClaw plugin
+
+### Flow
+User message → Relay (no RAG injection) → OpenClaw → Gemini decides to call retrieve_documents → plugin → /internal/retrieve Lambda → hybrid search → relevance gate → citations back to agent
+
+### Test Checklist
+- Conversational message ("hi", "thanks") → no retrieve_documents call in logs
+- Follow-up with pronoun ("what about it?") → query rewritten before search
+- Document question → retrieve_documents called → answer with [1] [2] citations
+- No relevant docs → agent says "I couldn't find this in your documents"

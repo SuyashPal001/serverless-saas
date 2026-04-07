@@ -86,6 +86,14 @@ entitlementsRoutes.get('/', async (c) => {
         const apiCallsEntitlement = entitlementsByKey['api_calls'] || { enabled: false, valueLimit: 0, unlimited: false };
         const agentsEntitlement = entitlementsByKey['agents'] || { enabled: false, valueLimit: 0, unlimited: false };
 
+        // Collect boolean feature flags keyed by feature.key (e.g. multi_llm_claude: true/false)
+        const features: Record<string, boolean> = {};
+        for (const feature of featureRows) {
+            if (feature.type === 'boolean') {
+                features[feature.key] = entitlementsByKey[feature.key]?.enabled ?? false;
+            }
+        }
+
         return c.json({
             seats: {
                 used: seatsCount?.count ?? 0,
@@ -102,6 +110,7 @@ entitlementsRoutes.get('/', async (c) => {
                 limit: agentsEntitlement.valueLimit ?? 0,
                 unlimited: agentsEntitlement.unlimited ?? false,
             },
+            features,
         });
     } catch (err: any) {
         console.error('Get entitlements error:', err);
