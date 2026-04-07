@@ -5,6 +5,24 @@ import type { Attachment } from '@/types/agent-events';
 
 const CHAT_ENDPOINT = 'https://agent-saas.fitnearn.com/api/chat';
 
+function getAuthTokens() {
+  const cookies = document.cookie.split('; ');
+  const find = (name: string) => cookies.find(r => r.startsWith(`${name}=`))?.split('=')[1];
+  return {
+    accessToken: find('platform_access_token'),
+    idToken: find('platform_id_token'),
+  };
+}
+
+async function attemptRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/auth/refresh', { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SSE parser
 // Accumulates raw bytes across chunk boundaries and emits complete events.
@@ -105,6 +123,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const parserRef = useRef(new SSEParser());
+  const sendMessageRef = useRef<((text: string, attachments?: Attachment[]) => Promise<void>) | null>(null);
 
   // Keep latest option callbacks in refs so they never stale-close over props.
   const onDeltaRef = useRef(onDelta);
@@ -140,21 +159,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Read Cognito access token from non-httpOnly cookie
-    const token = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('platform_access_token='))
-      ?.split('=')[1];
+    let { accessToken: token, idToken } = getAuthTokens();
 
     if (!token) {
       onErrorRef.current?.('AUTH_ERROR', 'No platform_access_token found in cookies');
       return;
     }
-
-    const idToken = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('platform_id_token='))
-      ?.split('=')[1];
 
     parserRef.current.reset();
     setStreamingText('');
@@ -163,23 +173,43 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     let accumulatedText = '';
     let currentMessageId: string | null = null;
 
+    const buildRequest = (accessToken: string, currentIdToken: string | undefined) => ({
+      method: 'POST' as const,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        ...(currentIdToken ? { 'X-Id-Token': currentIdToken } : {}),
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify({
+        message: text,
+        agentId: agentIdRef.current,
+        conversationId: conversationIdRef.current,
+        attachments,
+      }),
+      signal: controller.signal,
+    });
+
     try {
-      const response = await fetch(CHAT_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          ...(idToken ? { 'X-Id-Token': idToken } : {}),
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify({
-          message: text,
-          agentId: agentIdRef.current,
-          conversationId: conversationIdRef.current,
-          attachments,
-        }),
-        signal: controller.signal,
-      });
+      let response = await fetch(CHAT_ENDPOINT, buildRequest(token, idToken));
+
+      // On 401: attempt silent token refresh, then retry once
+      if (response.status === 401) {
+        const refreshed = await attemptRefresh();
+        if (!refreshed) {
+          window.location.href = '/auth/login';
+          return;
+        }
+        // Re-read cookies — refresh route sets new platform_access_token + platform_id_token
+        const refreshedTokens = getAuthTokens();
+        if (!refreshedTokens.accessToken) {
+          window.location.href = '/auth/login';
+          return;
+        }
+        token = refreshedTokens.accessToken;
+        idToken = refreshedTokens.idToken;
+        response = await fetch(CHAT_ENDPOINT, buildRequest(token, idToken));
+      }
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -203,6 +233,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let authExpired = false;
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -280,10 +311,33 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               break;
             }
 
+            case 'auth_expired': {
+              authExpired = true;
+              break;
+            }
+
             default:
               console.warn('[useChat] Unknown SSE event type:', event.type, payload);
           }
         }
+
+        if (authExpired) break;
+      }
+
+      if (authExpired) {
+        setIsStreaming(false);
+        const refreshed = await attemptRefresh();
+        if (!refreshed) {
+          window.location.href = '/auth/login';
+          return;
+        }
+        const refreshedTokens = getAuthTokens();
+        if (!refreshedTokens.accessToken) {
+          window.location.href = '/auth/login';
+          return;
+        }
+        sendMessageRef.current?.(text, attachments);
+        return;
       }
     } catch (err: unknown) {
       if ((err as Error).name === 'AbortError') {
@@ -326,6 +380,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       return false;
     }
   }, []);
+
+  sendMessageRef.current = sendMessage;
 
   return {
     sendMessage,

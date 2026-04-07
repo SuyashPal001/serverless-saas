@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
         const response = NextResponse.json({ success: true });
 
-        // ID Token - httpOnly
+        // ID Token - httpOnly (used by proxy route)
         response.cookies.set({
             name: 'platform_token',
             value: idToken,
@@ -33,7 +33,18 @@ export async function POST(request: NextRequest) {
             maxAge: 7200,
         });
 
-        // Access Token - NOT httpOnly (for WebSocket)
+        // ID Token - NOT httpOnly (so useChat can read it for X-Id-Token after refresh)
+        response.cookies.set({
+            name: 'platform_id_token',
+            value: idToken,
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 7200,
+        });
+
+        // Access Token - NOT httpOnly (for relay auth)
         if (accessToken) {
             response.cookies.set({
                 name: 'platform_access_token',
