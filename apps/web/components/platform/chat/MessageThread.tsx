@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown, Send } from "lucide-react";
+import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Message } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -359,10 +360,19 @@ function MessageItem({
     );
 }
 
+const FEEDBACK_ISSUE_OPTIONS = [
+    'Incorrect information',
+    'Incomplete answer',
+    'Off topic',
+    'Harmful or unsafe content',
+    'Other',
+] as const;
+
 function MessageFeedback({ messageId, conversationId }: { messageId: string; conversationId: string }) {
     const [rating, setRating] = useState<'up' | 'down' | null>(null);
-    const [pendingDown, setPendingDown] = useState(false);
-    const [commentText, setCommentText] = useState('');
+    const [modalOpen, setModalOpen] = useState(false);
+    const [issueType, setIssueType] = useState('');
+    const [detail, setDetail] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
     const submit = async (r: 'up' | 'down', comment?: string) => {
@@ -381,36 +391,43 @@ function MessageFeedback({ messageId, conversationId }: { messageId: string; con
     };
 
     const handleUp = () => {
-        if (rating !== null || pendingDown) return;
+        if (rating !== null || modalOpen) return;
         setRating('up');
         submit('up');
     };
 
     const handleDown = () => {
-        if (rating !== null || pendingDown) return;
-        setPendingDown(true);
+        if (rating !== null || modalOpen) return;
+        setModalOpen(true);
     };
 
-    const handleCommentSubmit = () => {
+    const handleSubmit = () => {
         if (submitting) return;
-        setPendingDown(false);
+        const parts = [issueType, detail.trim()].filter(Boolean);
+        const comment = parts.join(' | ') || undefined;
+        setModalOpen(false);
         setRating('down');
-        submit('down', commentText.trim() || undefined);
+        submit('down', comment);
+    };
+
+    const handleCancel = () => {
+        setModalOpen(false);
+        setIssueType('');
+        setDetail('');
     };
 
     const isRated = rating !== null;
-    const showDown = rating === 'down' || pendingDown;
 
     return (
-        <div className="mt-1 flex flex-col gap-2">
+        <div className="mt-1">
             <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150">
                 <button
                     onClick={handleUp}
-                    disabled={isRated || pendingDown || submitting}
+                    disabled={isRated || modalOpen || submitting}
                     className={cn(
                         "p-1 rounded hover:bg-muted/50 transition-colors",
                         rating === 'up' ? "text-emerald-500" : "text-muted-foreground/50 hover:text-muted-foreground",
-                        (isRated || pendingDown) && "cursor-default"
+                        (isRated || modalOpen) && "cursor-default"
                     )}
                     aria-label="Thumbs up"
                 >
@@ -418,11 +435,11 @@ function MessageFeedback({ messageId, conversationId }: { messageId: string; con
                 </button>
                 <button
                     onClick={handleDown}
-                    disabled={isRated || pendingDown || submitting}
+                    disabled={isRated || modalOpen || submitting}
                     className={cn(
                         "p-1 rounded hover:bg-muted/50 transition-colors",
-                        showDown ? "text-red-500" : "text-muted-foreground/50 hover:text-muted-foreground",
-                        (isRated || pendingDown) && "cursor-default"
+                        rating === 'down' ? "text-red-500" : "text-muted-foreground/50 hover:text-muted-foreground",
+                        (isRated || modalOpen) && "cursor-default"
                     )}
                     aria-label="Thumbs down"
                 >
@@ -430,35 +447,60 @@ function MessageFeedback({ messageId, conversationId }: { messageId: string; con
                 </button>
             </div>
 
-            {pendingDown && (
-                <div className="flex items-start gap-2 max-w-sm animate-in slide-in-from-top-1 duration-150">
-                    <textarea
-                        autoFocus
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value.slice(0, 200))}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleCommentSubmit();
-                            }
-                            if (e.key === 'Escape') {
-                                setPendingDown(false);
-                            }
-                        }}
-                        placeholder="What went wrong? (optional, Enter to submit)"
-                        rows={2}
-                        className="flex-1 resize-none text-xs rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <button
-                        onClick={handleCommentSubmit}
-                        disabled={submitting}
-                        className="mt-0.5 p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                        aria-label="Submit"
-                    >
-                        <Send className="h-3 w-3" />
-                    </button>
-                </div>
-            )}
+            <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Give negative feedback</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-sm text-muted-foreground">
+                                What type of issue do you wish to report? (optional)
+                            </label>
+                            <select
+                                value={issueType}
+                                onChange={(e) => setIssueType(e.target.value)}
+                                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                                <option value="">Select an issue type</option>
+                                {FEEDBACK_ISSUE_OPTIONS.map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-sm text-muted-foreground">
+                                Please provide details: (optional)
+                            </label>
+                            <textarea
+                                value={detail}
+                                onChange={(e) => setDetail(e.target.value.slice(0, 200))}
+                                placeholder="What was unsatisfying about this response?"
+                                rows={3}
+                                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <button
+                            onClick={handleCancel}
+                            className="px-4 py-2 text-sm rounded-md border border-border text-foreground hover:bg-muted/50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={submitting}
+                            className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium"
+                        >
+                            Submit
+                        </button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
