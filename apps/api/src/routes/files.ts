@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
 import { auditLog } from '@serverless-saas/database/schema';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 const filesRoutes = new Hono<AppEnv>();
@@ -27,7 +28,7 @@ filesRoutes.post(
     }
 
     const permissions = requestContext?.permissions || [];
-    if (!permissions.includes('files:create')) {
+    if (!hasPermission(permissions, 'files', 'create')) {
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
     }
 
@@ -68,7 +69,7 @@ filesRoutes.post(
     const { size } = c.req.valid('json');
 
     const permissions = requestContext?.permissions || [];
-    if (!permissions.includes('files:create')) {
+    if (!hasPermission(permissions, 'files', 'create')) {
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
     }
 
@@ -96,7 +97,7 @@ filesRoutes.get('/:id/presigned-url', async (c) => {
   const fileId = c.req.param('id');
 
   const permissions = requestContext?.permissions || [];
-  if (!permissions.includes('files:read')) {
+  if (!hasPermission(permissions, 'files', 'read')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:read' }, 403);
   }
 
@@ -115,7 +116,7 @@ filesRoutes.get('/:id/download', async (c) => {
   const fileId = c.req.param('id');
 
   const permissions = requestContext?.permissions || [];
-  if (!permissions.includes('files:read')) {
+  if (!hasPermission(permissions, 'files', 'read')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:read' }, 403);
   }
 
@@ -135,7 +136,7 @@ filesRoutes.get('/', async (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
 
   const permissions = requestContext?.permissions || [];
-  if (!permissions.includes('files:read')) {
+  if (!hasPermission(permissions, 'files', 'read')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:read' }, 403);
   }
 
@@ -165,7 +166,7 @@ filesRoutes.delete('/:id', async (c) => {
   const fileId = c.req.param('id');
 
   const permissions = requestContext?.permissions || [];
-  if (!permissions.includes('files:delete')) {
+  if (!hasPermission(permissions, 'files', 'delete')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:delete' }, 403);
   }
 

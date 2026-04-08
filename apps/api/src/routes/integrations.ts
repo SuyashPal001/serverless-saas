@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { integrations } from '@serverless-saas/database/schema/integrations';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const integrationsRoutes = new Hono<AppEnv>();
@@ -14,7 +15,7 @@ integrationsRoutes.get('/providers', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('integrations:read')) {
+    if (!hasPermission(permissions, 'integrations', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -35,7 +36,7 @@ integrationsRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('integrations:read')) {
+    if (!hasPermission(permissions, 'integrations', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -62,7 +63,7 @@ integrationsRoutes.get('/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('integrations:read')) {
+    if (!hasPermission(permissions, 'integrations', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -99,7 +100,7 @@ integrationsRoutes.post('/', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('integrations:create')) {
+    if (!hasPermission(permissions, 'integrations', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -158,7 +159,7 @@ integrationsRoutes.patch('/:id', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('integrations:update')) {
+    if (!hasPermission(permissions, 'integrations', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -231,7 +232,7 @@ integrationsRoutes.delete('/:id', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('integrations:delete')) {
+    if (!hasPermission(permissions, 'integrations', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

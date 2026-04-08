@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentWorkflowRuns } from '@serverless-saas/database/schema/agents';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
+
 
 export const agentRunsRoutes = new Hono<AppEnv>();
 
@@ -12,7 +14,7 @@ agentRunsRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:read')) {
+    if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -40,7 +42,7 @@ agentRunsRoutes.get('/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:read')) {
+    if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

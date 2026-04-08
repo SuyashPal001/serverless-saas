@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentPolicies } from '@serverless-saas/database/schema/conversations';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const agentPoliciesRoutes = new Hono<AppEnv>();
@@ -32,7 +33,7 @@ agentPoliciesRoutes.get('/:agentId/policies', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:read')) {
+    if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -62,7 +63,7 @@ agentPoliciesRoutes.put('/:agentId/policies', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:update')) {
+    if (!hasPermission(permissions, 'agents', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

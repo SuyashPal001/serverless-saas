@@ -8,6 +8,7 @@ import {
   conversationFeedback,
   conversationMetrics,
 } from '@serverless-saas/database/schema/conversations';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 // ── Feedback route — mounted at /conversations ────────────────────────────────
@@ -21,7 +22,7 @@ evalsFeedbackRoutes.post('/:conversationId/messages/:messageId/feedback', async 
   const permissions = requestContext?.permissions ?? [];
   const userId = requestContext?.userId as string | undefined;
 
-  if (!permissions.includes('conversations:write')) {
+  if (!hasPermission(permissions, 'conversations', 'update')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
@@ -73,7 +74,7 @@ evalsRoutes.get('/summary', async (c) => {
   const tenantId = requestContext?.tenant?.id;
   const permissions = requestContext?.permissions ?? [];
 
-  if (!permissions.includes('analytics:read')) {
+  if (!hasPermission(permissions, 'analytics', 'read')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
@@ -127,7 +128,7 @@ evalsRoutes.get('/messages', async (c) => {
   const tenantId = requestContext?.tenant?.id;
   const permissions = requestContext?.permissions ?? [];
 
-  if (!permissions.includes('analytics:read')) {
+  if (!hasPermission(permissions, 'analytics', 'read')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
@@ -165,7 +166,7 @@ evalsRoutes.get('/conversations', async (c) => {
   const tenantId = requestContext?.tenant?.id;
   const permissions = requestContext?.permissions ?? [];
 
-  if (!permissions.includes('analytics:read')) {
+  if (!hasPermission(permissions, 'analytics', 'read')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 

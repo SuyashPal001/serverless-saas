@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { webhookEndpoints, webhookDeliveryLog } from '@serverless-saas/database/schema/webhooks';
 import { auditLog } from '@serverless-saas/database/schema';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const webhooksRoutes = new Hono<AppEnv>();
@@ -17,7 +18,7 @@ webhooksRoutes.get('/', async (c) => {
 
     console.log('GET /webhooks - tenantId:', tenantId, 'permissions:', permissions);
 
-    if (!permissions.includes('webhooks:read')) {
+    if (!hasPermission(permissions, 'webhooks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -51,7 +52,7 @@ webhooksRoutes.get('/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('webhooks:read')) {
+    if (!hasPermission(permissions, 'webhooks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -88,7 +89,7 @@ webhooksRoutes.get('/:id/deliveries', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('webhooks:read')) {
+    if (!hasPermission(permissions, 'webhooks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -128,7 +129,7 @@ webhooksRoutes.post('/', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('webhooks:create')) {
+    if (!hasPermission(permissions, 'webhooks', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -192,7 +193,7 @@ webhooksRoutes.patch('/:id', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('webhooks:update')) {
+    if (!hasPermission(permissions, 'webhooks', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -269,7 +270,7 @@ webhooksRoutes.delete('/:id', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('webhooks:delete')) {
+    if (!hasPermission(permissions, 'webhooks', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

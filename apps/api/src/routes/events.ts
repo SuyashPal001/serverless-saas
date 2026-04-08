@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const eventsRoutes = new Hono<AppEnv>();
@@ -45,7 +46,7 @@ eventsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('webhooks:read')) {
+    if (!hasPermission(permissions, 'webhooks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

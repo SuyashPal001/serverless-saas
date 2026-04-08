@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const agentSkillsRoutes = new Hono<AppEnv>();
@@ -24,7 +25,7 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:read')) {
+    if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -52,7 +53,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:create')) {
+    if (!hasPermission(permissions, 'agents', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -104,7 +105,7 @@ agentSkillsRoutes.get('/:agentId/skills/:skillId', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:read')) {
+    if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -138,7 +139,7 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:update')) {
+    if (!hasPermission(permissions, 'agents', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -197,7 +198,7 @@ agentSkillsRoutes.delete('/:agentId/skills/:skillId', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('agents:delete')) {
+    if (!hasPermission(permissions, 'agents', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

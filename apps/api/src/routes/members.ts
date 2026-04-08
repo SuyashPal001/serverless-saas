@@ -10,6 +10,7 @@ import { roles } from '@serverless-saas/database/schema/authorization';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { sendEmail } from '@serverless-saas/notifications';
 import { createHash, randomBytes } from 'crypto';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const membersRoutes = new Hono<AppEnv>();
@@ -21,7 +22,7 @@ membersRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('members:read')) {
+    if (!hasPermission(permissions, 'members', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -71,7 +72,7 @@ membersRoutes.patch('/:id/role', async (c) => {
     const memberId = c.req.param('id');
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('members:update')) {
+    if (!hasPermission(permissions, 'members', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -126,7 +127,7 @@ membersRoutes.patch('/:id/status', async (c) => {
     const memberId = c.req.param('id');
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('members:update')) {
+    if (!hasPermission(permissions, 'members', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -263,7 +264,7 @@ membersRoutes.delete('/:id', async (c) => {
     const memberId = c.req.param('id');
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('members:delete')) {
+    if (!hasPermission(permissions, 'members', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

@@ -10,6 +10,7 @@ import {
     notificationWorkflowSteps,
     notificationTemplates,
 } from '@serverless-saas/database';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const notificationsRoutes = new Hono<AppEnv>();
@@ -272,7 +273,7 @@ notificationsRoutes.get('/workflows', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('notifications:read')) {
+    if (!hasPermission(permissions, 'notifications', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -309,7 +310,7 @@ notificationsRoutes.get('/workflows/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('notifications:read')) {
+    if (!hasPermission(permissions, 'notifications', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

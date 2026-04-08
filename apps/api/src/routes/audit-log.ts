@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { and, eq, ilike, gte, lte, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, auditLog } from '@serverless-saas/database';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const auditLogRoutes = new Hono<AppEnv>();
@@ -21,7 +22,7 @@ auditLogRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('audit_log:read')) {
+    if (!hasPermission(permissions, 'audit_log', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

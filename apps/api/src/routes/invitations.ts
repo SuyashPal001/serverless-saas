@@ -10,6 +10,7 @@ import { invitationTokens } from '@serverless-saas/database/schema/invitations';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { sendEmail } from '@serverless-saas/notifications';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 // Public routes — GET /:token and POST /:token/accept
@@ -137,7 +138,7 @@ memberInviteRoutes.post('/invite', async (c) => {
     const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
     const userId = c.get('userId') as string;
 
-    if (!permissions.includes('members:create')) {
+    if (!hasPermission(permissions, 'members', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

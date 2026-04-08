@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db, features, auditLog } from '@serverless-saas/database';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const rolesRoutes = new Hono<AppEnv>();
@@ -14,7 +15,7 @@ rolesRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('roles:read')) {
+    if (!hasPermission(permissions, 'roles', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -33,7 +34,7 @@ rolesRoutes.post('/', async (c) => {
     const permissions = requestContext?.permissions ?? [];
     const entitlements = requestContext?.entitlements ?? {};
 
-    if (!permissions.includes('roles:create')) {
+    if (!hasPermission(permissions, 'roles', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -88,7 +89,7 @@ rolesRoutes.patch('/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('roles:update')) {
+    if (!hasPermission(permissions, 'roles', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT PERMISSIONS' }, 403);
     }
     const roleId = c.req.param('id');
@@ -139,7 +140,7 @@ rolesRoutes.delete('/:id', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('roles:delete')) {
+    if (!hasPermission(permissions, 'roles', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

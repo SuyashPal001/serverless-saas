@@ -3,6 +3,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import { features } from '@serverless-saas/database/schema/entitlements';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const usageRoutes = new Hono<AppEnv>();
@@ -13,7 +14,7 @@ usageRoutes.get('/', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('usage:read')) {
+    if (!hasPermission(permissions, 'usage', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -91,7 +92,7 @@ usageRoutes.get('/summary', async (c) => {
     const entitlements: Record<string, { valueLimit?: number; unlimited?: boolean }> =
         requestContext?.entitlements ?? {};
 
-    if (!permissions.includes('usage:read')) {
+    if (!hasPermission(permissions, 'usage', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

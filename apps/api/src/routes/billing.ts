@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 
@@ -15,7 +16,7 @@ billingRoutes.get('/subscription', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('billing:read')) {
+    if (!hasPermission(permissions, 'billing', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -40,7 +41,7 @@ billingRoutes.get('/plan', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('billing:read')) {
+    if (!hasPermission(permissions, 'billing', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -59,7 +60,7 @@ billingRoutes.post('/upgrade', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('billing:update')) {
+    if (!hasPermission(permissions, 'billing', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -115,7 +116,7 @@ billingRoutes.post('/cancel', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('billing:update')) {
+    if (!hasPermission(permissions, 'billing', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -157,7 +158,7 @@ billingRoutes.get('/invoices', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('billing:read')) {
+    if (!hasPermission(permissions, 'billing', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

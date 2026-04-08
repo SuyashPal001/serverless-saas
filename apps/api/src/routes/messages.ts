@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
 import { runMessageRelay, RelayError } from './_relay';
+import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const messagesRoutes = new Hono<AppEnv>();
@@ -24,7 +25,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('conversations:read')) {
+    if (!hasPermission(permissions, 'conversations', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -53,7 +54,7 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
     const userId = requestContext?.userId;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!permissions.includes('conversations:create')) {
+    if (!hasPermission(permissions, 'conversations', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 

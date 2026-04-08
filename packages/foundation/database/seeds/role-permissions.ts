@@ -33,6 +33,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'conversations:delete',
         'messages:create',
         'messages:read',
+        'analytics:read',
     ],
 
     'ops-agent': [
