@@ -20,24 +20,13 @@ evalsFeedbackRoutes.post('/:conversationId/messages/:messageId/feedback', async 
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
   const permissions = requestContext?.permissions ?? [];
-  const userId = requestContext?.userId as string | undefined;
+  const userId = c.get('userId') as string | undefined;
 
   if (!hasPermission(permissions, 'conversations', 'update')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
   const { conversationId, messageId } = c.req.param();
-
-  // Verify the message belongs to this tenant's conversation
-  const [msg] = await db
-    .select({ id: messages.id })
-    .from(messages)
-    .where(and(eq(messages.id, messageId), eq(messages.tenantId, tenantId), eq(messages.conversationId, conversationId)))
-    .limit(1);
-
-  if (!msg) {
-    return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404);
-  }
 
   const schema = z.object({
     rating: z.enum(['up', 'down']),
