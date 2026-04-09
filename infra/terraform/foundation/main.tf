@@ -181,6 +181,11 @@ module "api_gateway" {
   }
 
   routes = {
+    google_oauth_callback = {
+      route_key       = "GET /api/v1/integrations/google/callback"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     api = {
       route_key       = "ANY /api/v1/{proxy+}"
       integration_key = "foundation_api"
@@ -656,6 +661,16 @@ resource "aws_ssm_parameter" "iam_foundation_websocket_role_arn" {
   name  = "/${var.project}/${var.environment}/iam/foundation-websocket-role-arn"
   type  = "String"
   value = module.iam.role_arns["foundation_websocket"]
+}
+
+resource "aws_secretsmanager_secret" "token_encryption_key" {
+  name        = "${var.project}/${var.environment}/token-encryption-key"
+  description = "AES-256-GCM master key for token encryption"
+}
+
+resource "aws_secretsmanager_secret" "google_client_secret" {
+  name        = "${var.project}/${var.environment}/google-client-secret"
+  description = "Google OAuth client secret"
 }
 
 resource "aws_secretsmanager_secret" "database" {

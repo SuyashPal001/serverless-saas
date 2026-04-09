@@ -1,0 +1,26 @@
+{
+  "name": "mcp-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP server for platform integrations (Gmail, etc.) — deployed to GCP VM port 3002",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@neondatabase/serverless": "^0.10.4",
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
