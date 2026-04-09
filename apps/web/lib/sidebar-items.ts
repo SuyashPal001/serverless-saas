@@ -24,18 +24,26 @@ export interface SidebarItem {
     icon: React.ElementType;
     roles?: string[];
     planRequired?: 'starter' | 'business' | 'enterprise';
+    planGateFeature?: string;
     locked?: boolean;
     showBusinessBadge?: boolean;
     sectionLabel?: string;
     isDivider?: boolean;
 }
 
-export function getSidebarItems(role: string, plan: string, tenantSlug: string): SidebarItem[] {
+export function getSidebarItems(
+    role: string,
+    plan: string,
+    tenantSlug: string,
+    entitlements: Record<string, { enabled?: boolean; valueLimit?: number; unlimited?: boolean }> = {}
+): SidebarItem[] {
     const base = `/${tenantSlug}/dashboard`;
     const isPlatformAdmin = role === 'platform_admin';
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
-    const isStarterOrHigher = ['starter', 'business', 'enterprise'].includes(plan.toLowerCase());
-    const isBusinessOrHigher = ['business', 'enterprise'].includes(plan.toLowerCase());
+
+    const evalsLocked        = entitlements['evals']?.enabled === false;
+    const brandingLocked     = entitlements['branding']?.enabled === false;
+    const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
 
     const items: SidebarItem[] = [];
 
@@ -75,7 +83,8 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
             href: `${base}/evals`,
             icon: BarChart2,
             planRequired: 'starter',
-            locked: !isStarterOrHigher,
+            planGateFeature: 'evals',
+            locked: evalsLocked,
         });
 
         // 2. SETTINGS SECTION
@@ -96,14 +105,14 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
             icon: CreditCard 
         });
         
-        // Branding - Business+ feature
-        items.push({ 
-            label: "Branding", 
-            href: `${base}/branding`, 
+        // Branding - Starter+ feature
+        items.push({
+            label: "Branding",
+            href: `${base}/branding`,
             icon: Palette,
-            planRequired: 'business',
-            locked: !isBusinessOrHigher,
-            showBusinessBadge: isBusinessOrHigher && plan.toLowerCase() === 'business'
+            planRequired: 'starter',
+            planGateFeature: 'branding',
+            locked: brandingLocked,
         });
 
         // 3. DEVELOPER SECTION
@@ -119,14 +128,14 @@ export function getSidebarItems(role: string, plan: string, tenantSlug: string):
             icon: Webhook 
         });
         
-        // Integrations - Business+ feature
-        items.push({ 
-            label: "Integrations", 
-            href: `${base}/integrations`, 
+        // Integrations - Starter+ feature
+        items.push({
+            label: "Integrations",
+            href: `${base}/integrations`,
             icon: Plug,
-            planRequired: 'business',
-            locked: !isBusinessOrHigher,
-            showBusinessBadge: isBusinessOrHigher && plan.toLowerCase() === 'business'
+            planRequired: 'starter',
+            planGateFeature: 'mcp_integrations',
+            locked: integrationsLocked,
         });
     } else {
         // Member only sees Chat & Notifications

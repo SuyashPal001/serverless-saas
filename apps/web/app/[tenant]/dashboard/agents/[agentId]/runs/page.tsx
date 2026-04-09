@@ -18,6 +18,7 @@ import {
     Info,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { PermissionGate } from "@/components/platform/PermissionGate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -124,6 +125,7 @@ export default function AgentRunsPage() {
     const totalPages = data?.totalPages ?? 1;
 
     return (
+        <PermissionGate resource="agents" action="read">
         <div className="space-y-8">
             {/* Header */}
             <div className="space-y-4">
@@ -422,5 +424,6 @@ export default function AgentRunsPage() {
                 </div>
             )}
         </div>
+        </PermissionGate>
     );
 }

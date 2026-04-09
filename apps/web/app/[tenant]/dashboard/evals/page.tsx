@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { PermissionGate } from "@/components/platform/PermissionGate";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { formatDistanceToNow } from "date-fns";
@@ -247,6 +248,15 @@ function ConversationMetricsTab() {
 export default function EvalsPage() {
     const { tenantId, plan, slug } = useTenant();
     const isFree = plan.toLowerCase() === 'free';
+
+    return (
+        <PermissionGate resource="analytics" action="read">
+            <EvalsPageContent tenantId={tenantId} plan={plan} isFree={isFree} slug={slug} />
+        </PermissionGate>
+    );
+}
+
+function EvalsPageContent({ tenantId, plan, isFree, slug }: { tenantId: string; plan: string; isFree: boolean; slug: string }) {
 
     const { data: summary, isLoading } = useQuery<EvalsSummary>({
         queryKey: ["evals-summary", tenantId],

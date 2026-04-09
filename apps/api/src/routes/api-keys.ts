@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, count } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { apiKeys } from '@serverless-saas/database/schema/access';
+import { features } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
@@ -122,6 +123,33 @@ apiKeysRoutes.post('/', async (c) => {
 
     if (!hasPermission(permissions, 'api_keys', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    // Check api_keys limit
+    const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
+    if (entitlements) {
+        const [apiKeysFeature] = await db
+            .select({ id: features.id })
+            .from(features)
+            .where(eq(features.key, 'api_keys'))
+            .limit(1);
+
+        if (apiKeysFeature) {
+            const entitlement = entitlements[apiKeysFeature.id];
+            if (entitlement && !entitlement.unlimited) {
+                const [{ value: used }] = await db
+                    .select({ value: count() })
+                    .from(apiKeys)
+                    .where(and(eq(apiKeys.tenantId, tenantId), eq(apiKeys.status, 'active')));
+                const limit = entitlement.valueLimit ?? 0;
+                if (Number(used) >= limit) {
+                    return c.json({
+                        error: `Your plan allows a maximum of ${limit} API keys. Please upgrade to add more.`,
+                        code: 'LIMIT_REACHED',
+                    }, 403);
+                }
+            }
+        }
     }
 
     const schema = z.object({

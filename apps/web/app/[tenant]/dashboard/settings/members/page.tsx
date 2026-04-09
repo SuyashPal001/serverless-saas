@@ -224,23 +224,25 @@ export default function MembersPage() {
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Members</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Manage team members and their roles
-                    </p>
+        <PermissionGate resource="members" action="read">
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Members</h1>
+                        <p className="text-muted-foreground mt-1">
+                            Manage team members and their roles
+                        </p>
+                    </div>
                 </div>
+
+                <MembersList onInviteClick={() => setInviteModalOpen(true)} />
+
+                <InviteMemberModal
+                    open={inviteModalOpen}
+                    onOpenChange={setInviteModalOpen}
+                />
             </div>
-
-            <MembersList onInviteClick={() => setInviteModalOpen(true)} />
-
-            <InviteMemberModal
-                open={inviteModalOpen}
-                onOpenChange={setInviteModalOpen}
-            />
-        </div>
+        </PermissionGate>
     );
 }
 

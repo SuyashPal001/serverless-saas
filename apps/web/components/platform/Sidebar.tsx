@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
     LayoutDashboard,
     Users,
@@ -36,44 +36,9 @@ import {
 } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
 import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 
-function UpgradeModal({ open, onOpenChange, tenantSlug }: { open: boolean, onOpenChange: (open: boolean) => void, tenantSlug: string }) {
-    const router = useRouter()
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[400px]">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Lock className="w-5 h-5 text-primary" />
-                        Upgrade Required
-                    </DialogTitle>
-                    <DialogDescription className="pt-2">
-                        This feature requires the <strong>Business</strong> plan. Upgrade now to unlock advanced branding and integrations.
-                    </DialogDescription>
-                </DialogHeader>
-                <DialogFooter className="pt-4">
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={() => {
-                        onOpenChange(false)
-                        router.push(`/${tenantSlug}/dashboard/billing`)
-                    }}>
-                        Upgrade
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
 
 interface SidebarNavLinkProps {
     item: SidebarItemType
@@ -140,7 +105,9 @@ function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: Sideb
                     {content}
                 </TooltipTrigger>
                 <TooltipContent side="right" className="ml-2 font-medium">
-                    {isCollapsed ? `${item.label} (Locked)` : "Upgrade to Business to unlock"}
+                    {isCollapsed
+                        ? `${item.label} (Locked)`
+                        : `Upgrade to ${item.planRequired ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1) : 'a higher plan'} to unlock`}
                 </TooltipContent>
             </Tooltip>
         )
@@ -163,12 +130,14 @@ function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: Sideb
 }
 
 export function Sidebar() {
-    const { tenantSlug, role, plan, name, email } = useTenant()
+    const { tenantSlug, role, plan, name, email, entitlementFeatures = {} } = useTenant()
     const { unreadCount } = useNotifications()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
-    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = React.useState(false)
 
-    const sidebarItems = getSidebarItems(role, plan, tenantSlug || '')
+    const entitlements = Object.fromEntries(
+        Object.entries(entitlementFeatures).map(([k, v]) => [k, { enabled: v as boolean }])
+    )
+    const sidebarItems = getSidebarItems(role, plan, tenantSlug || '', entitlements)
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -223,11 +192,20 @@ export function Sidebar() {
                                         {item.sectionLabel}
                                     </p>
                                 )}
-                                <SidebarNavLink 
-                                    item={item} 
-                                    isCollapsed={isSidebarCollapsed} 
+                                <SidebarNavLink
+                                    item={item}
+                                    isCollapsed={isSidebarCollapsed}
                                     unreadCount={item.label === "Notifications" ? unreadCount : undefined}
-                                    onLockedClick={() => setIsUpgradeModalOpen(true)}
+                                    onLockedClick={() => {
+                                        window.dispatchEvent(new CustomEvent('plan-gate', {
+                                            detail: {
+                                                feature: item.planGateFeature || '',
+                                                requiredPlan: item.planRequired
+                                                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
+                                                    : 'Starter',
+                                            }
+                                        }))
+                                    }}
                                 />
                             </React.Fragment>
                         )
@@ -254,12 +232,6 @@ export function Sidebar() {
                 </div>
             </aside>
 
-            {/* Global Upgrade Modal */}
-            <UpgradeModal 
-                open={isUpgradeModalOpen} 
-                onOpenChange={setIsUpgradeModalOpen}
-                tenantSlug={tenantSlug || ''}
-            />
         </TooltipProvider>
     )
 }

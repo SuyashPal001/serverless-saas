@@ -6,11 +6,13 @@ import { UpgradePrompt } from './UpgradePrompt';
 export function UpgradePromptProvider({ children }: { children: React.ReactNode }) {
     const [open, setOpen] = useState(false);
     const [feature, setFeature] = useState<string | undefined>();
+    const [requiredPlan, setRequiredPlan] = useState<string | undefined>();
 
     useEffect(() => {
         const handler = (e: Event) => {
             const customEvent = e as CustomEvent;
             setFeature(customEvent.detail?.feature);
+            setRequiredPlan(customEvent.detail?.requiredPlan);
             setOpen(true);
         };
 
@@ -21,7 +23,7 @@ export function UpgradePromptProvider({ children }: { children: React.ReactNode 
     return (
         <>
             {children}
-            <UpgradePrompt open={open} onClose={() => setOpen(false)} feature={feature} />
+            <UpgradePrompt open={open} onClose={() => setOpen(false)} feature={feature} requiredPlan={requiredPlan} />
         </>
     );
 }

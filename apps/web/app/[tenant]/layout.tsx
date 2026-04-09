@@ -56,6 +56,28 @@ export default async function TenantLayout({
         claims.permissions = [];
     }
 
+    // Fetch entitlements server-side for sidebar plan-gating
+    try {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL;
+        const agent2 = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
+        const entResponse = await undiciFetch(`${apiBase}/api/v1/entitlements`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            dispatcher: agent2,
+        });
+
+        if (entResponse.ok) {
+            const entData = await entResponse.json() as any;
+            claims.entitlementFeatures = entData.features || {};
+        } else {
+            claims.entitlementFeatures = {};
+        }
+    } catch (error) {
+        console.error('Failed to fetch entitlements:', error);
+        claims.entitlementFeatures = {};
+    }
+
     return (
         <TenantProvider claims={claims}>
             <UpgradePromptProvider>

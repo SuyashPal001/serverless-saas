@@ -16,6 +16,7 @@ export interface TenantClaims {
     role: string;
     plan: string;
     permissions?: string[];
+    entitlementFeatures?: Record<string, boolean>;
     [key: string]: any;
 }
 

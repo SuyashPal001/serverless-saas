@@ -9,6 +9,7 @@ const FEATURES: {
     key: string;
     name: string;
     type: FeatureType;
+    description?: string | null;
     unit: string | null;
     resetPeriod: ResetPeriod;
     metricKey: string | null;
@@ -25,6 +26,9 @@ const FEATURES: {
         { key: 'api_calls', name: 'API Calls', type: 'metered', unit: 'calls', resetPeriod: 'monthly', metricKey: 'api_calls' },
         { key: 'llm_tokens', name: 'LLM Tokens', type: 'metered', unit: 'tokens', resetPeriod: 'monthly', metricKey: 'llm_tokens' },
         { key: 'storage_gb', name: 'Storage', type: 'metered', unit: 'gb', resetPeriod: null, metricKey: 'storage_gb' },
+        { key: 'evals', type: 'boolean', name: 'Evals Dashboard', description: 'Access to agent quality evals and feedback analytics', unit: null, resetPeriod: null, metricKey: null },
+        { key: 'branding', type: 'boolean', name: 'Custom Branding', description: 'Custom logo and workspace branding', unit: null, resetPeriod: null, metricKey: null },
+        { key: 'api_keys', type: 'limit', name: 'API Keys', description: 'Maximum number of API keys per workspace', unit: 'keys', resetPeriod: null, metricKey: null },
     ];
 
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);

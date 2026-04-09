@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Inbox, AlertCircle, CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
+import { PermissionGate } from "@/components/platform/PermissionGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,6 +104,7 @@ export default function NotificationsPage() {
     };
 
     return (
+        <PermissionGate resource="notifications" action="read">
         <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -268,5 +270,6 @@ export default function NotificationsPage() {
                 </div>
             )}
         </div>
+        </PermissionGate>
     );
 }

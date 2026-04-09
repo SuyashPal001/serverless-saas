@@ -16,7 +16,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         agent_workflows: { enabled: false },
         custom_roles: { enabled: false },
         mcp_integrations: { enabled: false },
-        audit_log: { enabled: true },
+        audit_log: { enabled: false },
         seats: { valueLimit: 3 },
         workspaces: { valueLimit: 1 },
         agents: { valueLimit: 1 },
@@ -24,6 +24,9 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_calls: { valueLimit: 1_000 },
         llm_tokens: { valueLimit: 10_000 },
         storage_gb: { valueLimit: 1 },
+        evals: { enabled: false },
+        branding: { enabled: false },
+        api_keys: { valueLimit: 2 },
     },
     starter: {
         sso: { enabled: false },
@@ -38,6 +41,9 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_calls: { valueLimit: 10_000 },
         llm_tokens: { valueLimit: 100_000 },
         storage_gb: { valueLimit: 10 },
+        evals: { enabled: true },
+        branding: { enabled: true },
+        api_keys: { valueLimit: 5 },
     },
     business: {
         sso: { enabled: true },
@@ -52,6 +58,9 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_calls: { valueLimit: 100_000 },
         llm_tokens: { valueLimit: 1_000_000 },
         storage_gb: { valueLimit: 100 },
+        evals: { enabled: true },
+        branding: { enabled: true },
+        api_keys: { valueLimit: 20 },
     },
     enterprise: {
         sso: { enabled: true },
@@ -66,6 +75,9 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_calls: { unlimited: true },
         llm_tokens: { unlimited: true },
         storage_gb: { valueLimit: 1_000 },
+        evals: { enabled: true },
+        branding: { enabled: true },
+        api_keys: { unlimited: true },
     },
 };
 

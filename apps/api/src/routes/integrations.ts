@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, count } from 'drizzle-orm';
 import { createCipheriv, scryptSync, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { integrations } from '@serverless-saas/database/schema/integrations';
+import { features } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
@@ -180,6 +181,33 @@ integrationsRoutes.post('/', async (c) => {
 
     if (!hasPermission(permissions, 'integrations', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    // Check integrations limit
+    const entitlements = requestContext?.entitlements as Record<string, { valueLimit?: number; unlimited?: boolean }> | undefined;
+    if (entitlements) {
+        const [integrationsFeature] = await db
+            .select({ id: features.id })
+            .from(features)
+            .where(eq(features.key, 'integrations'))
+            .limit(1);
+
+        if (integrationsFeature) {
+            const entitlement = entitlements[integrationsFeature.id];
+            if (entitlement && !entitlement.unlimited) {
+                const [{ value: used }] = await db
+                    .select({ value: count() })
+                    .from(integrations)
+                    .where(and(eq(integrations.tenantId, tenantId), eq(integrations.status, 'active')));
+                const limit = entitlement.valueLimit ?? 0;
+                if (Number(used) >= limit) {
+                    return c.json({
+                        error: `Your plan allows a maximum of ${limit} integrations. Please upgrade to add more.`,
+                        code: 'LIMIT_REACHED',
+                    }, 403);
+                }
+            }
+        }
     }
 
     const schema = z.object({

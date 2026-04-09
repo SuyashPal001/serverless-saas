@@ -16,6 +16,7 @@ interface UpgradePromptProps {
     open: boolean;
     onClose: () => void;
     feature?: string;
+    requiredPlan?: string;
 }
 
 const featureNames: Record<string, string> = {
@@ -29,13 +30,14 @@ const featureNames: Record<string, string> = {
     agents: 'AI Agents',
 };
 
-export function UpgradePrompt({ open, onClose, feature }: UpgradePromptProps) {
+export function UpgradePrompt({ open, onClose, feature, requiredPlan }: UpgradePromptProps) {
     const router = useRouter();
     const { tenantSlug } = useTenant();
 
-    const featureName = feature ? featureNames[feature] || 'this feature' : 'this feature';
+    const featureName = feature ? featureNames[feature] || 'This feature' : 'This feature';
+    const planName = requiredPlan || 'a higher plan';
 
-    const handleViewPlans = () => {
+    const handleUpgrade = () => {
         onClose();
         router.push(`/${tenantSlug}/dashboard/billing`);
     };
@@ -46,15 +48,15 @@ export function UpgradePrompt({ open, onClose, feature }: UpgradePromptProps) {
                 <DialogHeader>
                     <DialogTitle>Upgrade your plan</DialogTitle>
                     <DialogDescription>
-                        {featureName} is not available on the Free plan. Upgrade to unlock premium features.
+                        {featureName} requires the <strong>{planName}</strong> plan or above.
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
                     <Button variant="outline" onClick={onClose}>
                         Maybe later
                     </Button>
-                    <Button onClick={handleViewPlans}>
-                        View plans
+                    <Button onClick={handleUpgrade}>
+                        Upgrade Plan
                     </Button>
                 </DialogFooter>
             </DialogContent>

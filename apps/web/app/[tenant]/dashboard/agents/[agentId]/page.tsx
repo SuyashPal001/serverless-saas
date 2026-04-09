@@ -8,6 +8,7 @@ import { ArrowLeft, Play, AlertCircle, User, Cpu, Calendar, Pause } from "lucide
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
+import { PermissionGate } from "@/components/platform/PermissionGate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -130,28 +131,31 @@ export default function AgentDetailPage() {
 
     if (agentError) {
         return (
-            <div className="space-y-6">
-                <Link
-                    href={`/${tenantSlug}/dashboard/agents`}
-                    className="flex items-center text-sm text-muted-foreground hover:text-foreground"
-                >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Agents
-                </Link>
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>
-                        Failed to load agent details. The agent might not exist or you don&apos;t have access.
-                    </AlertDescription>
-                </Alert>
-            </div>
+            <PermissionGate resource="agents" action="read">
+                <div className="space-y-6">
+                    <Link
+                        href={`/${tenantSlug}/dashboard/agents`}
+                        className="flex items-center text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back to Agents
+                    </Link>
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Error</AlertTitle>
+                        <AlertDescription>
+                            Failed to load agent details. The agent might not exist or you don&apos;t have access.
+                        </AlertDescription>
+                    </Alert>
+                </div>
+            </PermissionGate>
         );
     }
 
     const isPaused = agent?.status === "paused";
 
     return (
+        <PermissionGate resource="agents" action="read">
         <div className="space-y-8">
             <div className="space-y-4">
                 <Link
@@ -344,5 +348,6 @@ export default function AgentDetailPage() {
                 <WorkflowsList agentId={agentId} />
             </div>
         </div>
+        </PermissionGate>
     );
 }
