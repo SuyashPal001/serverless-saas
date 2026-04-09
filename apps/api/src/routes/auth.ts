@@ -137,12 +137,19 @@ authRoutes.get('/me', (c) => {
     const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId');
 
+    // permissionsMiddleware stores {resource, action} objects — normalise to
+    // "resource:action" strings so the frontend can() helper can use includes()
+    const rawPermissions: any[] = requestContext?.permissions ?? [];
+    const permissionStrings: string[] = rawPermissions.map((p: any) =>
+        typeof p === 'string' ? p : `${p.resource}:${p.action}`
+    );
+
     return c.json({
         userId,
         tenantId: requestContext?.tenant?.id,
         slug: requestContext?.tenant?.slug,
         status: requestContext?.tenant?.status,
-        permissions: requestContext?.permissions ?? [],
+        permissions: permissionStrings,
         needsOnboarding: requestContext?.needsOnboarding ?? false,
     });
 });
