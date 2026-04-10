@@ -65,9 +65,6 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
 
             if (!res.ok) throw new Error('Failed to switch workspace');
 
-            // Invalidate old session in DB + Redis
-            await api.post('/api/v1/auth/switch-tenant', { tenantId: workspace.tenantId });
-
             // Hard redirect — bypasses RSC cache, forces layout to re-run with new JWT cookie
             window.location.href = `/${workspace.slug}/dashboard`;
         } catch (error) {
