@@ -62,13 +62,14 @@ function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlan
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tenantId: workspace.tenantId }),
             });
-            
+
             if (!res.ok) throw new Error('Failed to switch workspace');
-            
-            router.push(`/${workspace.slug}/dashboard`);
-            router.refresh();
-            setIsOpen(false);
-            toast.success(`Switched to ${workspace.name}`);
+
+            // Invalidate old session in DB + Redis
+            await api.post('/api/v1/auth/switch-tenant', { tenantId: workspace.tenantId });
+
+            // Hard redirect — bypasses RSC cache, forces layout to re-run with new JWT cookie
+            window.location.href = `/${workspace.slug}/dashboard`;
         } catch (error) {
             console.error('Failed to switch workspace', error)
             toast.error("Failed to switch workspace");
