@@ -87,9 +87,12 @@ export async function seedRolePermissions(db: typeof DB) {
             continue;
         }
 
-        let created = 0;
-        let skipped = 0;
+        // DELETE all existing assignments for this role first — makes the seed
+        // the authoritative source of truth
+        await db.delete(rolePermissions).where(eq(rolePermissions.roleId, role.id));
 
+        // Resolve permission IDs for every key in the list
+        const rows: { roleId: string; permissionId: string }[] = [];
         for (const key of permKeys) {
             const [resource, action] = key.split(':');
 
@@ -103,27 +106,13 @@ export async function seedRolePermissions(db: typeof DB) {
                 console.log(`  permission not found: ${key}`);
                 continue;
             }
-
-            const existing = await db
-                .select({ roleId: rolePermissions.roleId })
-                .from(rolePermissions)
-                .where(
-                    and(
-                        eq(rolePermissions.roleId, role.id),
-                        eq(rolePermissions.permissionId, perm.id)
-                    )
-                )
-                .limit(1);
-
-            if (existing.length > 0) {
-                skipped++;
-                continue;
-            }
-
-            await db.insert(rolePermissions).values({ roleId: role.id, permissionId: perm.id });
-            created++;
+            rows.push({ roleId: role.id, permissionId: perm.id });
         }
 
-        console.log(`  ${roleName}: inserted ${created}, skipped ${skipped}`);
+        if (rows.length > 0) {
+            await db.insert(rolePermissions).values(rows);
+        }
+
+        console.log(`  ${roleName}: deleted all, re-inserted ${rows.length}`);
     }
 }
