@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc, count } from 'drizzle-orm';
+import { and, eq, desc, count, sql } from 'drizzle-orm';
 import { createCipheriv, scryptSync, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
@@ -485,20 +485,20 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
 
     // Upsert into integrations table using raw SQL for ON CONFLICT support
     try {
-        await db.execute(`
+        await db.execute(sql`
             INSERT INTO integrations
                 (tenant_id, provider, mcp_server_url, credentials_enc,
                  status, permissions, created_by)
             VALUES
-                ($1, 'google', '', $2,
-                 'active', ARRAY['gmail','drive','calendar'], $3)
+                (${tenantId}, 'google', '', ${credentialsEnc},
+                 'active', ARRAY['gmail','drive','calendar'], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
                 credentials_enc = EXCLUDED.credentials_enc,
                 status          = 'active',
                 permissions     = EXCLUDED.permissions,
                 updated_at      = NOW()
-        ` as any, [tenantId, credentialsEnc, userId]);
+        `);
     } catch (err) {
         console.error('[google/callback] DB upsert failed:', (err as Error).message);
         return fail('db_error');
