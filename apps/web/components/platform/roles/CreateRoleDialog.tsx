@@ -17,12 +17,22 @@ import { CreateRoleForm } from "./CreateRoleForm";
 import { UpgradePrompt } from "@/components/platform/UpgradePrompt";
 
 export function CreateRoleDialog() {
-    const { permissions = [] } = useTenant();
+    const { permissions = [], entitlementFeatures } = useTenant();
     const [open, setOpen] = useState(false);
     const [upgradeOpen, setUpgradeOpen] = useState(false);
 
     if (!canCreate(permissions, "roles")) {
         return null;
+    }
+
+    const canCreateRoles = entitlementFeatures?.['custom_roles'] === true;
+
+    if (!canCreateRoles) {
+        return (
+            <p className="text-xs text-muted-foreground">
+                Custom roles available on Business plan
+            </p>
+        );
     }
 
     const handleUpgradeRequired = () => {

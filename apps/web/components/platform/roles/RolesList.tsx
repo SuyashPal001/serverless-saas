@@ -22,6 +22,7 @@ export interface Role {
     name: string;
     description?: string;
     isDefault: boolean;
+    tenantId: string | null;
     memberCount: number;
 }
 
@@ -87,7 +88,7 @@ export function RolesList() {
                                 </Badge>
                             )}
                         </div>
-                        {!role.isDefault && canDeleteRoles && (
+                        {!role.isDefault && !!role.tenantId && canDeleteRoles && (
                             <DeleteRoleAction roleId={role.id} roleName={role.name} />
                         )}
                     </CardHeader>
