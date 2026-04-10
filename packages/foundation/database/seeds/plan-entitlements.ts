@@ -85,8 +85,10 @@ export async function seedPlanEntitlements(db: typeof DB) {
     console.log('seeding plan-entitlements');
 
     for (const [plan, entitlements] of Object.entries(PLAN_ENTITLEMENTS) as [Plan, Record<string, Entitlement>][]) {
-        let created = 0;
-        let skipped = 0;
+        // DELETE all existing rows for this plan — makes the seed the authoritative source of truth
+        await db.delete(planEntitlements).where(eq(planEntitlements.plan, plan));
+
+        const rows: (typeof planEntitlements.$inferInsert)[] = [];
 
         for (const [featureKey, values] of Object.entries(entitlements)) {
             const [feature] = await db
@@ -100,27 +102,19 @@ export async function seedPlanEntitlements(db: typeof DB) {
                 continue;
             }
 
-            const existing = await db
-                .select({ id: planEntitlements.id })
-                .from(planEntitlements)
-                .where(and(eq(planEntitlements.plan, plan), eq(planEntitlements.featureId, feature.id)))
-                .limit(1);
-
-            if (existing.length > 0) {
-                skipped++;
-                continue;
-            }
-
-            await db.insert(planEntitlements).values({
+            rows.push({
                 plan,
                 featureId: feature.id,
                 enabled: values.enabled ?? false,
                 valueLimit: values.valueLimit ?? null,
                 unlimited: values.unlimited ?? false,
             });
-            created++;
         }
 
-        console.log(`  ${plan}: inserted ${created}, skipped ${skipped}`);
+        if (rows.length > 0) {
+            await db.insert(planEntitlements).values(rows);
+        }
+
+        console.log(`  ${plan}: deleted all, re-inserted ${rows.length}`);
     }
 }
