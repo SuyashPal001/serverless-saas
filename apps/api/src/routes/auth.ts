@@ -311,3 +311,31 @@ authRoutes.post('/switch-tenant', async (c) => {
 
     return c.json({ success: true, targetTenantId });
 });
+
+// POST /auth/set-pending-tenant
+authRoutes.post('/set-pending-tenant', async (c) => {
+    const userId = c.get('userId') as string;
+    const body = await c.req.json();
+    const tenantId = body?.tenantId;
+
+    if (!tenantId) {
+        return c.json({ error: 'tenantId is required' }, 400);
+    }
+
+    const [membership] = await db.select({ id: memberships.id })
+        .from(memberships)
+        .where(and(
+            eq(memberships.userId, userId),
+            eq(memberships.tenantId, tenantId),
+            eq(memberships.status, 'active')
+        ))
+        .limit(1);
+
+    if (!membership) {
+        return c.json({ error: 'No active membership in target tenant' }, 403);
+    }
+
+    await db.update(users).set({ pendingTenantId: tenantId }).where(eq(users.id, userId));
+
+    return c.json({ success: true });
+});

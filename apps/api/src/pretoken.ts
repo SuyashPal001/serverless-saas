@@ -57,7 +57,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   // Step 2 — find tenant membership for this user
   // If clientMetadata.tenantId is present (e.g. workspace-switch flow), try that tenant first.
   // Falls back to most recently joined active membership if not found or not provided.
-  const requestedTenantId = event.request.clientMetadata?.tenantId;
+  const requestedTenantId = event.request.clientMetadata?.tenantId || user.pendingTenantId || undefined;
 
   let membership: typeof memberships.$inferSelect | undefined;
 
@@ -99,6 +99,11 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   if (!membership) {
     // User exists but has no tenant yet — needs to complete onboarding
     return emptyClaimsResponse(event);
+  }
+
+  // Clear pending_tenant_id — it's been consumed
+  if (user.pendingTenantId) {
+    await db.update(users).set({ pendingTenantId: null }).where(eq(users.id, user.id));
   }
 
   // Step 3 — resolve role name from roleId

@@ -15,6 +15,23 @@ export async function POST(request: NextRequest) {
         const body = await request.json().catch(() => ({}));
         const tenantId: string | undefined = body.tenantId;
 
+        // Write pendingTenantId to DB before Cognito refresh — Cognito drops
+        // ClientMetadata on REFRESH_TOKEN_AUTH, so the Pre-Token Lambda reads
+        // it from the DB instead.
+        if (tenantId) {
+            const currentToken = request.cookies.get('platform_token')?.value;
+            if (currentToken) {
+                await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/set-pending-tenant`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentToken}`,
+                    },
+                    body: JSON.stringify({ tenantId }),
+                }).catch((e) => console.error('set-pending-tenant failed:', e));
+            }
+        }
+
         const { idToken, accessToken } = await refreshSession(
             refreshToken,
             tenantId ? { tenantId } : undefined,
