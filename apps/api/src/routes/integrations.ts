@@ -54,6 +54,7 @@ integrationsRoutes.get('/providers', async (c) => {
         { id: 'gmail',    name: 'Gmail',           type: 'oauth', description: 'Read, search and send emails' },
         { id: 'drive',    name: 'Google Drive',    type: 'oauth', description: 'Search and read files from Drive' },
         { id: 'calendar', name: 'Google Calendar', type: 'oauth', description: 'View and create calendar events' },
+        { id: 'zoho_crm', name: 'Zoho CRM',        type: 'oauth', description: 'Manage contacts, leads and deals' },
         { id: 'github',   name: 'GitHub',          type: 'mcp' },
         { id: 'linear',   name: 'Linear',          type: 'mcp' },
         { id: 'slack',    name: 'Slack',           type: 'mcp' },
@@ -126,6 +127,50 @@ integrationsRoutes.post('/google/drive/connect', (c) =>
 // POST /integrations/google/calendar/connect
 integrationsRoutes.post('/google/calendar/connect', (c) =>
     googleConnectHandler(c, 'calendar', 'https://www.googleapis.com/auth/calendar'));
+
+// POST /integrations/zoho/crm/connect — generate Zoho CRM OAuth URL
+// India data center (.in) — scope is comma-separated per Zoho convention.
+integrationsRoutes.post('/zoho/crm/connect', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id as string;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'integrations', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const clientId    = process.env.ZOHO_CLIENT_ID;
+    const redirectUri = process.env.ZOHO_REDIRECT_URI;
+
+    if (!clientId || !redirectUri) {
+        return c.json({ error: 'Zoho OAuth not configured', code: 'CONFIGURATION_ERROR' }, 500);
+    }
+
+    const tenantRow = await db
+        .select({ slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+    const slug = tenantRow[0]?.slug ?? '';
+
+    const state = Buffer.from(
+        JSON.stringify({ tenantId, userId, slug, service: 'zoho_crm', ts: Date.now() })
+    ).toString('base64');
+
+    const params = new URLSearchParams({
+        client_id:     clientId,
+        redirect_uri:  redirectUri,
+        response_type: 'code',
+        scope:         'ZohoCRM.modules.ALL,ZohoCRM.settings.ALL',
+        access_type:   'offline',
+        prompt:        'consent',
+        state,
+    });
+
+    const url = `https://accounts.zoho.in/oauth/v2/auth?${params.toString()}`;
+    return c.json({ url });
+});
 
 // GET /integrations — list tenant's connected integrations
 // Returns only status = 'connected'; never selects credentials_enc.
@@ -530,6 +575,131 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         `);
     } catch (err) {
         console.error('[google/callback] DB upsert failed:', (err as Error).message);
+        return fail('db_error');
+    }
+
+    return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
+});
+
+// ── Public Zoho OAuth callback ────────────────────────────────────────────────
+// Mounted separately in publicApi (no auth middleware).
+// Zoho redirects here after the user grants consent.
+
+export const zohoOAuthCallbackRoute = new Hono<AppEnv>();
+
+zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
+    const frontendUrl = process.env.FRONTEND_URL ?? '';
+    const fail = (reason: string) =>
+        c.redirect(`${frontendUrl}/dashboard/integrations?error=${reason}`);
+
+    const code     = c.req.query('code');
+    const stateB64 = c.req.query('state');
+    const oauthErr = c.req.query('error');
+
+    if (oauthErr || !code || !stateB64) {
+        return fail('zoho_denied');
+    }
+
+    // Decode and validate state
+    let tenantId: string;
+    let userId: string;
+    let slug: string;
+    let service: string;
+    try {
+        const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
+            tenantId: string;
+            userId:   string;
+            slug:     string;
+            service:  string;
+            ts:       number;
+        };
+        if (Date.now() - decoded.ts > 600_000) {
+            return fail('state_expired');
+        }
+        tenantId = decoded.tenantId;
+        userId   = decoded.userId;
+        slug     = decoded.slug;
+        service  = decoded.service;
+    } catch {
+        return fail('invalid_state');
+    }
+
+    // Exchange authorization code for tokens
+    const clientId     = process.env.ZOHO_CLIENT_ID;
+    const clientSecret = process.env.ZOHO_CLIENT_SECRET;
+    const redirectUri  = process.env.ZOHO_REDIRECT_URI;
+
+    if (!clientId || !clientSecret || !redirectUri) {
+        return fail('configuration_error');
+    }
+
+    let accessToken: string;
+    let refreshToken: string;
+    let expiresIn: number;
+
+    try {
+        const resp = await fetch('https://accounts.zoho.in/oauth/v2/token', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code,
+                client_id:     clientId,
+                client_secret: clientSecret,
+                redirect_uri:  redirectUri,
+                grant_type:    'authorization_code',
+            }),
+        });
+
+        if (!resp.ok) {
+            console.error('[zoho/callback] token exchange failed:', resp.status);
+            return fail('token_exchange_failed');
+        }
+
+        const tokens = await resp.json() as {
+            access_token:   string;
+            refresh_token?: string;
+            expires_in:     number;
+            token_type:     string;
+        };
+
+        if (!tokens.access_token || !tokens.refresh_token) {
+            console.error('[zoho/callback] missing tokens in response (no credentials logged)');
+            return fail('token_exchange_failed');
+        }
+
+        accessToken  = tokens.access_token;
+        refreshToken = tokens.refresh_token;
+        expiresIn    = tokens.expires_in;
+    } catch (err) {
+        console.error('[zoho/callback] fetch error:', (err as Error).message);
+        return fail('token_exchange_failed');
+    }
+
+    // Encrypt credentials — never store plaintext tokens
+    const expiryDate     = Date.now() + expiresIn * 1000;
+    const credentialsEnc = encryptCredentials(
+        { accessToken, refreshToken, expiresAt: expiryDate },
+        tenantId
+    );
+
+    // Upsert — provider='zoho_crm', permissions=['crm']
+    try {
+        await db.execute(sql`
+            INSERT INTO integrations
+                (tenant_id, provider, mcp_server_url, credentials_enc,
+                 status, permissions, created_by)
+            VALUES
+                (${tenantId}, ${service}, '', ${credentialsEnc},
+                 'active', ARRAY['crm']::text[], ${userId})
+            ON CONFLICT (tenant_id, provider)
+            DO UPDATE SET
+                credentials_enc = EXCLUDED.credentials_enc,
+                status          = 'active',
+                permissions     = EXCLUDED.permissions,
+                updated_at      = NOW()
+        `);
+    } catch (err) {
+        console.error('[zoho/callback] DB upsert failed:', (err as Error).message);
         return fail('db_error');
     }
 

@@ -67,6 +67,15 @@ function CalendarIcon({ className }: { className?: string }) {
     );
 }
 
+function ZohoIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect width="24" height="24" rx="4" fill="#E8520A" opacity="0.12" />
+            <text x="12" y="17" textAnchor="middle" fontFamily="sans-serif" fontWeight="bold" fontSize="14" fill="#E8520A">Z</text>
+        </svg>
+    );
+}
+
 function M365Icon({ className }: { className?: string }) {
     return (
         <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -99,16 +108,18 @@ function WhatsAppIcon({ className }: { className?: string }) {
     );
 }
 
-const GOOGLE_CONNECT_URLS: Record<string, string> = {
+const CONNECT_URLS: Record<string, string> = {
     gmail:    '/api/v1/integrations/google/gmail/connect',
     drive:    '/api/v1/integrations/google/drive/connect',
     calendar: '/api/v1/integrations/google/calendar/connect',
+    zoho_crm: '/api/v1/integrations/zoho/crm/connect',
 };
 
 const CONNECTED_NAMES: Record<string, string> = {
     gmail:    'Gmail',
     drive:    'Google Drive',
     calendar: 'Google Calendar',
+    zoho_crm: 'Zoho CRM',
 };
 
 const CATALOGUE: CatalogueEntry[] = [
@@ -134,6 +145,14 @@ const CATALOGUE: CatalogueEntry[] = [
         description: 'View and create calendar events',
         scopes: ['Events', 'Calendars'],
         icon: <CalendarIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'zoho_crm',
+        name: 'Zoho CRM',
+        description: 'Manage contacts, leads and deals',
+        scopes: ['Contacts', 'Leads', 'Deals'],
+        icon: <ZohoIcon className="w-8 h-8" />,
         available: true,
     },
     {
@@ -210,7 +229,7 @@ export default function IntegrationsPage() {
     }, [searchParams]);
 
     const handleConnect = async (entry: CatalogueEntry) => {
-        const connectUrl = GOOGLE_CONNECT_URLS[entry.provider];
+        const connectUrl = CONNECT_URLS[entry.provider];
         if (!connectUrl) return;
         setConnecting(entry.provider);
         try {

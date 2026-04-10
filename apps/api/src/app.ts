@@ -34,7 +34,7 @@ import { usageRoutes } from './routes/usage';
 import { webhooksRoutes } from './routes/webhooks';
 import { filesRoutes } from './routes/files';
 import { eventsRoutes } from './routes/events';
-import { integrationsRoutes, googleOAuthCallbackRoute } from './routes/integrations';
+import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute } from './routes/integrations';
 import { llmProvidersRoutes } from './routes/llm-providers';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
@@ -66,6 +66,7 @@ const publicApi = new Hono<AppEnv>();
 publicApi.route('/auth', authPublicRoutes);
 publicApi.route('/widget', widgetRoutes);
 publicApi.route('/integrations', googleOAuthCallbackRoute); // Google OAuth callback — no auth
+publicApi.route('/integrations', zohoOAuthCallbackRoute);   // Zoho OAuth callback — no auth
 
 const api = new Hono<AppEnv>();
 
