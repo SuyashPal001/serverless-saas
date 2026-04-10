@@ -29,6 +29,8 @@ const FEATURES: {
         { key: 'evals', type: 'boolean', name: 'Evals Dashboard', description: 'Access to agent quality evals and feedback analytics', unit: null, resetPeriod: null, metricKey: null },
         { key: 'branding', type: 'boolean', name: 'Custom Branding', description: 'Custom logo and workspace branding', unit: null, resetPeriod: null, metricKey: null },
         { key: 'api_keys', type: 'limit', name: 'API Keys', description: 'Maximum number of API keys per workspace', unit: 'keys', resetPeriod: null, metricKey: null },
+        { key: 'webhooks', type: 'boolean', name: 'Webhooks', description: 'Webhook endpoints for event notifications', unit: null, resetPeriod: null, metricKey: null },
+        { key: 'api_keys_access', type: 'boolean', name: 'API Keys Access', description: 'Programmatic API access via API keys', unit: null, resetPeriod: null, metricKey: null },
     ];
 
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);

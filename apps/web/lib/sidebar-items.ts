@@ -44,6 +44,9 @@ export function getSidebarItems(
     const evalsLocked        = entitlements['evals']?.enabled === false;
     const brandingLocked     = entitlements['branding']?.enabled === false;
     const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
+    const auditLocked        = entitlements['audit_log']?.enabled === false;
+    const webhooksLocked     = entitlements['webhooks']?.enabled === false;
+    const apiKeysLocked      = entitlements['api_keys_access']?.enabled === false;
 
     const items: SidebarItem[] = [];
 
@@ -76,7 +79,10 @@ export function getSidebarItems(
         items.push({
             label: "Audit log",
             href: `${base}/audit`,
-            icon: FileText
+            icon: FileText,
+            planRequired: 'business',
+            planGateFeature: 'audit_log',
+            locked: auditLocked,
         });
         items.push({
             label: "Evals",
@@ -116,16 +122,22 @@ export function getSidebarItems(
         });
 
         // 3. DEVELOPER SECTION
-        items.push({ 
-            label: "API keys", 
-            href: `${base}/api-keys`, 
+        items.push({
+            label: "API keys",
+            href: `${base}/api-keys`,
             icon: Key,
-            sectionLabel: "Developer settings"
+            sectionLabel: "Developer settings",
+            planRequired: 'starter',
+            planGateFeature: 'api_keys_access',
+            locked: apiKeysLocked,
         });
-        items.push({ 
-            label: "Webhooks", 
-            href: `${base}/webhooks`, 
-            icon: Webhook 
+        items.push({
+            label: "Webhooks",
+            href: `${base}/webhooks`,
+            icon: Webhook,
+            planRequired: 'starter',
+            planGateFeature: 'webhooks',
+            locked: webhooksLocked,
         });
         
         // Integrations - Starter+ feature
