@@ -4,6 +4,7 @@ import { createCipheriv, scryptSync, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { integrations } from '@serverless-saas/database/schema/integrations';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -81,10 +82,18 @@ integrationsRoutes.post('/google/connect', async (c) => {
         return c.json({ error: 'Google OAuth not configured', code: 'CONFIGURATION_ERROR' }, 500);
     }
 
-    // Embed tenantId + userId in state so the callback can write to the DB.
-    // ts guards against replay — validated in the callback (10-minute window).
+    // Fetch tenant slug so the callback can redirect to the correct tenant route.
+    const tenantRow = await db
+        .select({ slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+    const slug = tenantRow[0]?.slug ?? '';
+
+    // Embed tenantId + userId + slug in state so the callback can write to the DB
+    // and redirect correctly. ts guards against replay — validated in callback (10-minute window).
     const state = Buffer.from(
-        JSON.stringify({ tenantId, userId, ts: Date.now() })
+        JSON.stringify({ tenantId, userId, slug, ts: Date.now() })
     ).toString('base64');
 
     const scopes = [
@@ -408,10 +417,12 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
     // Decode and validate state
     let tenantId: string;
     let userId: string;
+    let slug: string;
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
             tenantId: string;
             userId:   string;
+            slug:     string;
             ts:       number;
         };
         if (Date.now() - decoded.ts > 600_000) {
@@ -419,6 +430,7 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         }
         tenantId = decoded.tenantId;
         userId   = decoded.userId;
+        slug     = decoded.slug;
     } catch {
         return fail('invalid_state');
     }
@@ -504,5 +516,5 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         return fail('db_error');
     }
 
-    return c.redirect(`${frontendUrl}/dashboard/integrations?connected=google`);
+    return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=google`);
 });
