@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { features, planEntitlements } from '../schema/index';
 import type { db as DB } from './index';
 
