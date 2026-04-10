@@ -82,7 +82,7 @@ export function getSidebarItems(
             label: "Evals",
             href: `${base}/evals`,
             icon: BarChart2,
-            planRequired: 'starter',
+            planRequired: 'business',
             planGateFeature: 'evals',
             locked: evalsLocked,
         });

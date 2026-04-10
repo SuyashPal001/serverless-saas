@@ -41,7 +41,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_calls: { valueLimit: 10_000 },
         llm_tokens: { valueLimit: 100_000 },
         storage_gb: { valueLimit: 10 },
-        evals: { enabled: true },
+        evals: { enabled: false },
         branding: { enabled: true },
         api_keys: { valueLimit: 5 },
     },
