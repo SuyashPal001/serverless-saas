@@ -34,13 +34,35 @@ interface CatalogueEntry {
     available: boolean;
 }
 
-function GoogleIcon({ className }: { className?: string }) {
+function GmailIcon({ className }: { className?: string }) {
     return (
-        <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+        <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.364l-6.545-4.636v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.273l6.545-4.636 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335" />
+        </svg>
+    );
+}
+
+function DriveIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6.28 3h11.44l5.284 9.145-2.86 4.952L14.857 3z" fill="#4285F4" opacity="0.9" />
+            <path d="M0 17.09l2.867-4.958 5.732 9.937H2.867z" fill="#34A853" opacity="0.9" />
+            <path d="M24 17.09l-2.867 4.979H8.598l2.868-4.98z" fill="#FBBC05" opacity="0.9" />
+            <path d="M11.466 3l2.867 4.98-2.868 4.98-2.866-4.98z" fill="#1A73E8" opacity="0.7" />
+        </svg>
+    );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="18" height="17" rx="2" fill="#4285F4" opacity="0.15" stroke="#4285F4" strokeWidth="1.5" />
+            <path d="M3 9h18" stroke="#4285F4" strokeWidth="1.5" />
+            <rect x="7" y="2" width="2" height="4" rx="1" fill="#EA4335" />
+            <rect x="15" y="2" width="2" height="4" rx="1" fill="#EA4335" />
+            <rect x="7" y="12" width="3" height="3" rx="0.5" fill="#34A853" />
+            <rect x="11" y="12" width="3" height="3" rx="0.5" fill="#FBBC05" />
+            <rect x="15" y="12" width="3" height="3" rx="0.5" fill="#EA4335" />
         </svg>
     );
 }
@@ -77,13 +99,41 @@ function WhatsAppIcon({ className }: { className?: string }) {
     );
 }
 
+const GOOGLE_CONNECT_URLS: Record<string, string> = {
+    gmail:    '/api/v1/integrations/google/gmail/connect',
+    drive:    '/api/v1/integrations/google/drive/connect',
+    calendar: '/api/v1/integrations/google/calendar/connect',
+};
+
+const CONNECTED_NAMES: Record<string, string> = {
+    gmail:    'Gmail',
+    drive:    'Google Drive',
+    calendar: 'Google Calendar',
+};
+
 const CATALOGUE: CatalogueEntry[] = [
     {
-        provider: 'google',
-        name: 'Google Workspace',
-        description: 'Connect Gmail, Drive and Calendar',
-        scopes: ['Gmail', 'Drive', 'Calendar'],
-        icon: <GoogleIcon className="w-8 h-8" />,
+        provider: 'gmail',
+        name: 'Gmail',
+        description: 'Read, search and send emails',
+        scopes: ['Read', 'Search', 'Send'],
+        icon: <GmailIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'drive',
+        name: 'Google Drive',
+        description: 'Search and read files from Drive',
+        scopes: ['Files', 'Search', 'Read'],
+        icon: <DriveIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'calendar',
+        name: 'Google Calendar',
+        description: 'View and create calendar events',
+        scopes: ['Events', 'Calendars'],
+        icon: <CalendarIcon className="w-8 h-8" />,
         available: true,
     },
     {
@@ -128,15 +178,15 @@ export default function IntegrationsPage() {
     const router = useRouter();
     const { isLoading, refetch, isConnected, getIntegration } = useIntegrations();
 
-    const [connecting, setConnecting] = useState(false);
+    const [connecting, setConnecting] = useState<string | null>(null);
     const [disconnecting, setDisconnecting] = useState(false);
     const [disconnectTarget, setDisconnectTarget] = useState<CatalogueEntry | null>(null);
 
-    // Detect ?connected=google after OAuth callback redirect
+    // Detect ?connected=<service> after OAuth callback redirect
     useEffect(() => {
         const connected = searchParams.get('connected');
-        if (connected === 'google') {
-            toast.success('Google Workspace connected!');
+        if (connected && CONNECTED_NAMES[connected]) {
+            toast.success(`${CONNECTED_NAMES[connected]} connected!`);
             refetch();
             // Clean the query param from the URL without a full reload
             const url = new URL(window.location.href);
@@ -160,14 +210,15 @@ export default function IntegrationsPage() {
     }, [searchParams]);
 
     const handleConnect = async (entry: CatalogueEntry) => {
-        if (entry.provider !== 'google') return;
-        setConnecting(true);
+        const connectUrl = GOOGLE_CONNECT_URLS[entry.provider];
+        if (!connectUrl) return;
+        setConnecting(entry.provider);
         try {
-            const { url } = await api.post<{ url: string }>('/api/v1/integrations/google/connect');
+            const { url } = await api.post<{ url: string }>(connectUrl);
             window.location.href = url;
         } catch {
-            toast.error('Failed to start Google connection. Please try again.');
-            setConnecting(false);
+            toast.error(`Failed to start ${entry.name} connection. Please try again.`);
+            setConnecting(null);
         }
     };
 
@@ -288,9 +339,9 @@ export default function IntegrationsPage() {
                                                     <Button
                                                         size="sm"
                                                         onClick={() => handleConnect(entry)}
-                                                        disabled={connecting || !can('integrations', 'create')}
+                                                        disabled={connecting !== null || !can('integrations', 'create')}
                                                     >
-                                                        {connecting ? (
+                                                        {connecting === entry.provider ? (
                                                             <>
                                                                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                                                                 Connecting...

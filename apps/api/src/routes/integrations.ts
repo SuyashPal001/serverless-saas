@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { and, eq, desc, count, sql } from 'drizzle-orm';
 import { createCipheriv, scryptSync, randomBytes } from 'crypto';
 import { z } from 'zod';
@@ -51,21 +51,28 @@ integrationsRoutes.get('/providers', async (c) => {
     }
 
     const providers = [
-        { id: 'google',  name: 'Google Workspace', type: 'oauth',  description: 'Gmail, Drive, Calendar' },
-        { id: 'github',  name: 'GitHub',            type: 'mcp' },
-        { id: 'linear',  name: 'Linear',            type: 'mcp' },
-        { id: 'slack',   name: 'Slack',             type: 'mcp' },
-        { id: 'notion',  name: 'Notion',            type: 'mcp' },
-        { id: 'hubspot', name: 'HubSpot',           type: 'mcp' },
-        { id: 'zapier',  name: 'Zapier',            type: 'mcp' },
+        { id: 'gmail',    name: 'Gmail',           type: 'oauth', description: 'Read, search and send emails' },
+        { id: 'drive',    name: 'Google Drive',    type: 'oauth', description: 'Search and read files from Drive' },
+        { id: 'calendar', name: 'Google Calendar', type: 'oauth', description: 'View and create calendar events' },
+        { id: 'github',   name: 'GitHub',          type: 'mcp' },
+        { id: 'linear',   name: 'Linear',          type: 'mcp' },
+        { id: 'slack',    name: 'Slack',           type: 'mcp' },
+        { id: 'notion',   name: 'Notion',          type: 'mcp' },
+        { id: 'hubspot',  name: 'HubSpot',         type: 'mcp' },
+        { id: 'zapier',   name: 'Zapier',          type: 'mcp' },
     ];
 
     return c.json({ data: providers });
 });
 
-// POST /integrations/google/connect — generate Google OAuth URL
-// Must be defined before /:id to prevent route shadowing.
-integrationsRoutes.post('/google/connect', async (c) => {
+// ── Google per-service OAuth connect helper ───────────────────────────────────
+// Each service requests only its own scope — privacy-first approach.
+
+async function googleConnectHandler(
+    c: Context<AppEnv>,
+    service: 'gmail' | 'drive' | 'calendar',
+    scope: string,
+) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id as string;
     const permissions = requestContext?.permissions ?? [];
@@ -75,14 +82,13 @@ integrationsRoutes.post('/google/connect', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const clientId     = process.env.GOOGLE_CLIENT_ID;
-    const redirectUri  = process.env.GOOGLE_REDIRECT_URI;
+    const clientId    = process.env.GOOGLE_CLIENT_ID;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI;
 
     if (!clientId || !redirectUri) {
         return c.json({ error: 'Google OAuth not configured', code: 'CONFIGURATION_ERROR' }, 500);
     }
 
-    // Fetch tenant slug so the callback can redirect to the correct tenant route.
     const tenantRow = await db
         .select({ slug: tenants.slug })
         .from(tenants)
@@ -90,23 +96,16 @@ integrationsRoutes.post('/google/connect', async (c) => {
         .limit(1);
     const slug = tenantRow[0]?.slug ?? '';
 
-    // Embed tenantId + userId + slug in state so the callback can write to the DB
-    // and redirect correctly. ts guards against replay — validated in callback (10-minute window).
+    // Embed service in state so the callback knows which provider row to write.
     const state = Buffer.from(
-        JSON.stringify({ tenantId, userId, slug, ts: Date.now() })
+        JSON.stringify({ tenantId, userId, slug, service, ts: Date.now() })
     ).toString('base64');
-
-    const scopes = [
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/calendar',
-    ];
 
     const params = new URLSearchParams({
         client_id:     clientId,
         redirect_uri:  redirectUri,
         response_type: 'code',
-        scope:         scopes.join(' '),
+        scope,
         access_type:   'offline',
         prompt:        'consent',
         state,
@@ -114,7 +113,19 @@ integrationsRoutes.post('/google/connect', async (c) => {
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     return c.json({ url });
-});
+}
+
+// POST /integrations/google/gmail/connect
+integrationsRoutes.post('/google/gmail/connect', (c) =>
+    googleConnectHandler(c, 'gmail', 'https://www.googleapis.com/auth/gmail.modify'));
+
+// POST /integrations/google/drive/connect
+integrationsRoutes.post('/google/drive/connect', (c) =>
+    googleConnectHandler(c, 'drive', 'https://www.googleapis.com/auth/drive'));
+
+// POST /integrations/google/calendar/connect
+integrationsRoutes.post('/google/calendar/connect', (c) =>
+    googleConnectHandler(c, 'calendar', 'https://www.googleapis.com/auth/calendar'));
 
 // GET /integrations — list tenant's connected integrations
 // Returns only status = 'connected'; never selects credentials_enc.
@@ -418,19 +429,25 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
     let tenantId: string;
     let userId: string;
     let slug: string;
+    let service: 'gmail' | 'drive' | 'calendar';
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
             tenantId: string;
             userId:   string;
             slug:     string;
+            service:  'gmail' | 'drive' | 'calendar';
             ts:       number;
         };
         if (Date.now() - decoded.ts > 600_000) {
             return fail('state_expired');
         }
+        if (!['gmail', 'drive', 'calendar'].includes(decoded.service)) {
+            return fail('invalid_state');
+        }
         tenantId = decoded.tenantId;
         userId   = decoded.userId;
         slug     = decoded.slug;
+        service  = decoded.service;
     } catch {
         return fail('invalid_state');
     }
@@ -495,15 +512,15 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         tenantId
     );
 
-    // Upsert into integrations table using raw SQL for ON CONFLICT support
+    // Upsert into integrations table — one row per service (gmail | drive | calendar)
     try {
         await db.execute(sql`
             INSERT INTO integrations
                 (tenant_id, provider, mcp_server_url, credentials_enc,
                  status, permissions, created_by)
             VALUES
-                (${tenantId}, 'google', '', ${credentialsEnc},
-                 'active', ARRAY['gmail','drive','calendar'], ${userId})
+                (${tenantId}, ${service}, '', ${credentialsEnc},
+                 'active', ARRAY[${service}]::text[], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
                 credentials_enc = EXCLUDED.credentials_enc,
@@ -516,5 +533,5 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         return fail('db_error');
     }
 
-    return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=google`);
+    return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
 });
