@@ -9,6 +9,7 @@ import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { features } from '@serverless-saas/database/schema/entitlements';
+import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
@@ -40,6 +41,49 @@ agentsRoutes.get('/', async (c) => {
     ));
 
     return c.json({ data });
+});
+
+// GET /agents/:id — fetch single agent with resolved llm_provider
+agentsRoutes.get('/:id', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agents', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const agentId = c.req.param('id');
+
+    const agent = (await db.select().from(agents).where(and(
+        eq(agents.id, agentId),
+        eq(agents.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!agent) {
+        return c.json({ error: 'Agent not found' }, 404);
+    }
+
+    let llmProvider = null;
+    if (agent.llmProviderId) {
+        const row = (await db
+            .select({
+                id: llmProviders.id,
+                displayName: llmProviders.displayName,
+                provider: llmProviders.provider,
+                model: llmProviders.model,
+                status: llmProviders.status,
+            })
+            .from(llmProviders)
+            .where(eq(llmProviders.id, agent.llmProviderId))
+            .limit(1))[0];
+
+        if (row) {
+            llmProvider = { ...row, displayName: row.displayName ?? row.model };
+        }
+    }
+
+    return c.json({ ...agent, llmProvider });
 });
 
 // POST /agents — create agent + api key + membership

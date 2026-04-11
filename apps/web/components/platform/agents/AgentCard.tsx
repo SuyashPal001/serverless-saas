@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Agent } from "./types";
 import {
@@ -39,6 +41,8 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
     const queryClient = useQueryClient();
+    const params = useParams();
+    const tenantSlug = params.tenant as string;
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
     const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
 
@@ -96,7 +100,11 @@ export function AgentCard({ agent }: AgentCardProps) {
 
     return (
         <>
-            <Card className="relative overflow-hidden">
+            <Link
+                href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
+                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+            <Card className="relative overflow-hidden transition-colors hover:border-primary/40 hover:bg-muted/20">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                     <div className="space-y-1">
                         <CardTitle className="text-xl font-bold">{agent.name}</CardTitle>
@@ -104,6 +112,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                             Created {formatRelativeTime(agent.createdAt)}
                         </CardDescription>
                     </div>
+                    <div onClick={(e) => e.preventDefault()}>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild disabled={isRetired}>
                             <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -139,6 +148,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                             )}
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-wrap gap-2 mb-4">
@@ -155,6 +165,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </div>
                 </CardContent>
             </Card>
+            </Link>
 
             <AgentConfigSheet
                 agent={agent}
