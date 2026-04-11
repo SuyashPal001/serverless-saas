@@ -80,6 +80,9 @@ Resources:
           ZOHO_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/zoho-oauth:SecretString:client_id}}"
           ZOHO_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/zoho-oauth:SecretString:client_secret}}"
           ZOHO_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/zoho-redirect-uri}}"
+          JIRA_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_id}}"
+          JIRA_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_secret}}"
+          JIRA_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/jira-redirect-uri}}"
           TOKEN_ENCRYPTION_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/token-encryption-key}}"
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
     Metadata:

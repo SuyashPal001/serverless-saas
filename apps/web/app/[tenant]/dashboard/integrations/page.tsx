@@ -76,6 +76,15 @@ function ZohoIcon({ className }: { className?: string }) {
     );
 }
 
+function JiraIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11.975 0C9.12 0 6.76 2.357 6.76 5.217v1.043H2.57C2.57 9.12 4.927 11.478 7.787 11.478h.978v.522c0 2.861 2.357 5.217 5.217 5.217V6.26C13.982 6.26 13.982 0 11.975 0z" fill="#2684FF" opacity="0.9"/>
+            <path d="M16.213 4.348c-2.86 0-5.217 2.357-5.217 5.218v1.043H6.804c0 2.86 2.357 5.217 5.217 5.217h.978v.522C12.999 19.208 15.356 21.565 18.216 21.565V9.565c0-2.86-2.003-5.217-2.003-5.217z" fill="#2684FF" opacity="0.6"/>
+        </svg>
+    );
+}
+
 function M365Icon({ className }: { className?: string }) {
     return (
         <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -115,6 +124,7 @@ const CONNECT_URLS: Record<string, string> = {
     zoho_crm:  '/api/v1/integrations/zoho/crm/connect',
     zoho_mail: '/api/v1/integrations/zoho/mail/connect',
     zoho_cliq: '/api/v1/integrations/zoho/cliq/connect',
+    jira:      '/api/v1/integrations/jira/connect',
 };
 
 const CONNECTED_NAMES: Record<string, string> = {
@@ -124,6 +134,7 @@ const CONNECTED_NAMES: Record<string, string> = {
     zoho_crm:  'Zoho CRM',
     zoho_mail: 'Zoho Mail',
     zoho_cliq: 'Zoho Cliq',
+    jira:      'Jira',
 };
 
 const CATALOGUE: CatalogueEntry[] = [
@@ -173,6 +184,14 @@ const CATALOGUE: CatalogueEntry[] = [
         description: 'Send messages and read channels',
         scopes: ['Messages', 'Channels'],
         icon: <ZohoIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'jira',
+        name: 'Jira',
+        description: 'Read and write issues and projects',
+        scopes: ['Issues', 'Projects', 'Comments'],
+        icon: <JiraIcon className="w-8 h-8" />,
         available: true,
     },
     {

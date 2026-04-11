@@ -191,6 +191,11 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    jira_oauth_callback = {
+      route_key       = "GET /api/v1/integrations/jira/callback"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     api = {
       route_key       = "ANY /api/v1/{proxy+}"
       integration_key = "foundation_api"
