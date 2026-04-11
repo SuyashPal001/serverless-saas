@@ -683,6 +683,17 @@ resource "aws_secretsmanager_secret" "google_client_secret" {
   description = "Google OAuth client secret"
 }
 
+resource "aws_secretsmanager_secret" "jira_oauth" {
+  name        = "${var.project}/${var.environment}/jira-oauth"
+  description = "Atlassian OAuth 2.0 client credentials for Jira integration"
+}
+
+resource "aws_ssm_parameter" "jira_redirect_uri" {
+  name  = "${local.ssm_prefix}/jira-redirect-uri"
+  type  = "String"
+  value = var.jira_redirect_uri
+}
+
 resource "aws_secretsmanager_secret" "database" {
   name = "${var.project}/${var.environment}/database"
 }

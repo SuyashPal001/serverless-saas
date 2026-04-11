@@ -154,6 +154,12 @@ variable "ws_token_secret" {
   sensitive   = true
 }
 
+# Jira OAuth
+variable "jira_redirect_uri" {
+  description = "Redirect URI registered in the Atlassian OAuth app for Jira"
+  type        = string
+}
+
 # -------------------------------------------------------
 # SES
 # -------------------------------------------------------
