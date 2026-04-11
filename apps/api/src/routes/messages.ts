@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, asc } from 'drizzle-orm';
+import { and, eq, asc, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
@@ -117,6 +117,41 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
 
     if (!result.success) {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    // For user messages: deduplicate within a 60-second window by (conversationId, content).
+    // The frontend pre-saves with fileId; the GCP relay also saves (without fileId).
+    // Whichever arrives first wins the INSERT; the second caller merges fileId if available.
+    if (result.data.role === 'user') {
+        const windowStart = new Date(Date.now() - 60_000);
+        const [existing] = await db
+            .select()
+            .from(messages)
+            .where(and(
+                eq(messages.conversationId, conversationId),
+                eq(messages.tenantId, tenantId),
+                eq(messages.role, 'user'),
+                eq(messages.content, result.data.content),
+                gte(messages.createdAt, windowStart),
+            ))
+            .limit(1);
+
+        if (existing) {
+            const incomingAttachments = result.data.attachments as Array<{ fileId?: string; name: string; type: string; size?: number }> | null;
+            const existingAttachments = existing.attachments as Array<{ fileId?: string; name: string; type: string; size?: number }> | null;
+            const incomingHasFileId = incomingAttachments?.some(a => a.fileId);
+            const existingHasFileId = existingAttachments?.some(a => a.fileId);
+
+            if (incomingHasFileId && !existingHasFileId) {
+                const [updated] = await db
+                    .update(messages)
+                    .set({ attachments: incomingAttachments })
+                    .where(eq(messages.id, existing.id))
+                    .returning();
+                return c.json({ data: updated }, 200);
+            }
+            return c.json({ data: existing }, 200);
+        }
     }
 
     const [message] = await db

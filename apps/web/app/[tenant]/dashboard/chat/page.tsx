@@ -414,6 +414,24 @@ export default function ChatPage() {
             );
         }
 
+        // Pre-save user message with fileIds so they survive page refresh.
+        // The GCP relay also saves the user message but may not include fileId.
+        // The /save endpoint deduplicates by content within 60s and merges fileId if missing.
+        if (attachments && attachments.some(a => a.fileId)) {
+            api.post(`/api/v1/conversations/${conversationId}/messages/save`, {
+                role: 'user',
+                content,
+                attachments: attachments.map(a => ({
+                    fileId: a.fileId,
+                    name: a.name,
+                    type: a.type,
+                    size: a.size,
+                })),
+            }).catch((err) => {
+                console.warn('[pre-save] Failed to save user message with fileIds:', err);
+            });
+        }
+
         // Optimistic user message
         queryClient.setQueryData<MessagesResponse>(["messages", conversationId], (old) => {
             const newMessage: Message = {
