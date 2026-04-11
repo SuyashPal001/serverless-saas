@@ -770,7 +770,15 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
         tenantId
     );
 
-    // Upsert — provider='zoho_crm', permissions=['crm']
+    // Map service → permission label (zoho_crm → 'crm', zoho_mail → 'mail', zoho_cliq → 'cliq')
+    const zohoPermission: Record<string, string> = {
+        zoho_crm:  'crm',
+        zoho_mail: 'mail',
+        zoho_cliq: 'cliq',
+    };
+    const permission = zohoPermission[service] ?? service;
+
+    // Upsert — provider=service, permissions=[permission]
     try {
         await db.execute(sql`
             INSERT INTO integrations
@@ -778,7 +786,7 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
                  status, permissions, created_by)
             VALUES
                 (${tenantId}, ${service}, '', ${credentialsEnc},
-                 'active', ARRAY['crm']::text[], ${userId})
+                 'active', ARRAY[${permission}]::text[], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
                 credentials_enc = EXCLUDED.credentials_enc,
