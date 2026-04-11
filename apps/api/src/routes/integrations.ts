@@ -207,7 +207,7 @@ integrationsRoutes.post('/zoho/mail/connect', async (c) => {
         client_id:     clientId,
         redirect_uri:  redirectUri,
         response_type: 'code',
-        scope:         'ZohoMail.messages.ALL,ZohoMail.folders.READ',
+        scope:         'ZohoMail.accounts.READ,ZohoMail.messages.READ,ZohoMail.messages.CREATE',
         access_type:   'offline',
         prompt:        'consent',
         state,
