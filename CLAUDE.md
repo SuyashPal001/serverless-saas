@@ -562,3 +562,122 @@ User message → Relay (no RAG injection) → OpenClaw → Gemini decides to cal
 - Follow-up with pronoun ("what about it?") → query rewritten before search
 - Document question → retrieve_documents called → answer with [1] [2] citations
 - No relevant docs → agent says "I couldn't find this in your documents"
+
+## OAuth Integration Pattern (April 2026)
+
+### Architecture
+Each third-party connector is a separate OAuth flow with its own provider row in the `integrations` table. Privacy-first: one row per service, minimal scopes.
+
+### Files to touch for every new connector
+| File | What to add |
+|---|---|
+| `apps/api/src/routes/integrations.ts` | `POST /{provider}/connect` route + `GET /{provider}/callback` export |
+| `apps/api/src/app.ts` | Import callback route + `publicApi.route('/integrations', ...)` |
+| `template.yaml` | `CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI` env vars (×2 Lambda functions) |
+| `infra/terraform/foundation/main.tf` | `aws_secretsmanager_secret`, `aws_ssm_parameter` redirect URI, public callback route |
+| `infra/terraform/foundation/variables.tf` | `var.{provider}_redirect_uri` |
+| `apps/web/app/[tenant]/dashboard/integrations/page.tsx` | Icon component, `CONNECT_URLS`, `CONNECTED_NAMES`, CATALOGUE card |
+
+### Backend connect route pattern
+```typescript
+integrationsRoutes.post('/{provider}/connect', async (c) => {
+    // 1. permission check — integrations:create
+    // 2. read CLIENT_ID + REDIRECT_URI from env
+    // 3. query tenants table for slug (for post-auth redirect)
+    // 4. build state: { tenantId, userId, slug, service: 'provider_name', ts: Date.now() }
+    // 5. base64-encode state
+    // 6. build OAuth URL with URLSearchParams
+    // 7. return c.json({ url })
+});
+```
+
+### Backend callback route pattern
+```typescript
+export const {provider}OAuthCallbackRoute = new Hono<AppEnv>();
+{provider}OAuthCallbackRoute.get('/{provider}/callback', async (c) => {
+    // 1. decode & validate state (10-min window via ts)
+    // 2. exchange code for tokens at provider token URL
+    // 3. check access_token + refresh_token present
+    // 4. encryptCredentials({ accessToken, refreshToken, expiresAt }, tenantId)
+    // 5. upsert into integrations: provider=service, permissions=[permission], status='active'
+    // 6. c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`)
+});
+```
+
+### Credentials storage
+- Encrypted with AES-256-GCM via `encryptCredentials()` — key derived per-tenant using scrypt
+- Stored in `integrations.credentials_enc` — never plaintext
+- Object shape: `{ accessToken, refreshToken, expiresAt }` (expiresAt = Unix ms timestamp)
+
+### Provider-specific notes
+| Provider | Auth URL | Token URL | Scope format | Body format | Notes |
+|---|---|---|---|---|---|
+| Google | `accounts.google.com/o/oauth2/v2/auth` | `oauth2.googleapis.com/token` | space-separated | form-encoded | `access_type=offline`, `prompt=consent` |
+| Zoho | `accounts.zoho.in/oauth/v2/auth` | `accounts.zoho.in/oauth/v2/token` | comma-separated | form-encoded | India DC (`.in` not `.com`) |
+| Atlassian/Jira | `auth.atlassian.com/authorize` | `auth.atlassian.com/oauth/token` | space-separated | **JSON** | Requires `audience=api.atlassian.com`; refresh token via `offline_access` scope (not `access_type`) |
+
+### Terraform secret pattern
+```hcl
+# Secret (value set manually in AWS console)
+resource "aws_secretsmanager_secret" "{provider}_oauth" {
+  name        = "${var.project}/${var.environment}/{provider}-oauth"
+  description = "OAuth client credentials for {Provider} integration"
+}
+
+# Redirect URI SSM param (value from tfvars)
+resource "aws_ssm_parameter" "{provider}_redirect_uri" {
+  name  = "${local.ssm_prefix}/{provider}-redirect-uri"
+  type  = "String"
+  value = var.{provider}_redirect_uri
+}
+```
+
+### template.yaml env var pattern
+```yaml
+# Credentials from Secrets Manager (inline JSON — only for small secrets)
+{PROVIDER}_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/{provider}-oauth:SecretString:client_id}}"
+{PROVIDER}_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/{provider}-oauth:SecretString:client_secret}}"
+# Redirect URI from SSM
+{PROVIDER}_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/{provider}-redirect-uri}}"
+```
+
+### GCP_SA_KEY — do NOT inline in env vars
+The GCP service account key JSON is too large for Lambda env vars (4KB limit).
+Store as ARN only; read at runtime via `getGcpCredentials()` in `packages/foundation/ai/src/gcp-credentials.ts`.
+```yaml
+GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
+```
+
+### Frontend card pattern
+```typescript
+// CONNECT_URLS — maps provider string to backend endpoint
+const CONNECT_URLS: Record<string, string> = {
+    provider_name: '/api/v1/integrations/{route}/connect',
+};
+
+// CONNECTED_NAMES — maps provider string to display name for toast
+const CONNECTED_NAMES: Record<string, string> = {
+    provider_name: 'Display Name',
+};
+
+// CATALOGUE entry
+{
+    provider: 'provider_name',
+    name: 'Display Name',
+    description: 'One line description',
+    scopes: ['Pill1', 'Pill2'],
+    icon: <ProviderIcon className="w-8 h-8" />,
+    available: true,
+}
+```
+
+### Connected integrations — currently live
+| Provider | `provider` value | `permissions` | Connect route |
+|---|---|---|---|
+| Gmail | `gmail` | `['gmail']` | `POST /google/gmail/connect` |
+| Google Drive | `drive` | `['drive']` | `POST /google/drive/connect` |
+| Google Calendar | `calendar` | `['calendar']` | `POST /google/calendar/connect` |
+| Zoho CRM | `zoho_crm` | `['crm']` | `POST /zoho/crm/connect` |
+| Zoho Mail | `zoho_mail` | `['mail']` | `POST /zoho/mail/connect` |
+| Zoho Cliq | `zoho_cliq` | `['cliq']` | `POST /zoho/cliq/connect` |
+| Jira | `jira` | `['jira']` | `POST /jira/connect` |
