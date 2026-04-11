@@ -109,17 +109,21 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 
 const CONNECT_URLS: Record<string, string> = {
-    gmail:    '/api/v1/integrations/google/gmail/connect',
-    drive:    '/api/v1/integrations/google/drive/connect',
-    calendar: '/api/v1/integrations/google/calendar/connect',
-    zoho_crm: '/api/v1/integrations/zoho/crm/connect',
+    gmail:     '/api/v1/integrations/google/gmail/connect',
+    drive:     '/api/v1/integrations/google/drive/connect',
+    calendar:  '/api/v1/integrations/google/calendar/connect',
+    zoho_crm:  '/api/v1/integrations/zoho/crm/connect',
+    zoho_mail: '/api/v1/integrations/zoho/mail/connect',
+    zoho_cliq: '/api/v1/integrations/zoho/cliq/connect',
 };
 
 const CONNECTED_NAMES: Record<string, string> = {
-    gmail:    'Gmail',
-    drive:    'Google Drive',
-    calendar: 'Google Calendar',
-    zoho_crm: 'Zoho CRM',
+    gmail:     'Gmail',
+    drive:     'Google Drive',
+    calendar:  'Google Calendar',
+    zoho_crm:  'Zoho CRM',
+    zoho_mail: 'Zoho Mail',
+    zoho_cliq: 'Zoho Cliq',
 };
 
 const CATALOGUE: CatalogueEntry[] = [
@@ -152,6 +156,22 @@ const CATALOGUE: CatalogueEntry[] = [
         name: 'Zoho CRM',
         description: 'Manage contacts, leads and deals',
         scopes: ['Contacts', 'Leads', 'Deals'],
+        icon: <ZohoIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'zoho_mail',
+        name: 'Zoho Mail',
+        description: 'Read and send emails via Zoho Mail',
+        scopes: ['Messages', 'Folders'],
+        icon: <ZohoIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'zoho_cliq',
+        name: 'Zoho Cliq',
+        description: 'Send messages and read channels',
+        scopes: ['Messages', 'Channels'],
         icon: <ZohoIcon className="w-8 h-8" />,
         available: true,
     },

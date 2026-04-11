@@ -54,7 +54,9 @@ integrationsRoutes.get('/providers', async (c) => {
         { id: 'gmail',    name: 'Gmail',           type: 'oauth', description: 'Read, search and send emails' },
         { id: 'drive',    name: 'Google Drive',    type: 'oauth', description: 'Search and read files from Drive' },
         { id: 'calendar', name: 'Google Calendar', type: 'oauth', description: 'View and create calendar events' },
-        { id: 'zoho_crm', name: 'Zoho CRM',        type: 'oauth', description: 'Manage contacts, leads and deals' },
+        { id: 'zoho_crm',  name: 'Zoho CRM',  type: 'oauth', description: 'Manage contacts, leads and deals' },
+        { id: 'zoho_mail', name: 'Zoho Mail', type: 'oauth', description: 'Read and send emails via Zoho Mail' },
+        { id: 'zoho_cliq', name: 'Zoho Cliq', type: 'oauth', description: 'Send messages and read channels' },
         { id: 'github',   name: 'GitHub',          type: 'mcp' },
         { id: 'linear',   name: 'Linear',          type: 'mcp' },
         { id: 'slack',    name: 'Slack',           type: 'mcp' },
@@ -163,6 +165,92 @@ integrationsRoutes.post('/zoho/crm/connect', async (c) => {
         redirect_uri:  redirectUri,
         response_type: 'code',
         scope:         'ZohoCRM.modules.ALL,ZohoCRM.settings.ALL',
+        access_type:   'offline',
+        prompt:        'consent',
+        state,
+    });
+
+    const url = `https://accounts.zoho.in/oauth/v2/auth?${params.toString()}`;
+    return c.json({ url });
+});
+
+// POST /integrations/zoho/mail/connect — generate Zoho Mail OAuth URL
+integrationsRoutes.post('/zoho/mail/connect', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id as string;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'integrations', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const clientId    = process.env.ZOHO_CLIENT_ID;
+    const redirectUri = process.env.ZOHO_REDIRECT_URI;
+
+    if (!clientId || !redirectUri) {
+        return c.json({ error: 'Zoho OAuth not configured', code: 'CONFIGURATION_ERROR' }, 500);
+    }
+
+    const tenantRow = await db
+        .select({ slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+    const slug = tenantRow[0]?.slug ?? '';
+
+    const state = Buffer.from(
+        JSON.stringify({ tenantId, userId, slug, service: 'zoho_mail', ts: Date.now() })
+    ).toString('base64');
+
+    const params = new URLSearchParams({
+        client_id:     clientId,
+        redirect_uri:  redirectUri,
+        response_type: 'code',
+        scope:         'ZohoMail.messages.ALL,ZohoMail.folders.READ',
+        access_type:   'offline',
+        prompt:        'consent',
+        state,
+    });
+
+    const url = `https://accounts.zoho.in/oauth/v2/auth?${params.toString()}`;
+    return c.json({ url });
+});
+
+// POST /integrations/zoho/cliq/connect — generate Zoho Cliq OAuth URL
+integrationsRoutes.post('/zoho/cliq/connect', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id as string;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'integrations', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const clientId    = process.env.ZOHO_CLIENT_ID;
+    const redirectUri = process.env.ZOHO_REDIRECT_URI;
+
+    if (!clientId || !redirectUri) {
+        return c.json({ error: 'Zoho OAuth not configured', code: 'CONFIGURATION_ERROR' }, 500);
+    }
+
+    const tenantRow = await db
+        .select({ slug: tenants.slug })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+    const slug = tenantRow[0]?.slug ?? '';
+
+    const state = Buffer.from(
+        JSON.stringify({ tenantId, userId, slug, service: 'zoho_cliq', ts: Date.now() })
+    ).toString('base64');
+
+    const params = new URLSearchParams({
+        client_id:     clientId,
+        redirect_uri:  redirectUri,
+        response_type: 'code',
+        scope:         'ZohoCliq.messages.ALL,ZohoCliq.channels.READ',
         access_type:   'offline',
         prompt:        'consent',
         state,
