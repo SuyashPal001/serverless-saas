@@ -2,30 +2,30 @@ import { generateText, type CoreMessage, type CoreToolMessage } from 'ai';
 import { createVertex } from '@ai-sdk/google-vertex';
 import type { AgentRuntime } from '../runtime/interface';
 import type { AgentRunRequest, AgentRunResponse, AgentMessage } from '../runtime/types';
+import { getGcpCredentials } from '../gcp-credentials';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_LOCATION = 'us-central1';
 
 /**
  * Build a Vertex AI provider instance.
- * Prefers GCP_SA_KEY (JSON string) — falls back to Application Default Credentials.
+ * Reads credentials via getGcpCredentials() (cached after first call).
+ * Falls back to Application Default Credentials when no SA key is configured.
  */
-function buildProvider() {
-    const saKeyRaw = process.env.GCP_SA_KEY;
-
-    if (saKeyRaw) {
-        const credentials = JSON.parse(saKeyRaw) as { project_id: string };
+async function buildProvider() {
+    // ADC fallback when no SA key source is configured at all
+    if (!process.env.GCP_SA_KEY_SECRET_ARN && !process.env.GCP_SA_KEY) {
         return createVertex({
-            project: credentials.project_id,
+            project: process.env.GCP_PROJECT_ID,
             location: process.env.GCP_LOCATION ?? DEFAULT_LOCATION,
-            googleAuthOptions: { credentials },
         });
     }
 
-    // ADC path — relies on GOOGLE_APPLICATION_CREDENTIALS or gcloud login
+    const credentials = await getGcpCredentials();
     return createVertex({
-        project: process.env.GCP_PROJECT_ID,
+        project: credentials.project_id,
         location: process.env.GCP_LOCATION ?? DEFAULT_LOCATION,
+        googleAuthOptions: { credentials },
     });
 }
 
@@ -97,18 +97,13 @@ export class VertexAdapter implements AgentRuntime {
     }
 
     async isAvailable(): Promise<boolean> {
-        try {
-            buildProvider();
-            return !!(process.env.GCP_SA_KEY || process.env.GCP_PROJECT_ID);
-        } catch {
-            return false;
-        }
+        return !!(process.env.GCP_SA_KEY_SECRET_ARN || process.env.GCP_SA_KEY || process.env.GCP_PROJECT_ID);
     }
 
     async run(request: AgentRunRequest): Promise<AgentRunResponse> {
         const { skill, policy, messages } = request;
 
-        const vertex = buildProvider();
+        const vertex = await buildProvider();
         const modelId = (skill.config.model as string | undefined) ?? DEFAULT_MODEL;
 
         // Merge skill systemPrompt with any explicit system messages in the thread

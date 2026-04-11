@@ -1,5 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import * as crypto from 'crypto';
+import { getGcpCredentials } from './gcp-credentials';
 
 const EMBEDDING_MODEL = 'text-embedding-004';
 const EMBEDDING_DIMENSIONS = 768;
@@ -16,9 +17,7 @@ export async function embedTexts(
   texts: string[],
   taskType: TaskType
 ): Promise<EmbeddingResult[]> {
-  const saKeyRaw = process.env.GCP_SA_KEY;
-  if (!saKeyRaw) throw new Error('GCP_SA_KEY not set');
-  const credentials = JSON.parse(saKeyRaw);
+  const credentials = await getGcpCredentials();
 
   const auth = new GoogleAuth({
     credentials,

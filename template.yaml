@@ -72,7 +72,7 @@ Resources:
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
           WORKER_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
-          GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
           GCP_LOCATION: "us-central1"
           GOOGLE_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/google-oauth:SecretString:client_id}}"
           GOOGLE_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/google-oauth:SecretString:client_secret}}"
@@ -103,7 +103,7 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
-          GCP_SA_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/gcp-sa-key}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
           GCP_LOCATION: "us-central1"
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
     Metadata:

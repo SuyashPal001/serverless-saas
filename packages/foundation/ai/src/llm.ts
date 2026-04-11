@@ -1,4 +1,5 @@
 import { GoogleAuth } from 'google-auth-library';
+import { getGcpCredentials } from './gcp-credentials';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_LOCATION = 'us-central1';
@@ -12,9 +13,7 @@ export interface GenerateTextParams {
 }
 
 export async function generateTextVertex(params: GenerateTextParams): Promise<string> {
-  const saKeyRaw = process.env.GCP_SA_KEY;
-  if (!saKeyRaw) throw new Error('GCP_SA_KEY not set');
-  const credentials = JSON.parse(saKeyRaw);
+  const credentials = await getGcpCredentials();
 
   const auth = new GoogleAuth({
     credentials,
