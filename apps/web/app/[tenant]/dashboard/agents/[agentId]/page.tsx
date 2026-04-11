@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play, AlertCircle, User, Cpu, Calendar, Pause } from "lucide-react";
+import { ArrowLeft, Play, AlertCircle, User, Cpu, Calendar, Pause, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
@@ -14,32 +14,44 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { WorkflowsList } from "@/components/platform/agents/WorkflowsList";
 import { toast } from "sonner";
 import type { AgentDetail, AgentStatus } from "@/components/platform/agents/types";
 import { cn } from "@/lib/utils";
-import { Lock, Save, X, Edit2 } from "lucide-react";
+import { Save, X, Edit2 } from "lucide-react";
 
 interface LLMProvider {
     id: string;
     provider: string;
     model: string;
     displayName: string;
+    openclawModelId: string;
     isDefault: boolean;
-    status: 'live' | 'coming_soon';
+    status: string; // 'live' | 'inactive' | 'coming_soon'
 }
 
 interface LLMProvidersResponse {
     providers: LLMProvider[];
 }
+
+const PROVIDER_LABELS: Record<string, string> = {
+    vertex: 'Google',
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    mistral: 'Mistral',
+    openrouter: 'OpenRouter',
+    kimi: 'Kimi',
+};
+
+const PROVIDER_BADGE_COLORS: Record<string, string> = {
+    vertex: 'bg-blue-500/10 text-blue-400',
+    anthropic: 'bg-orange-500/10 text-orange-400',
+    openai: 'bg-emerald-500/10 text-emerald-400',
+    mistral: 'bg-purple-500/10 text-purple-400',
+    openrouter: 'bg-slate-500/10 text-slate-400',
+    kimi: 'bg-teal-500/10 text-teal-400',
+};
 
 const typeColors: Record<string, string> = {
     ops: "bg-blue-500/10 text-blue-500",
@@ -62,10 +74,7 @@ export default function AgentDetailPage() {
     const { tenantId, permissions = [] } = useTenant();
 
     const [isEditing, setIsEditing] = React.useState(false);
-    const [editForm, setEditForm] = React.useState({
-        name: "",
-        llmProviderId: "",
-    });
+    const [editForm, setEditForm] = React.useState({ name: "" });
 
     const { data: agent, isLoading: isLoadingAgent, error: agentError } = useQuery({
         queryKey: ["agents", agentId],
@@ -81,21 +90,13 @@ export default function AgentDetailPage() {
 
     React.useEffect(() => {
         if (agent) {
-            setEditForm({
-                name: agent.name,
-                llmProviderId: agent.llmProviderId || "",
-            });
+            setEditForm({ name: agent.name });
         }
     }, [agent]);
 
     const updateAgentMutation = useMutation({
-        mutationFn: (values: { name?: string; llmProviderId?: string; status?: AgentStatus }) => {
-            const payload = { ...values };
-            if (payload.llmProviderId === "") {
-                delete payload.llmProviderId;
-            }
-            return api.patch(`/api/v1/agents/${agentId}`, payload);
-        },
+        mutationFn: (values: { name?: string; status?: AgentStatus }) =>
+            api.patch(`/api/v1/agents/${agentId}`, values),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
             queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
@@ -104,6 +105,19 @@ export default function AgentDetailPage() {
         },
         onError: (error: any) => {
             toast.error(error.data?.message || error.message || "Failed to update agent");
+        },
+    });
+
+    const updateModelMutation = useMutation({
+        mutationFn: (llmProviderId: string) =>
+            api.patch(`/api/v1/agents/${agentId}`, { llmProviderId }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+            queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
+            toast.success("Model updated");
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || error.message || "Failed to update model");
         },
     });
 
@@ -274,41 +288,16 @@ export default function AgentDetailPage() {
                                 <div className="rounded-lg bg-primary/10 p-2 text-primary">
                                     <Cpu className="h-5 w-5" />
                                 </div>
-                                <div className="space-y-0.5 w-full">
+                                <div className="space-y-0.5">
                                     <p className="text-sm font-medium text-muted-foreground">AI Model</p>
                                     {isLoadingAgent ? (
                                         <Skeleton className="h-5 w-24" />
-                                    ) : isEditing ? (
-                                        <Select
-                                            value={editForm.llmProviderId}
-                                            onValueChange={(val) => setEditForm(prev => ({ ...prev, llmProviderId: val }))}
-                                        >
-                                            <SelectTrigger className="w-full mt-1">
-                                                <SelectValue placeholder="Select a model" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {providers.map((p) => (
-                                                    <SelectItem
-                                                        key={p.id}
-                                                        value={p.id}
-                                                        disabled={p.status === 'coming_soon'}
-                                                        className={cn(p.status === 'coming_soon' && "opacity-50")}
-                                                    >
-                                                        <div className="flex items-center justify-between w-full gap-2">
-                                                            <span>{p.displayName}</span>
-                                                            {p.status === 'coming_soon' && (
-                                                                <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1">
-                                                                    Coming Soon
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
                                     ) : (
                                         <p className="font-semibold">
-                                            {providers.find(p => p.id === agent?.llmProviderId)?.displayName || agent?.model || "Not set"}
+                                            {providers.find(p => p.id === agent?.llmProviderId)?.displayName
+                                                || providers.find(p => p.isDefault)?.displayName
+                                                || agent?.model
+                                                || "Not set"}
                                         </p>
                                     )}
                                 </div>
@@ -343,6 +332,74 @@ export default function AgentDetailPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* ── Model Picker ─────────────────────────────────────────────── */}
+            {!isLoadingAgent && providers.length > 0 && (() => {
+                const effectiveId = agent?.llmProviderId || providers.find(p => p.isDefault)?.id;
+                return (
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold">AI Model</h3>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Select the model this agent runs on. Changes take effect immediately.
+                                </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                {providers.map((p) => {
+                                    const isSelected = p.id === effectiveId;
+                                    const isLive = p.status === 'live';
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            disabled={!isLive || !canUpdate || updateModelMutation.isPending}
+                                            onClick={() => {
+                                                if (isLive && canUpdate && p.id !== agent?.llmProviderId) {
+                                                    updateModelMutation.mutate(p.id);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "relative flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors",
+                                                isLive && canUpdate
+                                                    ? "cursor-pointer hover:border-primary/60 hover:bg-muted/30"
+                                                    : "cursor-not-allowed opacity-50",
+                                                isSelected
+                                                    ? "border-primary bg-primary/5"
+                                                    : "border-border bg-transparent",
+                                            )}
+                                        >
+                                            {isSelected && (
+                                                <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                                </span>
+                                            )}
+                                            <div className="flex items-center gap-2 pr-6">
+                                                <Badge
+                                                    variant="secondary"
+                                                    className={cn(
+                                                        "text-[10px] h-5 px-1.5 font-medium",
+                                                        PROVIDER_BADGE_COLORS[p.provider] ?? "bg-muted text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {PROVIDER_LABELS[p.provider] ?? p.provider}
+                                                </Badge>
+                                                {!isLive && (
+                                                    <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                                                        Coming Soon
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <span className="text-sm font-medium leading-tight">{p.displayName}</span>
+                                            <span className="text-[11px] text-muted-foreground font-mono">{p.model}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                );
+            })()}
 
             <div className="pt-4">
                 <WorkflowsList agentId={agentId} />
