@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
+import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
@@ -64,6 +65,11 @@ agentsRoutes.get('/:id', async (c) => {
         return c.json({ error: 'Agent not found' }, 404);
     }
 
+    const creator = agent.createdBy
+        ? (await db.select({ name: users.name }).from(users)
+            .where(eq(users.id, agent.createdBy)).limit(1))[0]
+        : null;
+
     let llmProvider = null;
     if (agent.llmProviderId) {
         const row = (await db
@@ -83,7 +89,7 @@ agentsRoutes.get('/:id', async (c) => {
         }
     }
 
-    return c.json({ ...agent, llmProvider });
+    return c.json({ ...agent, llmProvider, createdByName: creator?.name ?? null });
 });
 
 // POST /agents — create agent + api key + membership

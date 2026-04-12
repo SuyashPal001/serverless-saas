@@ -33,7 +33,6 @@ import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { AgentConfigSheet } from "./AgentConfigSheet";
 
 interface AgentCardProps {
     agent: Agent;
@@ -44,7 +43,6 @@ export function AgentCard({ agent }: AgentCardProps) {
     const params = useParams();
     const tenantSlug = params.tenant as string;
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
-    const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
 
     const formatRelativeTime = (date: string) => {
         const now = new Date();
@@ -121,9 +119,11 @@ export function AgentCard({ agent }: AgentCardProps) {
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setIsConfigSheetOpen(true)}>
-                                <Settings2 className="mr-2 h-4 w-4" />
-                                Configure
+                            <DropdownMenuItem asChild>
+                                <Link href={`/${tenantSlug}/dashboard/agents/${agent.id}`}>
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Configure
+                                </Link>
                             </DropdownMenuItem>
                             {agent.status === "active" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
@@ -166,12 +166,6 @@ export function AgentCard({ agent }: AgentCardProps) {
                 </CardContent>
             </Card>
             </Link>
-
-            <AgentConfigSheet
-                agent={agent}
-                open={isConfigSheetOpen}
-                onOpenChange={setIsConfigSheetOpen}
-            />
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>

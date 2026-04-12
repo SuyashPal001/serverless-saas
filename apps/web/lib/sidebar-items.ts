@@ -61,12 +61,17 @@ export function getSidebarItems(
             href: `${base}/agents`, 
             icon: Bot 
         });
-        items.push({ 
-            label: "Files", 
-            href: `${base}/files`, 
-            icon: FolderOpen 
+        items.push({
+            label: "Files",
+            href: `${base}/files`,
+            icon: FolderOpen
         });
-        
+        items.push({
+            label: "Connectors",
+            href: `${base}/integrations`,
+            icon: Plug,
+        });
+
         items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
         items.push({
@@ -129,14 +134,11 @@ export function getSidebarItems(
             planGateFeature: 'webhooks',
             locked: webhooksLocked,
         });
-        
-        // Integrations - Starter+ feature
         items.push({
             label: "Integrations",
-            href: `${base}/integrations`,
-            icon: Plug,
-            planRequired: 'starter',
-            planGateFeature: 'mcp_integrations',
+            href: `${base}/custom-integrations`,
+            icon: Sliders,
+            planRequired: 'business',
             locked: integrationsLocked,
         });
     } else {

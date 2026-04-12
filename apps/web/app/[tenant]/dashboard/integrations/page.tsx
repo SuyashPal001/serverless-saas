@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -15,11 +17,13 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/platform/PermissionGate";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { api } from "@/lib/api";
 import { useIntegrations } from "@/hooks/useIntegrations";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -232,9 +236,27 @@ const CATALOGUE: CatalogueEntry[] = [
 
 export default function IntegrationsPage() {
     const { can } = usePermissions();
+    const { tenantSlug } = useTenant();
     const searchParams = useSearchParams();
     const router = useRouter();
     const { isLoading, refetch, isConnected, getIntegration } = useIntegrations();
+
+    const { data: entData } = useQuery({
+        queryKey: ['entitlements', tenantSlug],
+        queryFn: () => api.get<any>('/api/v1/entitlements'),
+        staleTime: 60_000,
+    });
+
+    // integrations entitlement — available once entitlements route exposes it
+    const intEnt = entData?.integrations as { used: number; limit: number; unlimited: boolean } | undefined;
+    // fall back to catalogue count so the bar is useful even before the route exposes integrations
+    const connectedCount = CATALOGUE.filter(e => isConnected(e.provider)).length;
+    const used = intEnt?.used ?? connectedCount;
+    const limit = intEnt?.limit ?? 0;
+    const unlimited = intEnt?.unlimited ?? false;
+    const hasLimitData = unlimited || limit > 0;
+    const atLimit = hasLimitData && !unlimited && used >= limit;
+    const pct = hasLimitData && !unlimited ? Math.min((used / limit) * 100, 100) : 0;
 
     const [connecting, setConnecting] = useState<string | null>(null);
     const [disconnecting, setDisconnecting] = useState(false);
@@ -301,12 +323,45 @@ export default function IntegrationsPage() {
                 {/* Header */}
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                        Integrations
+                        Connectors
                     </h1>
                     <p className="text-muted-foreground mt-2">
                         Connect your workspace with external tools and services.
                     </p>
                 </div>
+
+                {/* Usage bar — rendered only when limit data is available */}
+                {hasLimitData && (
+                    <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">
+                                <span className={cn("font-medium", atLimit ? "text-red-500" : "text-foreground")}>
+                                    {used}
+                                </span>
+                                {unlimited ? " connectors connected" : ` of ${limit} connectors connected`}
+                            </span>
+                            {atLimit && (
+                                <Link
+                                    href={`/${tenantSlug}/dashboard/billing`}
+                                    className="text-xs font-medium text-red-500 hover:text-red-400 transition-colors"
+                                >
+                                    Upgrade for more →
+                                </Link>
+                            )}
+                        </div>
+                        {!unlimited && (
+                            <Progress
+                                value={pct}
+                                className={cn(
+                                    "h-1.5",
+                                    atLimit         ? "[&>div]:bg-red-500" :
+                                    pct >= 80       ? "[&>div]:bg-amber-500" :
+                                                      "[&>div]:bg-muted-foreground/40"
+                                )}
+                            />
+                        )}
+                    </div>
+                )}
 
                 {/* Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

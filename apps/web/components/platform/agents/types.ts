@@ -30,6 +30,7 @@ export interface AgentsResponse {
 
 export interface AgentDetail extends Agent {
     createdBy: string;
+    createdByName: string | null;
     description?: string;
 }
 

@@ -4,6 +4,7 @@ import { db } from '@serverless-saas/database';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { agents } from '@serverless-saas/database/schema/agents';
+import { integrations } from '@serverless-saas/database/schema/integrations';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import type { AppEnv } from '../types';
 
@@ -68,6 +69,15 @@ entitlementsRoutes.get('/', async (c) => {
                 eq(agents.status, 'active')
             ));
 
+        // Integrations: COUNT integrations WHERE tenantId AND status = 'active'
+        const [integrationsCount] = await db
+            .select({ count: sql<number>`COUNT(*)::int` })
+            .from(integrations)
+            .where(and(
+                eq(integrations.tenantId, tenantId),
+                eq(integrations.status, 'active')
+            ));
+
         // API calls: SUM usage_records WHERE tenantId AND metric = 'api_calls' AND recordedAt within current month
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -91,10 +101,11 @@ entitlementsRoutes.get('/', async (c) => {
             ));
 
         // Step 3: Build response object with exact shape
-        const seatsEntitlement = entitlementsByKey['seats'] || { enabled: false, valueLimit: 0, unlimited: false };
-        const apiCallsEntitlement = entitlementsByKey['api_calls'] || { enabled: false, valueLimit: 0, unlimited: false };
-        const agentsEntitlement = entitlementsByKey['agents'] || { enabled: false, valueLimit: 0, unlimited: false };
-        const messagesEntitlement = entitlementsByKey['messages'] || { enabled: false, valueLimit: 0, unlimited: false };
+        const seatsEntitlement         = entitlementsByKey['seats']         || { enabled: false, valueLimit: 0, unlimited: false };
+        const apiCallsEntitlement      = entitlementsByKey['api_calls']     || { enabled: false, valueLimit: 0, unlimited: false };
+        const agentsEntitlement        = entitlementsByKey['agents']        || { enabled: false, valueLimit: 0, unlimited: false };
+        const integrationsEntitlement  = entitlementsByKey['integrations']  || { enabled: false, valueLimit: 0, unlimited: false };
+        const messagesEntitlement      = entitlementsByKey['messages']      || { enabled: false, valueLimit: 0, unlimited: false };
 
         // Collect boolean feature flags keyed by feature.key (e.g. multi_llm_claude: true/false)
         const featureFlags: Record<string, boolean> = {};
@@ -119,6 +130,11 @@ entitlementsRoutes.get('/', async (c) => {
                 used: agentsCount?.count ?? 0,
                 limit: agentsEntitlement.valueLimit ?? 0,
                 unlimited: agentsEntitlement.unlimited ?? false,
+            },
+            integrations: {
+                used: integrationsCount?.count ?? 0,
+                limit: integrationsEntitlement.valueLimit ?? 0,
+                unlimited: integrationsEntitlement.unlimited ?? false,
             },
             messages: {
                 used: parseInt(messagesSum?.total ?? '0', 10),
