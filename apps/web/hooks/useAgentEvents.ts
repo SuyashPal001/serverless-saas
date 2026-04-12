@@ -145,7 +145,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
                 if (!currentMessageIdRef.current) {
                   currentMessageIdRef.current = event.messageId || crypto.randomUUID();
                 }
-                onMessageDeltaRef.current?.(event.text, currentMessageIdRef.current, event.conversationId);
+                onMessageDeltaRef.current?.(event.text, currentMessageIdRef.current!, event.conversationId);
                 break;
 
               case 'done':

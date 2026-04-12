@@ -1,10 +1,11 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
+import { getCacheClient, invalidateEntitlements } from '@serverless-saas/cache';
 import type { AppEnv } from '../types';
 
 
@@ -53,9 +54,8 @@ billingRoutes.get('/plan', async (c) => {
     return c.json({ data: data ?? null });
 });
 
-// POST /billing/upgrade — change plan in DB
-// TODO: wire payment provider (Stripe/Paddle) before going live
-billingRoutes.post('/upgrade', async (c) => {
+// Handler for upgrading/changing subscription plan
+const upgradeHandler = async (c: Context<AppEnv>) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
@@ -66,10 +66,11 @@ billingRoutes.post('/upgrade', async (c) => {
 
     const schema = z.object({
         plan: z.enum(['free', 'starter', 'business', 'enterprise']),
-        billingCycle: z.enum(['monthly', 'annual']),
+        billingCycle: z.enum(['monthly', 'annual']).optional().default('monthly'),
     });
 
-    const result = schema.safeParse(await c.req.json());
+    const body = await c.req.json().catch(() => ({}));
+    const result = schema.safeParse(body);
     if (!result.success) {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
@@ -106,8 +107,22 @@ billingRoutes.post('/upgrade', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
+    // Invalidate entitlements cache so middleware picks up new limits immediately (ADR-013)
+    try {
+        await invalidateEntitlements(getCacheClient() as any, tenantId);
+    } catch (cacheErr) {
+        console.error('Entitlements cache invalidation failed:', cacheErr);
+    }
+
     return c.json({ data: newSub }, 201);
-});
+};
+
+// POST /billing/upgrade — change plan in DB (legacy name)
+// TODO: wire payment provider (Stripe/Paddle) before going live
+billingRoutes.post('/upgrade', upgradeHandler);
+
+// POST /billing/subscription — change plan in DB (standard name used by frontend)
+billingRoutes.post('/subscription', upgradeHandler);
 
 // POST /billing/cancel — cancel active subscription
 // TODO: wire payment provider cancellation before going live
@@ -147,6 +162,13 @@ billingRoutes.post('/cancel', async (c) => {
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
+    }
+
+    // Invalidate entitlements cache
+    try {
+        await invalidateEntitlements(getCacheClient() as any, tenantId);
+    } catch (cacheErr) {
+        console.error('Entitlements cache invalidation failed:', cacheErr);
     }
 
     return c.json({ data: cancelled });

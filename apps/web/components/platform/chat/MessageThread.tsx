@@ -325,7 +325,7 @@ function MessageItem({
                 
                 {false && message.approvalRequest && (
                     <ApprovalCard 
-                        request={message.approvalRequest}
+                        request={message.approvalRequest!}
                         onApprove={() => onApprove?.(message.id, message.approvalRequest!.id)}
                         onDismiss={() => onDismiss?.(message.id, message.approvalRequest!.id)}
                     />

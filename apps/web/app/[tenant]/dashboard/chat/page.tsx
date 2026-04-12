@@ -511,28 +511,28 @@ export default function ChatPage() {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <h2 className="font-bold text-base tracking-tight truncate max-w-[200px] sm:max-w-[400px]">
-                                                    {selectedConversation.title || (selectedConversation.agent?.name ? `Chat with ${selectedConversation.agent.name}` : "Chat with Agent")}
+                                                    {selectedConversation?.title || (selectedConversation?.agent?.name ? `Chat with ${selectedConversation.agent.name}` : "Chat with Agent")}
                                                 </h2>
-                                                <Badge variant={selectedConversation.status === 'active' ? "default" : "secondary"} className="text-[10px] font-bold uppercase py-0 px-1.5 h-4.5 bg-primary/5 text-primary border-primary/20">
-                                                    {selectedConversation.status}
+                                                <Badge variant={selectedConversation?.status === 'active' ? "default" : "secondary"} className="text-[10px] font-bold uppercase py-0 px-1.5 h-4.5 bg-primary/5 text-primary border-primary/20">
+                                                    {selectedConversation?.status ?? "unknown"}
                                                 </Badge>
                                             </div>
                                             <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-3">
                                                 <span className="flex items-center gap-1">
-                                                    Agent: {selectedConversation.agent?.name || "Ready"} {selectedConversation.agent?.type ? `(${selectedConversation.agent.type})` : ""}
+                                                    Agent: {selectedConversation?.agent?.name || "Ready"} {selectedConversation?.agent?.type ? `(${selectedConversation.agent.type})` : ""}
                                                 </span>
-                                                {false && selectedConversation.agent && (
+                                                {false && selectedConversation?.agent && (
                                                     <Badge variant="outline" className="text-[10px] h-4 px-1.5 flex items-center gap-1 bg-muted/30 border-muted">
                                                         {(() => {
-                                                            const agent = selectedConversation.agent;
+                                                            const agent = selectedConversation!.agent!;
                                                             if (providers.length === 0) return agent.model || "Loading Model...";
                                                             const provider = providers.find(p => p.id === agent.llmProviderId)
                                                                 || providers.find(p => p.isDefault);
                                                             if (!provider) return agent.model || "Platform Default";
                                                             return (
                                                                 <>
-                                                                    {provider.status === 'coming_soon' && <Lock className="h-2 w-2" />}
-                                                                    {provider.displayName}
+                                                                    {provider?.status === 'coming_soon' && <Lock className="h-2 w-2" />}
+                                                                    {provider?.displayName}
                                                                 </>
                                                             );
                                                         })()}
