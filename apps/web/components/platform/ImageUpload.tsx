@@ -10,11 +10,12 @@ import { toast } from 'sonner';
 interface ImageUploadProps {
     value: string;
     onChange: (url: string) => void;
+    onFileIdChange?: (fileId: string) => void;
     fallbackText: string;
     disabled?: boolean;
 }
 
-export function ImageUpload({ value, onChange, fallbackText, disabled }: ImageUploadProps) {
+export function ImageUpload({ value, onChange, onFileIdChange, fallbackText, disabled }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -53,11 +54,14 @@ export function ImageUpload({ value, onChange, fallbackText, disabled }: ImageUp
                 size: file.size,
             });
 
-            // 4. Construct URL (strip query params from presigned URL)
-            const url = new URL(data.uploadUrl);
-            const publicUrl = `${url.origin}${url.pathname}`;
+            // 4. Get signed display URL
+            const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+                `/api/v1/files/${data.fileId}/presigned-url`
+            );
             
-            onChange(publicUrl);
+            onChange(presignedUrl);
+            if (onFileIdChange) onFileIdChange(data.fileId);
+            
             toast.success("Image uploaded successfully");
         } catch (error: any) {
             console.error('Upload error:', error);
