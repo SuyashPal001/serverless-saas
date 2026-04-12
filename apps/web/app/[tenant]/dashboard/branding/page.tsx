@@ -27,13 +27,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Palette, Bot, Image as ImageIcon, Type } from "lucide-react";
+import { Palette, Image as ImageIcon, Type } from "lucide-react";
 
 const hexColorSchema = z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Invalid hex color");
 
 const brandingFormSchema = z.object({
     brandName: z.string().max(100).optional().nullable(),
-    agentDisplayName: z.string().max(100).optional().nullable(),
     brandColor: hexColorSchema.or(z.string().length(0)).optional().nullable(),
     logoUrl: z.string().url().or(z.string().length(0)).optional().nullable(),
 });
@@ -55,7 +54,6 @@ export default function BrandingPage() {
         resolver: zodResolver(brandingFormSchema),
         defaultValues: {
             brandName: "",
-            agentDisplayName: "",
             brandColor: "#000000",
             logoUrl: "",
         },
@@ -65,7 +63,6 @@ export default function BrandingPage() {
         if (brandingData) {
             form.reset({
                 brandName: brandingData.brandName || "",
-                agentDisplayName: brandingData.agentDisplayName || "",
                 brandColor: brandingData.brandColor || "#000000",
                 logoUrl: brandingData.logoUrl || "",
             });
@@ -77,7 +74,6 @@ export default function BrandingPage() {
             // Convert empty strings to null for the API
             const payload = {
                 brandName: values.brandName || null,
-                agentDisplayName: values.agentDisplayName || null,
                 brandColor: values.brandColor || null,
                 logoUrl: values.logoUrl || null,
             };
@@ -150,22 +146,6 @@ export default function BrandingPage() {
                                             </FormControl>
                                             <FormDescription>
                                                 The name of your organization or project.
-                                            </FormDescription>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={form.control}
-                                    name="agentDisplayName"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Agent Display Name</FormLabel>
-                                            <FormControl>
-                                                <Input placeholder="e.g. Acme Assistant" {...field} value={field.value || ""} />
-                                            </FormControl>
-                                            <FormDescription>
-                                                How your AI agent identifies itself to users.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
