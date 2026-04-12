@@ -146,4 +146,6 @@ app.route('/api/v1', publicApi);
 app.route('/api/v1', internalApi);
 app.route('/api/v1', api);
 
+console.log('REGISTERED ROUTES:', api.routes.map(r => `${r.method} ${r.path}`));
+
 export { app };

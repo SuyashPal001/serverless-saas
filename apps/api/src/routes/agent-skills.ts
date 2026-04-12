@@ -25,6 +25,8 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
+    console.log('SKILLS ROUTE HIT', { agentId: c.req.param('agentId'), tenantId });
+
     if (!hasPermission(permissions, 'agents', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
