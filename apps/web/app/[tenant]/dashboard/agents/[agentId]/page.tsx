@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertCircle, User, Cpu, Calendar, Lock, Loader2 } from "lucide-react";
+import { ArrowLeft, AlertCircle, Lock, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
@@ -14,8 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import type { AgentDetail } from "@/components/platform/agents/types";
 
@@ -66,6 +68,15 @@ export default function AgentDetailPage() {
     const queryClient = useQueryClient();
     const { permissions = [] } = useTenant();
 
+    // Identity form state
+    const [identityForm, setIdentityForm] = React.useState({
+        name: "",
+        description: "",
+        avatarUrl: "",
+    });
+    const [isIdentityDirty, setIsIdentityDirty] = React.useState(false);
+
+    // Prompt + tools state
     const [promptDraft, setPromptDraft] = React.useState("");
     const [isPromptDirty, setIsPromptDirty] = React.useState(false);
     const [webSearchEnabled, setWebSearchEnabled] = React.useState(false);
@@ -89,6 +100,19 @@ export default function AgentDetailPage() {
     const providers = providersData?.providers || [];
     const existingSkill = skillsData?.data?.[0] ?? null;
 
+    // Seed identity form from fetched agent
+    React.useEffect(() => {
+        if (agent) {
+            setIdentityForm({
+                name: agent.name ?? "",
+                description: agent.description ?? "",
+                avatarUrl: agent.avatarUrl ?? "",
+            });
+            setIsIdentityDirty(false);
+        }
+    }, [agent]);
+
+    // Seed prompt + tools from fetched skill
     React.useEffect(() => {
         if (existingSkill) {
             setPromptDraft(existingSkill.systemPrompt ?? "");
@@ -96,6 +120,23 @@ export default function AgentDetailPage() {
             setIsPromptDirty(false);
         }
     }, [existingSkill]);
+
+    const updateIdentityMutation = useMutation({
+        mutationFn: (values: { name: string; description: string; avatarUrl: string }) =>
+            api.patch(`/api/v1/agents/${agentId}`, {
+                name: values.name || undefined,
+                description: values.description || null,
+                avatarUrl: values.avatarUrl || null,
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+            setIsIdentityDirty(false);
+            toast.success("Agent updated");
+        },
+        onError: (error: any) => {
+            toast.error(error.data?.message || error.message || "Failed to update agent");
+        },
+    });
 
     const saveSkillMutation = useMutation({
         mutationFn: ({ tools, systemPrompt }: { tools: string[]; systemPrompt: string }) => {
@@ -158,6 +199,14 @@ export default function AgentDetailPage() {
         || agent?.model
         || "Not set";
 
+    // Avatar initials fallback
+    const initials = (identityForm.name || agent?.name || "?")
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+
     if (agentError) {
         return (
             <PermissionGate resource="agents" action="read">
@@ -186,7 +235,7 @@ export default function AgentDetailPage() {
         <div className="space-y-8">
 
             {/* ── Header ───────────────────────────────────────────────────── */}
-            <div className="space-y-4">
+            <div className="space-y-3">
                 <Link
                     href={`/${tenantSlug}/dashboard/agents`}
                     className="flex items-center text-sm text-muted-foreground hover:text-foreground w-fit"
@@ -194,78 +243,143 @@ export default function AgentDetailPage() {
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Agents
                 </Link>
-
                 {isLoadingAgent ? (
-                    <div className="space-y-2">
-                        <Skeleton className="h-10 w-64" />
-                        <div className="flex gap-2">
-                            <Skeleton className="h-6 w-20" />
-                            <Skeleton className="h-6 w-20" />
-                        </div>
-                    </div>
+                    <Skeleton className="h-8 w-48" />
                 ) : (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-bold tracking-tight">{agent?.name}</h1>
-                            <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
-                                {agent?.type}
-                            </Badge>
-                            <Badge variant="outline" className={statusColors[agent?.status || ""]}>
-                                {agent?.status}
-                            </Badge>
-                        </div>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold tracking-tight">{agent?.name}</h1>
+                        <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
+                            {agent?.type}
+                        </Badge>
+                        <Badge variant="outline" className={statusColors[agent?.status || ""]}>
+                            {agent?.status}
+                        </Badge>
                     </div>
                 )}
             </div>
 
-            {/* ── Info card ────────────────────────────────────────────────── */}
+            {/* ── Section 1: Agent Identity ─────────────────────────────────── */}
             <Card>
                 <CardContent className="pt-6">
-                    <div className="grid gap-6 sm:grid-cols-3">
-                        <div className="flex items-start gap-3">
-                            <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                                <Cpu className="h-5 w-5" />
-                            </div>
-                            <div className="space-y-0.5">
-                                <p className="text-sm font-medium text-muted-foreground">AI Model</p>
-                                {isLoadingAgent ? (
-                                    <Skeleton className="h-5 w-24" />
-                                ) : (
-                                    <p className="font-semibold">{resolvedModel}</p>
-                                )}
-                            </div>
+                    <h3 className="text-sm font-semibold mb-4">Agent Identity</h3>
+                    {isLoadingAgent ? (
+                        <div className="space-y-4">
+                            <Skeleton className="h-16 w-16 rounded-full" />
+                            <Skeleton className="h-9 w-full" />
+                            <Skeleton className="h-20 w-full" />
                         </div>
-                        <div className="flex items-start gap-3">
-                            <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                                <User className="h-5 w-5" />
+                    ) : (
+                        <div className="space-y-5">
+                            {/* Avatar */}
+                            <div className="flex items-center gap-4">
+                                <div className="h-14 w-14 shrink-0 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center">
+                                    {identityForm.avatarUrl ? (
+                                        <img
+                                            src={identityForm.avatarUrl}
+                                            alt={identityForm.name}
+                                            className="h-full w-full object-cover"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = "none";
+                                            }}
+                                        />
+                                    ) : (
+                                        <span className="text-lg font-semibold text-primary">{initials}</span>
+                                    )}
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                    <Label className="text-xs text-muted-foreground">Image URL</Label>
+                                    <Input
+                                        placeholder="https://example.com/avatar.png"
+                                        value={identityForm.avatarUrl}
+                                        onChange={(e) => {
+                                            setIdentityForm((f) => ({ ...f, avatarUrl: e.target.value }));
+                                            setIsIdentityDirty(true);
+                                        }}
+                                        disabled={!canUpdate}
+                                        className="h-8 text-sm"
+                                    />
+                                </div>
                             </div>
-                            <div className="space-y-0.5">
-                                <p className="text-sm font-medium text-muted-foreground">Created By</p>
-                                {isLoadingAgent ? (
-                                    <Skeleton className="h-5 w-32" />
-                                ) : (
-                                    <p className="font-semibold">{agent?.createdByName ?? "Unknown"}</p>
-                                )}
+
+                            {/* Name */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">Name</Label>
+                                <Input
+                                    value={identityForm.name}
+                                    onChange={(e) => {
+                                        setIdentityForm((f) => ({ ...f, name: e.target.value }));
+                                        setIsIdentityDirty(true);
+                                    }}
+                                    disabled={!canUpdate}
+                                    placeholder="Agent name"
+                                />
                             </div>
+
+                            {/* Description */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">Description</Label>
+                                <Textarea
+                                    value={identityForm.description}
+                                    onChange={(e) => {
+                                        setIdentityForm((f) => ({ ...f, description: e.target.value }));
+                                        setIsIdentityDirty(true);
+                                    }}
+                                    disabled={!canUpdate}
+                                    placeholder="What does this agent do?"
+                                    rows={3}
+                                    className="resize-none text-sm"
+                                />
+                            </div>
+
+                            {canUpdate && isIdentityDirty && (
+                                <div className="flex justify-end">
+                                    <Button
+                                        size="sm"
+                                        onClick={() => updateIdentityMutation.mutate(identityForm)}
+                                        disabled={updateIdentityMutation.isPending || !identityForm.name.trim()}
+                                    >
+                                        {updateIdentityMutation.isPending && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        )}
+                                        Save
+                                    </Button>
+                                </div>
+                            )}
                         </div>
-                        <div className="flex items-start gap-3">
-                            <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                                <Calendar className="h-5 w-5" />
-                            </div>
-                            <div className="space-y-0.5">
-                                <p className="text-sm font-medium text-muted-foreground">Created Date</p>
-                                {isLoadingAgent ? (
-                                    <Skeleton className="h-5 w-40" />
-                                ) : (
-                                    <p className="font-semibold">{formattedDate}</p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* ── General Prompt ───────────────────────────────────────────── */}
+            {/* ── Section 2: Info ───────────────────────────────────────────── */}
+            <Card>
+                <CardContent className="pt-6">
+                    <h3 className="text-sm font-semibold mb-3">Info</h3>
+                    {isLoadingAgent ? (
+                        <div className="space-y-2">
+                            <Skeleton className="h-4 w-48" />
+                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-4 w-44" />
+                        </div>
+                    ) : (
+                        <dl className="space-y-2 text-sm">
+                            <div className="flex gap-2">
+                                <dt className="text-muted-foreground w-24 shrink-0">AI Model</dt>
+                                <dd className="text-foreground">{resolvedModel}</dd>
+                            </div>
+                            <div className="flex gap-2">
+                                <dt className="text-muted-foreground w-24 shrink-0">Created</dt>
+                                <dd className="text-foreground">{formattedDate}</dd>
+                            </div>
+                            <div className="flex gap-2">
+                                <dt className="text-muted-foreground w-24 shrink-0">Created by</dt>
+                                <dd className="text-foreground">{agent?.createdByName ?? "Unknown"}</dd>
+                            </div>
+                        </dl>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ── Section 3: General Prompt ─────────────────────────────────── */}
             <Card>
                 <CardContent className="pt-6">
                     <div className="mb-4">
@@ -308,7 +422,7 @@ export default function AgentDetailPage() {
                 </CardContent>
             </Card>
 
-            {/* ── Tools ────────────────────────────────────────────────────── */}
+            {/* ── Section 4: Tools ──────────────────────────────────────────── */}
             <Card>
                 <CardContent className="pt-6">
                     <div className="mb-4">

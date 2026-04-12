@@ -242,6 +242,8 @@ agentsRoutes.patch('/:id', async (c) => {
 
     const schema = z.object({
         name: z.string().min(1).max(100).optional(),
+        description: z.string().max(500).nullable().optional(),
+        avatarUrl: z.string().url().nullable().optional(),
         status: z.enum(['active', 'paused', 'retired']).optional(),
         model: z.string().optional(),
         llmProviderId: z.string().uuid().optional(),

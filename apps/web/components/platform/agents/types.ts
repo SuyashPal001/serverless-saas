@@ -31,7 +31,8 @@ export interface AgentsResponse {
 export interface AgentDetail extends Agent {
     createdBy: string;
     createdByName: string | null;
-    description?: string;
+    description: string | null;
+    avatarUrl: string | null;
 }
 
 export interface Workflow {
