@@ -73,7 +73,7 @@ export function ImageUpload({ value, onChange, fallbackText, disabled }: ImageUp
             <div className="flex items-center gap-4">
                 <div className="h-20 w-20 shrink-0 rounded-full overflow-hidden bg-muted border-2 border-border flex items-center justify-center relative">
                     {value ? (
-                        <img src={value} alt="Preview" className="h-full w-full object-cover" />
+                        <img src={value} alt="" className="h-full w-full object-cover" />
                     ) : (
                         <div className="text-xl font-bold text-muted-foreground uppercase">
                             {fallbackText.slice(0, 2)}
