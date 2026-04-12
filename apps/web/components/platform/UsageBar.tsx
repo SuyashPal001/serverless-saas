@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import { cn } from '@/lib/utils';
 
@@ -18,9 +18,9 @@ interface EntitlementsResponse {
 export function UsageBar() {
     const { tenantSlug } = useTenant();
 
-    const { data } = useQuery<EntitlementsResponse>({
+    const { data } = useQuery({
         queryKey: ['entitlements', tenantSlug],
-        queryFn: () => apiGet('/api/v1/entitlements'),
+        queryFn: () => api.get<EntitlementsResponse>('/api/v1/entitlements'),
         staleTime: 60_000,
     });
 
