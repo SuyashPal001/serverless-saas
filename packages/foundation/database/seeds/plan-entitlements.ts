@@ -13,9 +13,9 @@ interface Entitlement {
 const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
     free: {
         sso: { enabled: false },
-        agent_workflows: { enabled: false },
+        agent_workflows: { enabled: true },
         custom_roles: { enabled: false },
-        mcp_integrations: { enabled: false },
+        mcp_integrations: { enabled: true },
         audit_log: { enabled: false },
         seats: { valueLimit: 3 },
         workspaces: { valueLimit: 1 },
@@ -29,6 +29,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 2 },
         webhooks: { enabled: false },
         api_keys_access: { enabled: false },
+        messages: { valueLimit: 500, unlimited: false },
     },
     starter: {
         sso: { enabled: false },
@@ -48,6 +49,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 5 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
+        messages: { valueLimit: 3000, unlimited: false },
     },
     business: {
         sso: { enabled: true },
@@ -67,6 +69,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 20 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
+        messages: { valueLimit: 15000, unlimited: false },
     },
     enterprise: {
         sso: { enabled: true },
@@ -86,6 +89,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { unlimited: true },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
+        messages: { unlimited: true },
     },
 };
 

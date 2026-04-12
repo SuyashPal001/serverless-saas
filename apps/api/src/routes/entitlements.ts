@@ -81,10 +81,20 @@ entitlementsRoutes.get('/', async (c) => {
                 gte(usageRecords.recordedAt, monthStart)
             ));
 
+        const [messagesSum] = await db
+            .select({ total: sql<string>`COALESCE(SUM(${usageRecords.quantity}), 0)` })
+            .from(usageRecords)
+            .where(and(
+                eq(usageRecords.tenantId, tenantId),
+                eq(usageRecords.metric, 'messages'),
+                gte(usageRecords.recordedAt, monthStart)
+            ));
+
         // Step 3: Build response object with exact shape
         const seatsEntitlement = entitlementsByKey['seats'] || { enabled: false, valueLimit: 0, unlimited: false };
         const apiCallsEntitlement = entitlementsByKey['api_calls'] || { enabled: false, valueLimit: 0, unlimited: false };
         const agentsEntitlement = entitlementsByKey['agents'] || { enabled: false, valueLimit: 0, unlimited: false };
+        const messagesEntitlement = entitlementsByKey['messages'] || { enabled: false, valueLimit: 0, unlimited: false };
 
         // Collect boolean feature flags keyed by feature.key (e.g. multi_llm_claude: true/false)
         const featureFlags: Record<string, boolean> = {};
@@ -109,6 +119,11 @@ entitlementsRoutes.get('/', async (c) => {
                 used: agentsCount?.count ?? 0,
                 limit: agentsEntitlement.valueLimit ?? 0,
                 unlimited: agentsEntitlement.unlimited ?? false,
+            },
+            messages: {
+                used: parseInt(messagesSum?.total ?? '0', 10),
+                limit: messagesEntitlement.valueLimit ?? 0,
+                unlimited: messagesEntitlement.unlimited ?? false,
             },
             features: featureFlags,
         });

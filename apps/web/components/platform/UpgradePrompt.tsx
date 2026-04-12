@@ -19,22 +19,27 @@ interface UpgradePromptProps {
     requiredPlan?: string;
 }
 
-const featureNames: Record<string, string> = {
-    sso: 'Single Sign-On',
-    custom_roles: 'Custom Roles',
-    agent_workflows: 'Agent Workflows',
-    mcp_integrations: 'MCP Integrations',
-    api_calls: 'API Call Limits',
-    llm_tokens: 'LLM Token Limits',
-    seats: 'Team Seats',
-    agents: 'AI Agents',
+const featureDescriptions: Record<string, string> = {
+    sso: "Let your team sign in with your company identity provider — no extra passwords.",
+    custom_roles: "Define precise permissions for every member, beyond the default owner, admin, and member roles.",
+    agent_workflows: "Automate multi-step tasks across your tools with AI-powered agent workflows.",
+    mcp_integrations: "Connect your agents to external data sources and services via the Model Context Protocol.",
+    api_calls: "Handle more API traffic as your product usage grows.",
+    llm_tokens: "More capacity for your agents to think, write, and reason each month.",
+    seats: "Bring more teammates into your workspace and collaborate at scale.",
+    agents: "Create more AI agents to handle parallel workstreams.",
+    audit_log: "See everything your team and agents did — full history, every action.",
+    webhooks: "Push real-time events to your systems the moment something changes.",
+    api_keys_access: "Integrate your systems programmatically with secure, scoped API keys.",
+    branding: "Make the platform yours — custom logo and workspace branding.",
+    messages: "Send more messages to your agents each month as your usage grows.",
 };
 
 export function UpgradePrompt({ open, onClose, feature, requiredPlan }: UpgradePromptProps) {
     const router = useRouter();
     const { tenantSlug } = useTenant();
 
-    const featureName = feature ? featureNames[feature] || 'This feature' : 'This feature';
+    const description = feature ? featureDescriptions[feature] || 'This feature is not available on your current plan.' : 'This feature is not available on your current plan.';
     const planName = requiredPlan || 'a higher plan';
 
     const handleUpgrade = () => {
@@ -48,7 +53,7 @@ export function UpgradePrompt({ open, onClose, feature, requiredPlan }: UpgradeP
                 <DialogHeader>
                     <DialogTitle>Upgrade your plan</DialogTitle>
                     <DialogDescription>
-                        {featureName} requires the <strong>{planName}</strong> plan or above.
+                        {description} Available on <strong>{planName}</strong>.
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>

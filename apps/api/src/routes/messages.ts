@@ -3,6 +3,7 @@ import { and, eq, asc, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
+import { usageRecords } from '@serverless-saas/database/schema/billing';
 import { runMessageRelay, RelayError } from './_relay';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
@@ -79,6 +80,16 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
             userId,
             result.data.content,
         );
+
+        db.insert(usageRecords).values({
+            tenantId,
+            metric: 'messages',
+            quantity: 1,
+            actorId: userId,
+            actorType: 'user',
+            recordedAt: new Date(),
+        }).catch(err => console.error('usage record failed:', err));
+
         return c.json({ data: assistantMessage }, 201);
     } catch (err: unknown) {
         if (err instanceof RelayError) {

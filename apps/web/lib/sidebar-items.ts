@@ -14,7 +14,6 @@ import {
     FolderOpen,
     Plug,
     Palette,
-    BarChart2
 } from "lucide-react";
 import React from 'react';
 
@@ -41,7 +40,6 @@ export function getSidebarItems(
     const isPlatformAdmin = role === 'platform_admin';
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
-    const evalsLocked        = entitlements['evals']?.enabled === false;
     const brandingLocked     = entitlements['branding']?.enabled === false;
     const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
@@ -83,14 +81,6 @@ export function getSidebarItems(
             planRequired: 'business',
             planGateFeature: 'audit_log',
             locked: auditLocked,
-        });
-        items.push({
-            label: "Evals",
-            href: `${base}/evals`,
-            icon: BarChart2,
-            planRequired: 'business',
-            planGateFeature: 'evals',
-            locked: evalsLocked,
         });
 
         // 2. SETTINGS SECTION

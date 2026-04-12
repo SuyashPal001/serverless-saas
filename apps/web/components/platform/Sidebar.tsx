@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
+import { UsageBar } from "./UsageBar"
 
 
 interface SidebarNavLinkProps {
@@ -211,6 +212,9 @@ export function Sidebar() {
                         )
                     })}
                 </nav>
+
+                {/* Messages usage — hidden when collapsed */}
+                {!isSidebarCollapsed && <UsageBar />}
 
                 {/* Footer Section */}
                 <div className="mt-auto pt-4">
