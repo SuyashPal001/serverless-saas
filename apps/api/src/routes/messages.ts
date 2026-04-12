@@ -88,7 +88,7 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
             actorId: userId,
             actorType: 'user',
             recordedAt: new Date(),
-        }).catch(err => console.error('usage record failed:', err));
+        }).catch((err: unknown) => console.error('usage record failed:', err));
 
         return c.json({ data: assistantMessage }, 201);
     } catch (err: unknown) {
