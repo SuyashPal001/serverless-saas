@@ -223,8 +223,13 @@ agentsRoutes.patch('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const role = requestContext?.role;
 
-    if (!hasPermission(permissions, 'agents', 'update')) {
+    const canFullUpdate = hasPermission(permissions, 'agents', 'update');
+    const isOwner = role === 'owner';
+
+    // Only owner and platform_admin (via agents:update) can modify agents
+    if (!isOwner && !canFullUpdate) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -254,12 +259,20 @@ agentsRoutes.patch('/:id', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
+    // If owner, restrict to only allowed fields
+    const updateData = canFullUpdate
+        ? result.data // platform_admin gets everything
+        : { // owner gets limited fields only
+            name: result.data.name,
+            avatarUrl: result.data.avatarUrl,
+        };
+
     const [updated] = await db.update(agents)
-        .set({ ...result.data, updatedAt: new Date() })
+        .set({ ...updateData, updatedAt: new Date() })
         .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
         .returning();
 
-    if (result.data.status) {
+    if (result.data.status && canFullUpdate) {
         const action = result.data.status === 'paused' ? 'agent_paused'
             : result.data.status === 'active' ? 'agent_reactivated'
             : 'agent_retired';

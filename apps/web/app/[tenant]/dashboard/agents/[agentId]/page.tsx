@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { ImageUpload } from "@/components/platform/ImageUpload";
 import type { AgentDetail } from "@/components/platform/agents/types";
 
 interface LLMProvider {
@@ -66,12 +67,11 @@ export default function AgentDetailPage() {
     const agentId = params.agentId as string;
     const tenantSlug = params.tenant as string;
     const queryClient = useQueryClient();
-    const { permissions = [] } = useTenant();
+    const { permissions = [], role } = useTenant();
 
     // Identity form state
     const [identityForm, setIdentityForm] = React.useState({
         name: "",
-        description: "",
         avatarUrl: "",
     });
     const [isIdentityDirty, setIsIdentityDirty] = React.useState(false);
@@ -105,7 +105,6 @@ export default function AgentDetailPage() {
         if (agent) {
             setIdentityForm({
                 name: agent.name ?? "",
-                description: agent.description ?? "",
                 avatarUrl: agent.avatarUrl ?? "",
             });
             setIsIdentityDirty(false);
@@ -122,10 +121,9 @@ export default function AgentDetailPage() {
     }, [existingSkill]);
 
     const updateIdentityMutation = useMutation({
-        mutationFn: (values: { name: string; description: string; avatarUrl: string }) =>
+        mutationFn: (values: { name: string; avatarUrl: string }) =>
             api.patch(`/api/v1/agents/${agentId}`, {
                 name: values.name || undefined,
-                description: values.description || null,
                 avatarUrl: values.avatarUrl || null,
             }),
         onSuccess: () => {
@@ -183,7 +181,7 @@ export default function AgentDetailPage() {
         saveSkillMutation.mutate({ tools: newTools, systemPrompt: promptDraft });
     };
 
-    const canUpdate = can(permissions, "agents", "update");
+    const isOwner = role === 'owner' || role === 'platform_admin';
 
     const formattedDate = agent
         ? new Intl.DateTimeFormat("en-US", {
@@ -247,7 +245,7 @@ export default function AgentDetailPage() {
                     <Skeleton className="h-8 w-48" />
                 ) : (
                     <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold tracking-tight">{agent?.name}</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">{identityForm.name || agent?.name}</h1>
                         <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
                             {agent?.type}
                         </Badge>
@@ -269,69 +267,34 @@ export default function AgentDetailPage() {
                             <Skeleton className="h-20 w-full" />
                         </div>
                     ) : (
-                        <div className="space-y-5">
-                            {/* Avatar */}
-                            <div className="flex items-center gap-4">
-                                <div className="h-14 w-14 shrink-0 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center">
-                                    {identityForm.avatarUrl ? (
-                                        <img
-                                            src={identityForm.avatarUrl}
-                                            alt={identityForm.name}
-                                            className="h-full w-full object-cover"
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).style.display = "none";
-                                            }}
-                                        />
-                                    ) : (
-                                        <span className="text-lg font-semibold text-primary">{initials}</span>
-                                    )}
-                                </div>
-                                <div className="flex-1 space-y-1">
-                                    <Label className="text-xs text-muted-foreground">Image URL</Label>
-                                    <Input
-                                        placeholder="https://example.com/avatar.png"
-                                        value={identityForm.avatarUrl}
-                                        onChange={(e) => {
-                                            setIdentityForm((f) => ({ ...f, avatarUrl: e.target.value }));
-                                            setIsIdentityDirty(true);
-                                        }}
-                                        disabled={!canUpdate}
-                                        className="h-8 text-sm"
-                                    />
-                                </div>
+                        <div className="space-y-6">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
+                                <ImageUpload 
+                                    value={identityForm.avatarUrl}
+                                    fallbackText={initials}
+                                    onChange={(url) => {
+                                        setIdentityForm(prev => ({ ...prev, avatarUrl: url }));
+                                        setIsIdentityDirty(true);
+                                    }}
+                                    disabled={!isOwner}
+                                />
                             </div>
 
-                            {/* Name */}
                             <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground">Name</Label>
+                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Name</Label>
                                 <Input
                                     value={identityForm.name}
                                     onChange={(e) => {
                                         setIdentityForm((f) => ({ ...f, name: e.target.value }));
                                         setIsIdentityDirty(true);
                                     }}
-                                    disabled={!canUpdate}
+                                    disabled={!isOwner}
                                     placeholder="Agent name"
                                 />
                             </div>
 
-                            {/* Description */}
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground">Description</Label>
-                                <Textarea
-                                    value={identityForm.description}
-                                    onChange={(e) => {
-                                        setIdentityForm((f) => ({ ...f, description: e.target.value }));
-                                        setIsIdentityDirty(true);
-                                    }}
-                                    disabled={!canUpdate}
-                                    placeholder="What does this agent do?"
-                                    rows={3}
-                                    className="resize-none text-sm"
-                                />
-                            </div>
-
-                            {canUpdate && isIdentityDirty && (
+                            {isOwner && isIdentityDirty && (
                                 <div className="flex justify-end">
                                     <Button
                                         size="sm"
@@ -400,10 +363,10 @@ export default function AgentDetailPage() {
                                 }}
                                 placeholder="You are a helpful assistant..."
                                 rows={6}
-                                disabled={!canUpdate}
+                                disabled={!isOwner}
                                 className="resize-none font-mono text-sm"
                             />
-                            {canUpdate && isPromptDirty && (
+                            {isOwner && isPromptDirty && (
                                 <div className="flex justify-end">
                                     <Button
                                         size="sm"
@@ -450,7 +413,7 @@ export default function AgentDetailPage() {
                             <Switch
                                 checked={webSearchEnabled}
                                 onCheckedChange={handleWebSearchToggle}
-                                disabled={!canUpdate || saveSkillMutation.isPending || isLoadingSkills}
+                                disabled={!isOwner || saveSkillMutation.isPending || isLoadingSkills}
                             />
                         </div>
                     </div>
