@@ -99,6 +99,8 @@ onboardingRoutes.post('/complete', async (c) => {
     }
 
     // Step 7: Seed default agent (Saarthi) for new tenant
+    // Note: if apiKeys insert fails, agents insert will throw FK error
+    // No rollback — acceptable for MVP, add transaction wrapper later
     const rawKey = `ak_${randomBytes(32).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawKey).digest('hex');
 

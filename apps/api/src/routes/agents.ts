@@ -292,20 +292,24 @@ agentsRoutes.patch('/:id', async (c) => {
         }
     }
 
-    // Reprovision only when config fields change — status-only updates don't affect IDENTITY.md
-    const configFields = ['name', 'description', 'avatarUrl', 'model', 'llmProviderId'] as const;
-    const hasConfigChange = configFields.some(f => f in result.data && result.data[f] !== undefined);
-    if (hasConfigChange) {
+    // Notify relay when name changes — agent-server updates IDENTITY.md with new agent name
+    // Fully async — never blocks the response
+    if ('name' in result.data && result.data.name !== undefined) {
         const relayUrl = process.env.RELAY_URL;
         const serviceKey = process.env.INTERNAL_SERVICE_KEY;
         if (relayUrl && serviceKey) {
-            fetch(`${relayUrl}/provision/${tenantId}`, {
-                method: 'POST',
-                headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({}),
-            })
-                .then(() => console.log(`[agents] reprovision triggered for tenant ${tenantId}`))
-                .catch((err) => console.error(`[agents] reprovision failed:`, err));
+            const agentName = updated.name;
+            Promise.resolve()
+                .then(async () => {
+                    const agentSlug = agentName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+                    await fetch(`${relayUrl}/update/${tenantId}/${agentSlug}`, {
+                        method: 'POST',
+                        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ agentName }),
+                    });
+                    console.log(`[agents] update triggered for ${agentSlug}`);
+                })
+                .catch((err) => console.error('[agents] update failed:', err));
         }
     }
 

@@ -504,6 +504,22 @@ markdown### What's Working
 - WebSocket real-time notifications ✅
 - Webhooks delivery ✅
 
+## Known Gaps — Not Fixed (April 14, 2026)
+
+These are documented trade-offs, not bugs to fix now:
+
+1. **`agentSkills.status` string vs enum** (`onboarding.ts`) — `status: 'active'` is passed as
+   a plain string. Drizzle accepts it but won't catch enum drift at compile time. Low risk for MVP.
+
+2. **`tenantResolutionMiddleware` assumes `requestContext.tenant` is set** — routes in
+   `ONBOARDING_ALLOWED_PATHS` let requests through with only `{ needsOnboarding: true }` in
+   context. Downstream middleware must not assume `requestContext.tenant` is always present.
+   Verified safe for current middleware chain; re-check when adding new middleware.
+
+3. **Session cookie set before `/auth/me` check in `login/page.tsx`** — if `/auth/me` fails
+   after the session is written, `platform_token` cookie is already set. A page refresh after
+   the error could auto-authenticate the user into an unknown state. Acceptable UX edge case for now.
+
 ## Onboarding Flow — New User Login (April 14, 2026)
 
 ### Problem fixed

@@ -191,17 +191,31 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
         ))
         .returning();
 
-    // Always reprovision after skill update — system prompt change requires new IDENTITY.md
-    const relayUrl = process.env.RELAY_URL;
-    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-    if (relayUrl && serviceKey) {
-        fetch(`${relayUrl}/provision/${tenantId}`, {
-            method: 'POST',
-            headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        })
-            .then(() => console.log(`[agents] reprovision triggered for tenant ${tenantId}`))
-            .catch((err) => console.error(`[agents] reprovision failed:`, err));
+    // Notify relay when system prompt changes — agent-server updates IDENTITY.md
+    // Fully async — agent name SELECT and relay fetch are both off the response path
+    if ('systemPrompt' in result.data && result.data.systemPrompt !== undefined) {
+        const relayUrl = process.env.RELAY_URL;
+        const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+        if (relayUrl && serviceKey) {
+            const systemPrompt = updated.systemPrompt;
+            Promise.resolve()
+                .then(async () => {
+                    const [agentRow] = await db
+                        .select({ name: agents.name })
+                        .from(agents)
+                        .where(eq(agents.id, agentId))
+                        .limit(1);
+                    if (!agentRow) return;
+                    const agentSlug = agentRow.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+                    await fetch(`${relayUrl}/update/${tenantId}/${agentSlug}`, {
+                        method: 'POST',
+                        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ systemPrompt }),
+                    });
+                    console.log(`[agents] update triggered for ${agentSlug}`);
+                })
+                .catch((err) => console.error('[agents] update failed:', err));
+        }
     }
 
     return c.json({ data: updated });
