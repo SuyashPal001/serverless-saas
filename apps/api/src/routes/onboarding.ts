@@ -94,6 +94,18 @@ onboardingRoutes.post('/complete', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
+    // Fire-and-forget: provision OpenClaw container on agent-server (GCP VM)
+    const agentServerUrl = process.env.AGENT_SERVER_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+    if (agentServerUrl && serviceKey) {
+        fetch(`${agentServerUrl}/provision/${tenantId}`, {
+            method: 'POST',
+            headers: { 'X-Service-Key': serviceKey },
+        })
+            .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
+            .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
+    }
+
     // Step 6: Return response
     return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
