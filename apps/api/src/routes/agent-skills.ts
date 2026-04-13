@@ -191,6 +191,19 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
         ))
         .returning();
 
+    // Always reprovision after skill update — system prompt change requires new IDENTITY.md
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+    if (relayUrl && serviceKey) {
+        fetch(`${relayUrl}/provision/${tenantId}`, {
+            method: 'POST',
+            headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        })
+            .then(() => console.log(`[agents] reprovision triggered for tenant ${tenantId}`))
+            .catch((err) => console.error(`[agents] reprovision failed:`, err));
+    }
+
     return c.json({ data: updated });
 });
 

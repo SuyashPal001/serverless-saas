@@ -292,6 +292,23 @@ agentsRoutes.patch('/:id', async (c) => {
         }
     }
 
+    // Reprovision only when config fields change — status-only updates don't affect IDENTITY.md
+    const configFields = ['name', 'description', 'avatarUrl', 'model', 'llmProviderId'] as const;
+    const hasConfigChange = configFields.some(f => f in result.data && result.data[f] !== undefined);
+    if (hasConfigChange) {
+        const relayUrl = process.env.RELAY_URL;
+        const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+        if (relayUrl && serviceKey) {
+            fetch(`${relayUrl}/provision/${tenantId}`, {
+                method: 'POST',
+                headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            })
+                .then(() => console.log(`[agents] reprovision triggered for tenant ${tenantId}`))
+                .catch((err) => console.error(`[agents] reprovision failed:`, err));
+        }
+    }
+
     return c.json({ data: { agent: updated } });
 });
 

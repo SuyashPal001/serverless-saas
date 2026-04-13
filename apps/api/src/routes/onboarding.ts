@@ -1,10 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { agents } from '@serverless-saas/database/schema/agents';
+import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { apiKeys } from '@serverless-saas/database/schema/access';
 import { eq, isNull, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
@@ -93,6 +97,37 @@ onboardingRoutes.post('/complete', async (c) => {
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
     }
+
+    // Step 7: Seed default agent (Saarthi) for new tenant
+    const rawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+
+    const [saarthiKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Saarthi API Key',
+        type: 'agent',
+        keyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+
+    const [saarthiAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Saarthi',
+        type: 'custom',
+        status: 'active',
+        apiKeyId: saarthiKey.id,
+        createdBy: userId,
+    }).returning();
+
+    await db.insert(agentSkills).values({
+        agentId: saarthiAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are Saarthi, an AI assistant. You help users by answering questions from their organization uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].',
+        status: 'active',
+    });
 
     // Fire-and-forget: provision OpenClaw container via relay (GCP VM)
     const relayUrl = process.env.RELAY_URL;
