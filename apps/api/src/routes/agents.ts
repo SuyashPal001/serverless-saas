@@ -292,25 +292,21 @@ agentsRoutes.patch('/:id', async (c) => {
         }
     }
 
-    // Notify relay when name changes — agent-server updates IDENTITY.md with new agent name
+    // Notify relay on any PATCH — agent-server rewrites IDENTITY.md and clears sessions
     // Fully async — never blocks the response
-    if ('name' in result.data && result.data.name !== undefined) {
-        const relayUrl = process.env.RELAY_URL;
-        const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-        if (relayUrl && serviceKey) {
-            const agentName = updated.name;
-            Promise.resolve()
-                .then(async () => {
-                    const agentSlug = agentName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
-                    await fetch(`${relayUrl}/update/${tenantId}/${agentSlug}`, {
-                        method: 'POST',
-                        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ agentName }),
-                    });
-                    console.log(`[agents] update triggered for ${agentSlug}`);
-                })
-                .catch((err) => console.error('[agents] update failed:', err));
-        }
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+    if (relayUrl && serviceKey) {
+        Promise.resolve()
+            .then(async () => {
+                await fetch(`${relayUrl}/update/${tenantId}/${agentId}`, {
+                    method: 'POST',
+                    headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agentName: updated.name }),
+                });
+                console.log(`[agents] update triggered for agent ${agentId}`);
+            })
+            .catch((err) => console.error('[agents] update failed:', err));
     }
 
     return c.json({ data: { agent: updated } });
