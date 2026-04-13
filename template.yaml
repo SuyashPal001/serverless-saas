@@ -85,7 +85,7 @@ Resources:
           JIRA_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/jira-redirect-uri}}"
           TOKEN_ENCRYPTION_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/token-encryption-key}}"
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
-          AGENT_SERVER_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/agent-server-url}}"
+          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
           INTERNAL_SERVICE_KEY: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/internal-service-key:SecretString:key}}"
     Metadata:
       BuildMethod: makefile

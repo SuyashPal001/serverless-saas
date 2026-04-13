@@ -94,13 +94,14 @@ onboardingRoutes.post('/complete', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
-    // Fire-and-forget: provision OpenClaw container on agent-server (GCP VM)
-    const agentServerUrl = process.env.AGENT_SERVER_URL;
+    // Fire-and-forget: provision OpenClaw container via relay (GCP VM)
+    const relayUrl = process.env.RELAY_URL;
     const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-    if (agentServerUrl && serviceKey) {
-        fetch(`${agentServerUrl}/provision/${tenantId}`, {
+    if (relayUrl && serviceKey) {
+        fetch(`${relayUrl}/provision/${tenantId}`, {
             method: 'POST',
-            headers: { 'X-Service-Key': serviceKey },
+            headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
         })
             .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
             .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
