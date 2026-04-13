@@ -10,6 +10,7 @@ import type { AppEnv } from '../types';
 const ONBOARDING_ALLOWED_PATHS = [
     '/api/v1/onboarding/complete',
     '/api/v1/auth/me',
+    '/api/v1/auth/tenants',
     '/api/v1/auth/check-email',
     '/api/v1/widget',
 ];

@@ -277,8 +277,8 @@ const { permissions } = useTenant()
 if (can(permissions, 'members', 'create')) { ... }
 ```
 
-### Onboarding Flow (needs building)
-- Route: `apps/web/app/onboarding/page.tsx` — does not exist yet, returns 404
+### Onboarding Flow
+- Route: `apps/web/app/onboarding/page.tsx` — implemented ✅
 - User lands here when JWT `custom:tenantId` is empty (ADR-026)
 - Form: single field — workspace name
 - On submit: POST `/api/v1/onboarding/complete` with `{ workspaceName: string }`
@@ -503,6 +503,44 @@ markdown### What's Working
 - Usage charts on billing page (frontend ready, backend in progress)
 - WebSocket real-time notifications ✅
 - Webhooks delivery ✅
+
+## Onboarding Flow — New User Login (April 14, 2026)
+
+### Problem fixed
+Email/password new users were hitting 403 on `GET /auth/tenants` because
+`tenantResolutionMiddleware` blocked the route for users with an empty JWT
+`custom:tenantId`. The login page then surfaced this as "Invalid email or password".
+
+### ONBOARDING_ALLOWED_PATHS (`apps/api/src/middleware/tenantResolution.ts`)
+Routes accessible before onboarding completes (empty `custom:tenantId`):
+```
+/api/v1/onboarding/complete
+/api/v1/auth/me
+/api/v1/auth/tenants      ← added April 14 (queries by userId, safe without tenantId)
+/api/v1/auth/check-email
+/api/v1/widget
+```
+**Rule:** A route belongs here if it queries by `userId` (not `tenantId`) and returns
+safe data when the user has no tenant. Never add tenant-scoped data routes.
+
+### Correct login flow for new users (email + Google OAuth)
+Both flows must follow this order:
+1. Get tokens (Cognito signIn or OAuth code exchange)
+2. `POST /api/auth/session` — set httpOnly cookie **first**
+3. `GET /auth/me` — check `needsOnboarding` and `slug`
+4. If `needsOnboarding === true` OR `!slug` → `router.push('/onboarding')` and return
+5. Otherwise → `GET /auth/tenants` → workspace picker or direct dashboard redirect
+
+**Never call `/auth/tenants` before `/auth/me` for a potentially new user.**
+The Google OAuth callback (`apps/web/app/auth/callback/page.tsx`) already follows
+this pattern correctly. The email login page was fixed to match.
+
+### Onboarding page flow (`apps/web/app/onboarding/page.tsx`)
+1. User submits workspace name
+2. `POST /api/v1/onboarding/complete` → creates tenant + default Saarthi agent
+3. `DELETE /api/auth/session` — clears JWT (Pre Token Lambda only runs on fresh login)
+4. Redirect to `/auth/login?onboarded=true&slug={slug}`
+5. User logs in again → Pre Token Lambda stamps `custom:tenantId` → normal flow
 
 ## Auth Middleware — except() Pattern (March 24, 2026)
 

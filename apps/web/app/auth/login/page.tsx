@@ -72,27 +72,36 @@ function LoginPageContent() {
             const { idToken, accessToken, refreshToken } = await signIn(data.email, data.password);
             const redirectParam = searchParams.get('redirect');
 
-            // 2. Fetch all workspaces this user belongs to
-            // Pass idToken directly — cookie isn't set yet
+            // 2. Set session cookie first so subsequent proxy calls are authenticated
+            const sessionRes = await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
+            });
+            if (!sessionRes.ok) throw new Error('Failed to create secure session');
+
+            // 3. Check onboarding status before anything else — new users have no tenant
+            // in their JWT and must complete onboarding before accessing any tenant route
+            const meRes = await fetch('/api/proxy/api/v1/auth/me', {
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+            if (!meRes.ok) throw new Error('Failed to fetch user profile');
+            const me = await meRes.json();
+
+            if (me.needsOnboarding || !me.slug) {
+                router.push('/onboarding');
+                return;
+            }
+
+            // 4. Fetch all workspaces this user belongs to
             const tenantsRes = await fetch('/api/proxy/api/v1/auth/tenants', {
                 headers: { Authorization: `Bearer ${idToken}` },
             });
             if (!tenantsRes.ok) throw new Error('Failed to fetch workspaces');
             const { tenants: workspaceList }: { tenants: Workspace[] } = await tenantsRes.json();
 
-            // 3. Skip picker if redirect param is present or user has only one workspace
+            // 5. Skip picker if redirect param is present or user has only one workspace
             if (redirectParam || workspaceList.length <= 1) {
-                console.log('[auth] sending to session:', {
-                    hasIdToken: !!idToken,
-                    hasAccessToken: !!accessToken,
-                    accessTokenPreview: accessToken?.substring(0, 30)
-                });
-                const res = await fetch('/api/auth/session', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
-                });
-                if (!res.ok) throw new Error('Failed to create secure session');
                 const targetPath = redirectParam
                     ?? (workspaceList[0]?.slug ? `/${workspaceList[0].slug}/dashboard` : '/onboarding');
                 router.push(targetPath);
@@ -100,7 +109,7 @@ function LoginPageContent() {
                 return;
             }
 
-            // 4. Multiple workspaces — hold tokens and show picker
+            // 6. Multiple workspaces — hold tokens and show picker
             setPendingTokens({ idToken, refreshToken, accessToken });
             setWorkspaces(workspaceList);
         } catch (err: any) {
