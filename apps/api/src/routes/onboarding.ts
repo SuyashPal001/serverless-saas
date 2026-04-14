@@ -71,6 +71,7 @@ onboardingRoutes.post('/complete', async (c) => {
         roleId: role.id,
         memberType: 'human',
         status: 'active',
+        joinedAt: new Date(),
     });
 
     await db.insert(subscriptions).values({

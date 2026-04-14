@@ -56,13 +56,16 @@ export const handler: PreTokenGenerationTriggerHandler = async (
 
   // Step 2 — find tenant membership for this user
   // If clientMetadata.tenantId is present (e.g. workspace-switch flow), try that tenant first.
-  // Falls back to most recently joined active membership if not found or not provided.
+  // Falls back to iterating all active memberships (most recently joined first) until one has
+  // a valid subscription. This prevents a tenant with only cancelled subscriptions from
+  // blocking login when the user belongs to other valid tenants.
   const requestedTenantId = event.request.clientMetadata?.tenantId || user.pendingTenantId || undefined;
 
-  let membership: typeof memberships.$inferSelect | undefined;
+  let candidateMemberships: (typeof memberships.$inferSelect)[] = [];
 
   if (requestedTenantId) {
-    [membership] = await db
+    // Workspace-switch: try requested tenant first, then fall through to others
+    const [requested] = await db
       .select()
       .from(memberships)
       .where(
@@ -73,30 +76,36 @@ export const handler: PreTokenGenerationTriggerHandler = async (
         )
       )
       .limit(1);
+    if (requested) candidateMemberships.push(requested);
   }
 
-  if (!membership) {
-    [membership] = await db
-      .select()
-      .from(memberships)
-      .where(
-        and(
-          eq(memberships.userId, user.id),
-          eq(memberships.status, 'active')
-        )
+  // Fetch all remaining active memberships ordered by most recently joined
+  // NULLs sort last in DESC — newly created memberships without joinedAt will be
+  // tried after established ones, but still tried before giving up entirely
+  const allMemberships = await db
+    .select()
+    .from(memberships)
+    .where(
+      and(
+        eq(memberships.userId, user.id),
+        eq(memberships.status, 'active')
       )
-      .orderBy(desc(memberships.joinedAt))
-      .limit(1);
+    )
+    .orderBy(desc(memberships.joinedAt));
+
+  // Merge: requested tenant first (if any), then the rest deduped
+  for (const m of allMemberships) {
+    if (!candidateMemberships.find(c => c.id === m.id)) {
+      candidateMemberships.push(m);
+    }
   }
 
-  console.log('[pretoken] step=2/membership', {
-    found: !!membership,
-    tenantId: membership?.tenantId,
-    status: membership?.status,
+  console.log('[pretoken] step=2/memberships', {
+    count: candidateMemberships.length,
     requestedTenantId: requestedTenantId ?? null,
   });
 
-  if (!membership) {
+  if (candidateMemberships.length === 0) {
     // User exists but has no tenant yet — needs to complete onboarding
     return emptyClaimsResponse(event);
   }
@@ -106,44 +115,59 @@ export const handler: PreTokenGenerationTriggerHandler = async (
     await db.update(users).set({ pendingTenantId: null }).where(eq(users.id, user.id));
   }
 
-  // Step 3 — resolve role name from roleId
-  // We store roleId on membership, but the JWT needs the role name string
-  const [role] = await db
-    .select()
-    .from(roles)
-    .where(eq(roles.id, membership.roleId))
-    .limit(1);
+  // Steps 3+4 — walk candidates until one has a valid subscription
+  let membership: typeof memberships.$inferSelect | undefined;
+  let role: typeof roles.$inferSelect | undefined;
+  let subscription: typeof subscriptions.$inferSelect | undefined;
 
-  console.log('[pretoken] step=3/role', { found: !!role, name: role?.name });
+  for (const candidate of candidateMemberships) {
+    // Step 3 — resolve role name from roleId
+    const [candidateRole] = await db
+      .select()
+      .from(roles)
+      .where(eq(roles.id, candidate.roleId))
+      .limit(1);
 
-  if (!role) {
-    // Role not found — data integrity issue, fail safely
-    return emptyClaimsResponse(event);
+    if (!candidateRole) {
+      console.log('[pretoken] step=3/role missing', { membershipId: candidate.id });
+      continue;
+    }
+
+    // Step 4 — find active OR trialing subscription to get the plan
+    // IMPORTANT: newly created subscriptions default to 'trialing', not 'active'.
+    // Filtering for 'active' only causes this step to always miss after onboarding.
+    const [candidateSubscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.tenantId, candidate.tenantId),
+          inArray(subscriptions.status, ['active', 'trialing'])
+        )
+      )
+      .limit(1);
+
+    if (!candidateSubscription) {
+      console.log('[pretoken] step=4/no subscription', { tenantId: candidate.tenantId });
+      continue;
+    }
+
+    // Found a valid candidate — use it
+    membership = candidate;
+    role = candidateRole;
+    subscription = candidateSubscription;
+    break;
   }
 
-  // Step 4 — find active OR trialing subscription to get the plan
-  // Plan drives feature gating across the entire platform (ADR entitlements)
-  // IMPORTANT: newly created subscriptions default to 'trialing', not 'active'.
-  // Filtering for 'active' only causes this step to always miss after onboarding.
-  const [subscription] = await db
-    .select()
-    .from(subscriptions)
-    .where(
-      and(
-        eq(subscriptions.tenantId, membership.tenantId),
-        inArray(subscriptions.status, ['active', 'trialing'])
-      )
-    )
-    .limit(1);
-
-  console.log('[pretoken] step=4/subscription', {
-    found: !!subscription,
-    status: subscription?.status,
+  console.log('[pretoken] step=4/resolved', {
+    found: !!membership,
+    tenantId: membership?.tenantId,
+    role: role?.name,
     plan: subscription?.plan,
   });
 
-  if (!subscription) {
-    // No active or trialing subscription — stamp free plan as safe default
+  if (!membership || !role || !subscription) {
+    // No active membership has a valid subscription — stamp empty claims
     return emptyClaimsResponse(event);
   }
 
