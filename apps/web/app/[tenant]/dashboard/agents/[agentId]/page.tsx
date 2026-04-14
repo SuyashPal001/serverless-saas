@@ -4,8 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertCircle, Lock, Loader2 } from "lucide-react";
+import { ArrowLeft, AlertCircle, Lock, Loader2, LockKeyhole } from "lucide-react";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
 import { PermissionGate } from "@/components/platform/PermissionGate";
@@ -67,7 +68,8 @@ export default function AgentDetailPage() {
     const agentId = params.agentId as string;
     const tenantSlug = params.tenant as string;
     const queryClient = useQueryClient();
-    const { permissions = [], role } = useTenant();
+    const { permissions = [], role, entitlementFeatures } = useTenant();
+    const brandingEnabled = entitlementFeatures?.['branding'] === true;
 
     // Identity form state
     const [identityForm, setIdentityForm] = React.useState({
@@ -267,44 +269,58 @@ export default function AgentDetailPage() {
                             <Skeleton className="h-20 w-full" />
                         </div>
                     ) : (
-                        <div className="space-y-6">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
-                                <ImageUpload 
-                                    value={identityForm.avatarUrl}
-                                    fallbackText={initials}
-                                    onChange={(url) => {
-                                        setIdentityForm(prev => ({ ...prev, avatarUrl: url }));
-                                        setIsIdentityDirty(true);
-                                    }}
-                                    disabled={!isOwner}
-                                />
+                        <div className="relative">
+                            <div className={cn("space-y-6", !brandingEnabled && "opacity-40 pointer-events-none select-none")}>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
+                                    <ImageUpload
+                                        value={identityForm.avatarUrl}
+                                        fallbackText={initials}
+                                        onChange={(url) => {
+                                            setIdentityForm(prev => ({ ...prev, avatarUrl: url }));
+                                            setIsIdentityDirty(true);
+                                        }}
+                                        disabled={!isOwner}
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Name</Label>
+                                    <Input
+                                        value={identityForm.name}
+                                        onChange={(e) => {
+                                            setIdentityForm((f) => ({ ...f, name: e.target.value }));
+                                            setIsIdentityDirty(true);
+                                        }}
+                                        disabled={!isOwner}
+                                        placeholder="Agent name"
+                                    />
+                                </div>
+
+                                {isOwner && isIdentityDirty && (
+                                    <div className="flex justify-end">
+                                        <Button
+                                            size="sm"
+                                            onClick={() => updateIdentityMutation.mutate(identityForm)}
+                                            disabled={updateIdentityMutation.isPending || !identityForm.name.trim()}
+                                        >
+                                            {updateIdentityMutation.isPending && (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            )}
+                                            Save
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Name</Label>
-                                <Input
-                                    value={identityForm.name}
-                                    onChange={(e) => {
-                                        setIdentityForm((f) => ({ ...f, name: e.target.value }));
-                                        setIsIdentityDirty(true);
-                                    }}
-                                    disabled={!isOwner}
-                                    placeholder="Agent name"
-                                />
-                            </div>
-
-                            {isOwner && isIdentityDirty && (
-                                <div className="flex justify-end">
-                                    <Button
-                                        size="sm"
-                                        onClick={() => updateIdentityMutation.mutate(identityForm)}
-                                        disabled={updateIdentityMutation.isPending || !identityForm.name.trim()}
-                                    >
-                                        {updateIdentityMutation.isPending && (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        )}
-                                        Save
+                            {!brandingEnabled && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg backdrop-blur-[2px] bg-card/60">
+                                    <LockKeyhole className="h-5 w-5 text-muted-foreground" />
+                                    <p className="text-sm text-center text-muted-foreground">
+                                        Upgrade to Business to customize your agent
+                                    </p>
+                                    <Button size="sm" asChild>
+                                        <Link href={`/${tenantSlug}/dashboard/billing`}>Upgrade</Link>
                                     </Button>
                                 </div>
                             )}
@@ -354,29 +370,43 @@ export default function AgentDetailPage() {
                     {isLoadingSkills ? (
                         <Skeleton className="h-32 w-full" />
                     ) : (
-                        <div className="space-y-3">
-                            <Textarea
-                                value={promptDraft}
-                                onChange={(e) => {
-                                    setPromptDraft(e.target.value);
-                                    setIsPromptDirty(true);
-                                }}
-                                placeholder="You are a helpful assistant..."
-                                rows={6}
-                                disabled={!isOwner}
-                                className="resize-none font-mono text-sm"
-                            />
-                            {isOwner && isPromptDirty && (
-                                <div className="flex justify-end">
-                                    <Button
-                                        size="sm"
-                                        onClick={handleSavePrompt}
-                                        disabled={saveSkillMutation.isPending}
-                                    >
-                                        {saveSkillMutation.isPending && (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        )}
-                                        Save Prompt
+                        <div className="relative">
+                            <div className={cn("space-y-3", !brandingEnabled && "opacity-40 pointer-events-none select-none")}>
+                                <Textarea
+                                    value={promptDraft}
+                                    onChange={(e) => {
+                                        setPromptDraft(e.target.value);
+                                        setIsPromptDirty(true);
+                                    }}
+                                    placeholder="You are a helpful assistant..."
+                                    rows={6}
+                                    disabled={!isOwner}
+                                    className="resize-none font-mono text-sm"
+                                />
+                                {isOwner && isPromptDirty && (
+                                    <div className="flex justify-end">
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSavePrompt}
+                                            disabled={saveSkillMutation.isPending}
+                                        >
+                                            {saveSkillMutation.isPending && (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            )}
+                                            Save Prompt
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {!brandingEnabled && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg backdrop-blur-[2px] bg-card/60">
+                                    <LockKeyhole className="h-5 w-5 text-muted-foreground" />
+                                    <p className="text-sm text-center text-muted-foreground">
+                                        Upgrade to Business to customize your agent
+                                    </p>
+                                    <Button size="sm" asChild>
+                                        <Link href={`/${tenantSlug}/dashboard/billing`}>Upgrade</Link>
                                     </Button>
                                 </div>
                             )}

@@ -41,6 +41,7 @@ export function getSidebarItems(
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
     const brandingLocked     = entitlements['branding']?.enabled === false;
+    const connectorsLocked   = entitlements['integrations']?.enabled === false;
     const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
     const webhooksLocked     = entitlements['webhooks']?.enabled === false;
@@ -70,6 +71,9 @@ export function getSidebarItems(
             label: "Connectors",
             href: `${base}/integrations`,
             icon: Plug,
+            planRequired: 'starter',
+            planGateFeature: 'integrations',
+            locked: connectorsLocked,
         });
 
         items.push({ isDivider: true, href: '', icon: () => null, label: '' });
