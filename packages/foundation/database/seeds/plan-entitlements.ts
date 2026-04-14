@@ -30,6 +30,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: false },
         api_keys_access: { enabled: false },
         messages: { valueLimit: 500, unlimited: false },
+        connectors_access: { enabled: false },
     },
     starter: {
         sso: { enabled: false },
@@ -50,6 +51,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { valueLimit: 3000, unlimited: false },
+        connectors_access: { enabled: true },
     },
     business: {
         sso: { enabled: true },
@@ -70,6 +72,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { valueLimit: 15000, unlimited: false },
+        connectors_access: { enabled: true },
     },
     enterprise: {
         sso: { enabled: true },
@@ -90,6 +93,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { unlimited: true },
+        connectors_access: { enabled: true },
     },
 };
 
