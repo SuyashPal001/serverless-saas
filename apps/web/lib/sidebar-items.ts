@@ -41,7 +41,7 @@ export function getSidebarItems(
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
     const brandingLocked     = entitlements['branding']?.enabled === false;
-    const connectorsLocked   = entitlements['integrations']?.enabled === false;
+    const connectorsLocked   = plan === 'free';
     const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
     const webhooksLocked     = entitlements['webhooks']?.enabled === false;
