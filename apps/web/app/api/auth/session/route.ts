@@ -47,17 +47,17 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        if (refreshToken) {
-            response.cookies.set({
-                name: 'platform_refresh_token',
-                value: refreshToken,
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-                path: '/',
-                maxAge: 60 * 60 * 24 * 30, // 30 days
-            });
-        }
+        // Always write platform_refresh_token — even if refreshToken is absent, clear the
+        // old one so a stale previous-user token can never be used by useAuthRefresh.
+        response.cookies.set({
+            name: 'platform_refresh_token',
+            value: refreshToken || '',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: refreshToken ? 60 * 60 * 24 * 30 : 0, // 30 days, or clear immediately
+        });
 
         return response;
     } catch (error) {

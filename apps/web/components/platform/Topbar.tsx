@@ -28,25 +28,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 
-function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug }: { currentPlanColor: string, plan: string, tenantSlug: string | undefined }) {
+function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug, workspaces, isLoading }: { currentPlanColor: string, plan: string, tenantSlug: string | undefined, workspaces: any[], isLoading: boolean }) {
     const router = useRouter()
     const pathname = usePathname()
     const currentSlugFromUrl = pathname?.split('/')[1] || ''
-    const [workspaces, setWorkspaces] = React.useState<any[]>([])
-    const [isLoading, setIsLoading] = React.useState(true)
     const [isOpen, setIsOpen] = React.useState(false)
     const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
     const [newWorkspaceName, setNewWorkspaceName] = React.useState("")
     const [isCreating, setIsCreating] = React.useState(false)
-
-    React.useEffect(() => {
-        api.get<{ tenants: any[] }>('/api/v1/auth/tenants')
-            .then((data) => {
-                setWorkspaces(data.tenants || [])
-            })
-            .catch(console.error)
-            .finally(() => setIsLoading(false))
-    }, [])
 
     const currentWorkspace = workspaces.find(w => w.slug === currentSlugFromUrl) || workspaces.find(w => w.slug === tenantSlug) || workspaces.find(w => w.isCurrent)
 
@@ -230,6 +219,8 @@ export function Topbar() {
     const [isLoadingWorkspaces, setIsLoadingWorkspaces] = React.useState(true)
     const [isDropdownOpen, setIsDropdownOpen] = React.useState(false)
 
+    // Single fetch for the whole Topbar — passed down to WorkspaceSwitcher as props
+    // so it doesn't need its own duplicate call.
     React.useEffect(() => {
         api.get<{ tenants: any[] }>('/api/v1/auth/tenants')
             .then((data) => setWorkspaces(data.tenants || []))
@@ -266,7 +257,7 @@ export function Topbar() {
             "fixed top-0 right-0 h-16 flex items-center justify-between px-8 bg-card border-b border-border z-40 transition-all duration-300",
             isSidebarCollapsed ? "left-16" : "left-60"
         )}>
-            <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} />
+            <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} workspaces={workspaces} isLoading={isLoadingWorkspaces} />
 
             <div className="flex items-center gap-4">
                 <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
