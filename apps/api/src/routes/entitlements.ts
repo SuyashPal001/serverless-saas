@@ -26,7 +26,9 @@ entitlementsRoutes.get('/', async (c) => {
 
         if (featureIds.length === 0) {
             // No entitlements configured — return empty structure
+            // features: {} must be present so layout.tsx doesn't get undefined
             return c.json({
+                features: {},
                 seats: { used: 0, limit: 0, unlimited: false },
                 api_calls: { used: 0, limit: 0, unlimited: false },
                 agents: { used: 0, limit: 0, unlimited: false },

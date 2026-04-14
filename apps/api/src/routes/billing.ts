@@ -5,7 +5,7 @@ import { db } from '@serverless-saas/database';
 import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
-import { getCacheClient, invalidateEntitlements } from '@serverless-saas/cache';
+import { getCacheClient } from '@serverless-saas/cache';
 import type { AppEnv } from '../types';
 
 
@@ -108,8 +108,9 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
     }
 
     // Invalidate entitlements cache so middleware picks up new limits immediately (ADR-013)
+    // Direct DEL instead of Pub/Sub — no subscriber exists to handle the channel message
     try {
-        await invalidateEntitlements(getCacheClient() as any, tenantId);
+        await getCacheClient().del(`tenant:${tenantId}:entitlements`);
     } catch (cacheErr) {
         console.error('Entitlements cache invalidation failed:', cacheErr);
     }
@@ -165,8 +166,9 @@ billingRoutes.post('/cancel', async (c) => {
     }
 
     // Invalidate entitlements cache
+    // Direct DEL instead of Pub/Sub — no subscriber exists to handle the channel message
     try {
-        await invalidateEntitlements(getCacheClient() as any, tenantId);
+        await getCacheClient().del(`tenant:${tenantId}:entitlements`);
     } catch (cacheErr) {
         console.error('Entitlements cache invalidation failed:', cacheErr);
     }
