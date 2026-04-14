@@ -15,7 +15,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         sso: { enabled: false },
         agent_workflows: { enabled: true },
         custom_roles: { enabled: false },
-        mcp_integrations: { enabled: true },
+        mcp_integrations: { enabled: false },
         audit_log: { enabled: false },
         seats: { valueLimit: 3 },
         workspaces: { valueLimit: 1 },
@@ -30,7 +30,6 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: false },
         api_keys_access: { enabled: false },
         messages: { valueLimit: 500, unlimited: false },
-        connectors_access: { enabled: false },
     },
     starter: {
         sso: { enabled: false },
@@ -51,7 +50,6 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { valueLimit: 3000, unlimited: false },
-        connectors_access: { enabled: true },
     },
     business: {
         sso: { enabled: true },
@@ -72,7 +70,6 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { valueLimit: 15000, unlimited: false },
-        connectors_access: { enabled: true },
     },
     enterprise: {
         sso: { enabled: true },
@@ -93,7 +90,6 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
         messages: { unlimited: true },
-        connectors_access: { enabled: true },
     },
 };
 

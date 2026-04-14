@@ -32,7 +32,6 @@ const FEATURES: {
         { key: 'webhooks', type: 'boolean', name: 'Webhooks', description: 'Webhook endpoints for event notifications', unit: null, resetPeriod: null, metricKey: null },
         { key: 'api_keys_access', type: 'boolean', name: 'API Keys Access', description: 'Programmatic API access via API keys', unit: null, resetPeriod: null, metricKey: null },
         { key: 'messages', name: 'Agent Messages', type: 'metered', description: 'Agent messages per month', unit: 'messages', resetPeriod: 'monthly', metricKey: 'messages' },
-        { key: 'connectors_access', type: 'boolean', name: 'Connectors Access', description: 'OAuth connector integrations (Gmail, Drive, Jira, etc.)', unit: null, resetPeriod: null, metricKey: null },
     ];
 
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);

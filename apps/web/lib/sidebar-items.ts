@@ -41,7 +41,6 @@ export function getSidebarItems(
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
     const brandingLocked     = entitlements['branding']?.enabled === false;
-    const connectorsLocked   = entitlements['connectors_access']?.enabled === false;
     const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
     const webhooksLocked     = entitlements['webhooks']?.enabled === false;
@@ -71,9 +70,6 @@ export function getSidebarItems(
             label: "Connectors",
             href: `${base}/integrations`,
             icon: Plug,
-            planRequired: 'starter',
-            planGateFeature: 'connectors_access',
-            locked: connectorsLocked,
         });
 
         items.push({ isDivider: true, href: '', icon: () => null, label: '' });
@@ -143,6 +139,7 @@ export function getSidebarItems(
             href: `${base}/custom-integrations`,
             icon: Sliders,
             planRequired: 'business',
+            planGateFeature: 'mcp_integrations',
             locked: integrationsLocked,
         });
     } else {
