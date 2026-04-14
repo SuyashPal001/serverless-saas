@@ -65,11 +65,15 @@ export function PlanSelectorDialog({ currentPlan }: { currentPlan: string }) {
 
     const changePlanMutation = useMutation({
         mutationFn: (planId: string) => api.post("/api/v1/billing/subscription", { plan: planId }),
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ["subscription", tenantId] });
             queryClient.invalidateQueries({ queryKey: ["entitlements", tenantId] });
-            toast.success("Subscription plan updated successfully");
-            setOpen(false);
+            try {
+                await fetch("/api/auth/refresh", { method: "POST" });
+            } catch {
+                // refresh failed — page reload will still re-hydrate from existing token
+            }
+            window.location.reload();
         },
         onError: (error: Error) => {
             toast.error(error.message || "Failed to update subscription plan");

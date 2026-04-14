@@ -28,8 +28,8 @@ export function useAuthRefresh() {
         // Set up the interval
         intervalRef.current = setInterval(refresh, REFRESH_INTERVAL);
 
-        // Run once on mount (optional, but good for long-lived sessions)
-        // refresh();
+        // Run once on mount — prevents stale token if tab was open before login
+        refresh();
 
         return () => {
             if (intervalRef.current) {

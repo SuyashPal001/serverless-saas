@@ -35,7 +35,7 @@ export function RevokeApiKeyAction({ apiKeyId, apiKeyName }: RevokeApiKeyActionP
     const [showConfirm, setShowConfirm] = useState(false);
 
     const revokeMutation = useMutation({
-        mutationFn: () => api.patch(`/api/v1/api-keys/${apiKeyId}/revoke`, {}),
+        mutationFn: () => api.del(`/api/v1/api-keys/${apiKeyId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["api-keys", tenantId] });
             toast.success(`API key "${apiKeyName}" revoked successfully`);

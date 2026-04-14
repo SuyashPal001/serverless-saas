@@ -735,3 +735,62 @@ const CONNECTED_NAMES: Record<string, string> = {
 | Zoho Mail | `zoho_mail` | `['mail']` | `POST /zoho/mail/connect` |
 | Zoho Cliq | `zoho_cliq` | `['cliq']` | `POST /zoho/cliq/connect` |
 | Jira | `jira` | `['jira']` | `POST /jira/connect` |
+
+## Mutation Endpoint Reference (verified April 14, 2026)
+
+**Read this table before writing any frontend mutation.** Every row was cross-referenced between the backend route file and the frontend component. Method or path wrong on either side = 404 or 405 at runtime.
+
+All backend paths are full paths including the `/api/v1` prefix.
+
+| Operation | Method | Backend Path | Frontend File | Notes |
+|---|---|---|---|---|
+| Login | POST | `/api/v1/auth/login` | `app/auth/login/page.tsx` | ✅ |
+| Logout | POST | `/api/v1/auth/logout` | `app/auth/login/page.tsx` | ✅ |
+| Switch tenant | POST | `/api/v1/auth/switch-tenant` | `app/auth/login/page.tsx` | ✅ |
+| Set pending tenant | POST | `/api/v1/auth/set-pending-tenant` | `app/api/auth/refresh/route.ts` | ✅ internal only |
+| Complete onboarding | POST | `/api/v1/onboarding/complete` | `app/onboarding/page.tsx` | ✅ |
+| Accept invitation | POST | `/api/v1/invitations/:token/accept` | `app/auth/invite/[token]/page.tsx` | ✅ |
+| Change plan | POST | `/api/v1/billing/subscription` | `billing/PlanSelectorDialog.tsx` | ✅ triggers token refresh + reload |
+| Cancel subscription | POST | `/api/v1/billing/cancel` | `billing/CancelSubscriptionAction.tsx` | ✅ no request body needed |
+| Create API key | POST | `/api/v1/api-keys` | `api-keys/CreateApiKeyForm.tsx` | ✅ |
+| Revoke API key | DELETE | `/api/v1/api-keys/:id` | `api-keys/RevokeApiKeyAction.tsx` | ✅ soft-revoke (sets status='revoked') |
+| Delete API key | DELETE | `/api/v1/api-keys/:id` | `api-keys/DeleteApiKeyAction.tsx` | ✅ same backend op as revoke — copy says "permanent" but backend is identical |
+| Invite member | POST | `/api/v1/members/invite` | `members/InviteMemberForm.tsx` | ✅ |
+| Update member role | PATCH | `/api/v1/members/:id/role` | `members/MembersList.tsx` | ✅ |
+| Update member status | PATCH | `/api/v1/members/:id/status` | `members/MembersList.tsx` | ✅ |
+| Delete member | DELETE | `/api/v1/members/:id` | `members/MembersList.tsx` | ✅ |
+| Create role | POST | `/api/v1/roles` | `roles/CreateRoleForm.tsx` | ✅ |
+| Update role | PATCH | `/api/v1/roles/:id` | — | ⚠️ backend exists, no frontend yet |
+| Delete role | DELETE | `/api/v1/roles/:id` | `roles/DeleteRoleAction.tsx` | ✅ |
+| Create agent | POST | `/api/v1/agents` | `agents/CreateAgentForm.tsx` | ✅ |
+| Update agent | PATCH | `/api/v1/agents/:id` | — | ⚠️ backend exists, no frontend yet |
+| Delete agent | DELETE | `/api/v1/agents/:id` | — | ⚠️ backend exists, no frontend yet |
+| Create agent skill | POST | `/api/v1/agents/:agentId/skills` | — | ⚠️ backend exists, no frontend yet |
+| Update agent skill | PUT | `/api/v1/agents/:agentId/skills/:skillId` | — | ⚠️ backend exists, no frontend yet |
+| Delete agent skill | DELETE | `/api/v1/agents/:agentId/skills/:skillId` | — | ⚠️ backend exists, no frontend yet |
+| Upsert agent policy | PUT | `/api/v1/agents/:agentId/policies` | — | ⚠️ backend exists, no frontend yet |
+| Create webhook | POST | `/api/v1/webhooks` | `webhooks/CreateWebhookModal.tsx` | ✅ |
+| Update webhook | PATCH | `/api/v1/webhooks/:id` | `webhooks/WebhookPanel.tsx` | ✅ |
+| Delete webhook | DELETE | `/api/v1/webhooks/:id` | `webhooks/WebhookPanel.tsx` | ✅ |
+| Connect integration (OAuth) | POST | `/api/v1/integrations/{provider}/connect` | `integrations/IntegrationsGrid.tsx` | ✅ returns `{ url }` for redirect |
+| Update integration | PATCH | `/api/v1/integrations/:id` | `integrations/IntegrationPanel.tsx` | ✅ |
+| Delete integration | DELETE | `/api/v1/integrations/:idOrProvider` | `integrations/IntegrationPanel.tsx` | ✅ |
+| Upload file (get URL) | POST | `/api/v1/files/upload` | `files/UploadFileModal.tsx` | ✅ returns presigned S3 URL |
+| Confirm file upload | POST | `/api/v1/files/:id/confirm` | `files/UploadFileModal.tsx` | ✅ call after S3 PUT completes |
+| Delete file | DELETE | `/api/v1/files/:id` | `files/FilesList.tsx` | ✅ |
+| Upload document (get URL) | POST | `/api/v1/documents/upload-url` | `dashboard/chat/page.tsx` | ✅ |
+| Create document record | POST | `/api/v1/documents` | `dashboard/chat/page.tsx` | ✅ |
+| Delete document | DELETE | `/api/v1/documents/:id` | `dashboard/chat/page.tsx` | ✅ |
+| Message feedback | POST | `/api/v1/conversations/:cId/messages/:mId/feedback` | `dashboard/chat/page.tsx` | ✅ |
+| Mark notification read | PATCH | `/api/v1/notifications/inbox/:id/read` | `dashboard/notifications/page.tsx` | ✅ |
+| Mark all notifications read | POST | `/api/v1/notifications/inbox/read-all` | `dashboard/notifications/page.tsx` | ✅ |
+| Archive notification | PATCH | `/api/v1/notifications/inbox/:id/archive` | `dashboard/notifications/page.tsx` | ✅ |
+| Upsert notification prefs | PUT | `/api/v1/notifications/preferences` | `dashboard/notifications/page.tsx` | ✅ |
+| Update branding | PATCH | `/api/v1/branding` | `dashboard/branding/page.tsx` | ✅ |
+| Suspend/reactivate tenant (ops) | PATCH | `/api/v1/ops/tenants/:id` | `dashboard/ops/tenants/page.tsx` | ✅ |
+| Grant feature override (ops) | POST | `/api/v1/ops/overrides` | `dashboard/ops/overrides/page.tsx` | ✅ |
+| Revoke feature override (ops) | POST | `/api/v1/ops/overrides/:id/revoke` | `dashboard/ops/overrides/page.tsx` | ✅ |
+
+### Known gaps — billing status filter
+
+`GET /billing/subscription` and `GET /billing/plan` filter `status = 'active'` only. Tenants with `status = 'trialing'` subscriptions will get `null` back and the billing page renders blank. The Pre-Token Lambda correctly handles `active OR trialing` — the billing read routes do not. Fix before adding trial flows.
