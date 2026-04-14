@@ -794,3 +794,60 @@ All backend paths are full paths including the `/api/v1` prefix.
 ### Known gaps — billing status filter
 
 `GET /billing/subscription` and `GET /billing/plan` filter `status = 'active'` only. Tenants with `status = 'trialing'` subscriptions will get `null` back and the billing page renders blank. The Pre-Token Lambda correctly handles `active OR trialing` — the billing read routes do not. Fix before adding trial flows.
+
+## Plan Gating (April 2026)
+
+### How it works
+Entitlements flow: `plan_entitlements` DB table → `entitlementsMiddleware` (cached in Redis) → `GET /api/v1/entitlements` → `layout.tsx` stores boolean flags in `TenantClaims.entitlementFeatures` → components read via `useTenant()`.
+
+`entitlementFeatures` only contains **boolean-type** features (e.g. `branding`, `connectors_access`, `webhooks`). Count/limit features (`seats`, `agents`, `integrations`) are NOT in this map — do not use them for sidebar locks.
+
+### Adding a new plan-gated feature
+
+**Step 1 — Seed** (`packages/foundation/database/seeds/`):
+- `features.ts` — add `{ key: 'my_feature', type: 'boolean', name: '...', unit: null, resetPeriod: null, metricKey: null }`
+- `plan-entitlements.ts` — add `my_feature: { enabled: false/true }` for each of the four plans
+
+**Step 2 — Sidebar lock** (`apps/web/lib/sidebar-items.ts`):
+```typescript
+const myFeatureLocked = entitlements['my_feature']?.enabled === false;
+// then on the item:
+{ locked: myFeatureLocked, planRequired: 'starter', planGateFeature: 'my_feature' }
+```
+
+**Step 3 — Page overlay** (for in-page section gating):
+```tsx
+const { entitlementFeatures } = useTenant();
+const featureEnabled = entitlementFeatures?.['my_feature'] === true;
+
+<div className="relative">
+  <div className={cn("...", !featureEnabled && "opacity-40 pointer-events-none select-none")}>
+    {/* form fields */}
+  </div>
+  {!featureEnabled && (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg backdrop-blur-[2px] bg-card/60">
+      <LockKeyhole className="h-5 w-5 text-muted-foreground" />
+      <p className="text-sm text-center text-muted-foreground">Upgrade to Business to unlock</p>
+      <Button size="sm" asChild>
+        <Link href={`/${tenantSlug}/dashboard/billing`}>Upgrade</Link>
+      </Button>
+    </div>
+  )}
+</div>
+```
+
+**Step 4 — Re-seed DB**: `cd packages/foundation/database && pnpm db:seed`
+
+### Current plan gates
+
+| Feature key | free | starter | business | enterprise | Sidebar item | Page section |
+|---|---|---|---|---|---|---|
+| `branding` | ✗ | ✓ | ✓ | ✓ | Branding | Agent Identity, General Prompt |
+| `connectors_access` | ✗ | ✓ | ✓ | ✓ | Connectors | — |
+| `audit_log` | ✗ | ✗ | ✓ | ✓ | Audit log | — |
+| `webhooks` | ✗ | ✓ | ✓ | ✓ | Webhooks | — |
+| `api_keys_access` | ✗ | ✓ | ✓ | ✓ | API keys | — |
+| `mcp_integrations` | ✓ | ✓ | ✓ | ✓ | Integrations (custom) | — |
+
+### Important: entitlement cache
+Entitlements are cached in Redis for 15 minutes (TTL `TENANT_CACHE_TTL_SECONDS`). After changing a tenant's plan, the cache must be invalidated or the sidebar lock state won't update until TTL expires. Plan changes via `/api/v1/billing/subscription` already invalidate the cache.
