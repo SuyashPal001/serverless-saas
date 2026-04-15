@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,7 +10,6 @@ import { useAuthRefresh } from "@/hooks/useAuthRefresh";
 import { useHyperspace } from "@/components/hyperspace-provider";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const onboardingSchema = z.object({
@@ -30,13 +29,36 @@ export default function OnboardingPage() {
     const router = useRouter();
     const { startHyperspace } = useHyperspace();
     const [isLoading, setIsLoading] = useState(false);
+    const [isPreparing, setIsPreparing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Populated from sessionStorage when the OAuth callback pre-created the tenant
+    const [pendingTenantId, setPendingTenantId] = useState<string | null>(null);
+    const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+    const [hasPendingError, setHasPendingError] = useState(false);
 
     const form = useForm<OnboardingSchema>({
         resolver: zodResolver(onboardingSchema),
         defaultValues: { workspaceName: "", purpose: "" },
         mode: "onChange"
     });
+
+    // Pre-fill workspace name from sessionStorage if the callback created the tenant early
+    useEffect(() => {
+        const tenantId = sessionStorage.getItem('pending_onboarding_tenant_id');
+        const slug = sessionStorage.getItem('pending_onboarding_slug');
+        const defaultName = sessionStorage.getItem('pending_onboarding_default_name');
+        const hasError = sessionStorage.getItem('pending_onboarding_error') === '1';
+
+        if (tenantId) setPendingTenantId(tenantId);
+        if (slug) setPendingSlug(slug);
+        if (hasError) setHasPendingError(true);
+
+        // Only pre-fill when we have a valid pending tenant (no error)
+        if (defaultName && !hasError) {
+            form.setValue('workspaceName', defaultName, { shouldValidate: true });
+        }
+    }, []);
 
     const isNameValid = form.watch("workspaceName").length >= 2;
     const currentPurpose = form.watch("purpose");
@@ -45,9 +67,69 @@ export default function OnboardingPage() {
         setIsLoading(true);
         setError(null);
 
+        // ── Fast path ─────────────────────────────────────────────────────────
+        // Tenant was pre-created in the OAuth callback. Just rename it to the
+        // user's chosen name and navigate directly to the dashboard.
+        if (pendingTenantId && pendingSlug && !hasPendingError) {
+            try {
+                // Guard: ensure JWT carries custom:tenantId before the PATCH.
+                // The callback already did this refresh, but we repeat it here to
+                // protect against a silent failure there.
+                const refreshRes = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenantId: pendingTenantId }),
+                });
+
+                if (!refreshRes.ok) {
+                    // Tenant exists — cannot fall back to onboarding/complete (would create duplicate).
+                    setError("Failed to prepare your workspace. Please refresh the page.");
+                    setIsLoading(false);
+                    return;
+                }
+
+                // Rename the pre-created workspace to the user's chosen name
+                const patchRes = await fetch(`/api/proxy/api/v1/workspaces/${pendingTenantId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: data.workspaceName }),
+                });
+
+                if (!patchRes.ok) {
+                    const patchErr = await patchRes.json().catch(() => ({})) as Record<string, unknown>;
+                    throw new Error((patchErr.message as string) || 'Failed to rename workspace');
+                }
+
+                // Clear all pending state
+                sessionStorage.removeItem('pending_onboarding_tenant_id');
+                sessionStorage.removeItem('pending_onboarding_slug');
+                sessionStorage.removeItem('pending_onboarding_default_name');
+
+                setIsPreparing(true);
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+
+                startHyperspace('signup');
+                setTimeout(() => {
+                    router.push(`/${pendingSlug}/dashboard`);
+                    router.refresh();
+                }, 100);
+
+            } catch (err: any) {
+                console.error("Fast-path onboarding failed:", err);
+                setError(err.message || "Failed to set up workspace. Please refresh the page.");
+                setIsLoading(false);
+            }
+            return;
+        }
+
+        // ── Fallback path ─────────────────────────────────────────────────────
+        // No pre-created tenant (email flow) or the callback errored — create the
+        // tenant now and send the user through login to stamp the JWT.
         try {
+            sessionStorage.removeItem('pending_onboarding_error');
+
             // Create tenant + agent
-            const res = await api.post('/v1/onboarding/complete', data);
+            const res = await api.post<{ tenantId: string; slug: string; message: string }>('/v1/onboarding/complete', data);
 
             // Fire-and-forget provision call
             if (res.tenantId) {
@@ -59,10 +141,13 @@ export default function OnboardingPage() {
             // Clear HTTP session token (so login can start fresh and get tenantId claims)
             await fetch('/api/auth/session', { method: 'DELETE' });
 
+            setIsPreparing(true);
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+
             // Trigger immersive transition
             startHyperspace('signup');
 
-            // Send to login, which will automatically grab the new JWT and redirect to dashboard
+            // Send to login — Pre-Token Lambda stamps custom:tenantId on fresh login
             setTimeout(() => {
                 router.push(`/auth/login?onboarded=true&slug=${res.slug}`);
             }, 100);
@@ -79,29 +164,31 @@ export default function OnboardingPage() {
             {/* Immersive background matching hyperspace idle */}
             <StarfieldCanvas speedMode="idle" active={true} />
 
-            <div className="relative z-10 w-full max-w-md p-8 flex flex-col gap-8">
-                <div className="text-center">
-                    <p className="text-sm font-medium tracking-wider text-muted-foreground uppercase opacity-80 mb-2">
-                        One last thing
-                    </p>
-                </div>
-
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-10">
-                    <div className="space-y-4">
-                        <Input
-                            placeholder="Name your workspace"
-                            className="bg-transparent border-none text-center text-2xl h-14 placeholder:text-muted-foreground/40 focus-visible:ring-0 shadow-none px-0 tracking-tight"
-                            autoFocus
-                            disabled={isLoading}
-                            {...form.register("workspaceName")}
-                        />
+            <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center justify-center">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="w-full flex flex-col items-center">
+                    
+                    <div className="text-center w-full mb-10 mt-10 md:mt-16">
+                        <p className="text-xs md:text-sm font-medium tracking-[0.2em] text-white/40 uppercase mb-5">
+                            Your workspace awaits
+                        </p>
+                        
+                        <div className="relative group max-w-xl mx-auto w-full">
+                            <input
+                                type="text"
+                                placeholder="Name your workspace"
+                                className="w-full bg-transparent border-0 border-b border-white/20 rounded-none text-center text-3xl md:text-4xl lg:text-5xl font-medium tracking-tight h-auto py-3 placeholder:text-white/20 px-0 text-white focus:outline-none focus:border-white/60 transition-colors duration-500"
+                                autoFocus
+                                disabled={isLoading}
+                                {...form.register("workspaceName")}
+                            />
+                        </div>
                     </div>
 
-                    <div className="space-y-4 pt-4 border-t border-white/10 text-center">
-                        <p className="text-sm font-medium tracking-wider text-muted-foreground uppercase opacity-80">
+                    <div className="space-y-6 pt-4 w-full max-w-2xl text-center mb-16">
+                        <p className="text-xs md:text-sm font-medium tracking-[0.2em] text-white/40 uppercase">
                             What will you use it for?
                         </p>
-                        <div className="flex flex-wrap justify-center gap-3">
+                        <div className="flex flex-wrap justify-center gap-4">
                             {PURPOSES.map((p) => (
                                 <button
                                     key={p.value}
@@ -109,10 +196,10 @@ export default function OnboardingPage() {
                                     disabled={isLoading}
                                     onClick={() => form.setValue('purpose', p.value)}
                                     className={cn(
-                                        "px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 border backdrop-blur-sm",
+                                        "px-5 py-2 text-[13px] font-medium transition-all duration-300 border backdrop-blur-md rounded-full",
                                         currentPurpose === p.value
-                                            ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]"
-                                            : "bg-black/40 text-white/70 border-white/20 hover:bg-white/10 hover:border-white/40"
+                                            ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.2)] scale-105"
+                                            : "bg-transparent text-white/40 border-white/10 hover:border-white/30 hover:text-white"
                                     )}
                                 >
                                     {p.label}
@@ -122,24 +209,24 @@ export default function OnboardingPage() {
                     </div>
 
                     {error && (
-                        <div className="text-center text-sm text-red-400 bg-red-400/10 py-2 px-4 rounded">
+                        <div className="text-center text-sm text-red-400 bg-red-400/10 py-2 px-4 rounded mb-8">
                             {error}
                         </div>
                     )}
 
-                    <div className="pt-6">
+                    <div className="w-full max-w-[280px]">
                         <Button
                             type="submit"
                             size="lg"
                             disabled={!isNameValid || isLoading}
                             className={cn(
-                                "w-full transition-all duration-500 rounded-full h-14 text-base font-semibold",
+                                "w-full transition-all duration-500 rounded-full h-14 text-base font-semibold tracking-wide",
                                 isNameValid && !isLoading
-                                    ? "bg-white text-black hover:bg-gray-200 shadow-[0_0_30px_rgba(255,255,255,0.4)]"
-                                    : "bg-white/5 text-white/30 border border-white/10"
+                                    ? "bg-white text-black hover:bg-white/90 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-[1.02]"
+                                    : "bg-white/5 text-white/40 border border-white/10"
                             )}
                         >
-                            {isLoading ? "Preparing flight..." : "Let's go \u2192"}
+                            {isPreparing ? "Preparing your space..." : (isLoading ? "Creating..." : "Let's go \u2192")}
                         </Button>
                     </div>
                 </form>
