@@ -13,7 +13,6 @@ function CallbackContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    startHyperspace();
     const code = searchParams.get("code");
 
     if (!code) {
@@ -113,6 +112,7 @@ function CallbackContent() {
         // 5. Hard redirect — forces full page load so cookie is read fresh
         // Redirect using Next.js router. The layout mounting will finish the animation.
         if (profile.slug && !profile.needsOnboarding) {
+          startHyperspace('signin');
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
         } else {
