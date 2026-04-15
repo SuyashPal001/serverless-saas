@@ -32,7 +32,15 @@ workspacesRoutes.get('/:tenantId', async (c) => {
 
     if (!tenant) return c.json({ error: 'Workspace not found', code: 'NOT_FOUND' }, 404);
 
-    return c.json({ workspace: tenant });
+    const [{ memberCount }] = await db
+        .select({ memberCount: count() })
+        .from(memberships)
+        .where(and(
+            eq(memberships.tenantId, activeTenantId),
+            inArray(memberships.status, ['active', 'invited'])
+        ));
+
+    return c.json({ workspace: tenant, memberCount });
 });
 
 // Helper: check tenantId from path matches active JWT tenant

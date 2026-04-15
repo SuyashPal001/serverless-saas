@@ -3,12 +3,17 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useHyperspace } from "@/components/hyperspace-provider";
+import { useRouter } from "next/navigation";
 
 function CallbackContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { startHyperspace } = useHyperspace();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    startHyperspace();
     const code = searchParams.get("code");
 
     if (!code) {
@@ -79,7 +84,9 @@ function CallbackContent() {
                 const acceptData = await acceptRes.json();
                 
                 if (acceptRes.ok) {
-                  window.location.href = `/${acceptData.tenantSlug}/dashboard`;
+                  // Global loader will finish when the dashboard layout mounts
+                  router.push(`/${acceptData.tenantSlug}/dashboard`);
+                  router.refresh();
                   return;
                 } else {
                   window.location.href = `/auth/invite/${token}?error=${acceptData.code || "ACCEPT_FAILED"}`;
@@ -104,10 +111,13 @@ function CallbackContent() {
         const profile = await profileRes.json();
 
         // 5. Hard redirect — forces full page load so cookie is read fresh
+        // Redirect using Next.js router. The layout mounting will finish the animation.
         if (profile.slug && !profile.needsOnboarding) {
-          window.location.href = `/${profile.slug}/dashboard`;
+          router.push(`/${profile.slug}/dashboard`);
+          router.refresh();
         } else {
-          window.location.href = "/onboarding";
+          router.push("/onboarding");
+          router.refresh();
         }
       } catch (err: any) {
         console.error("Auth callback error:", err);
@@ -131,10 +141,7 @@ function CallbackContent() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-      <p className="text-muted-foreground">Completing sign in...</p>
-    </div>
+    <div className="bg-black min-h-screen" />
   );
 }
 

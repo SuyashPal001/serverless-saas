@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuthRefresh } from "@/hooks/useAuthRefresh";
+import { HyperspaceProvider } from "./hyperspace-provider";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
     useAuthRefresh();
@@ -16,7 +17,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            {children}
+            <HyperspaceProvider>
+                {children}
+            </HyperspaceProvider>
         </QueryClientProvider>
     );
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useHyperspace } from "@/components/hyperspace-provider"
 
 interface SidebarContextType {
     isSidebarCollapsed: boolean
@@ -12,11 +13,13 @@ interface SidebarContextType {
 const SidebarContext = React.createContext<SidebarContextType | undefined>(undefined)
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
+    const { finishHyperspace } = useHyperspace()
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false)
     const [isChatSidebarCollapsed, setIsChatSidebarCollapsed] = React.useState(false)
 
-    // Load from local storage
+    // Load from local storage and finish loader if active
     React.useEffect(() => {
+        finishHyperspace()
         const savedGlobal = localStorage.getItem("sidebar-collapsed")
         const savedChat = localStorage.getItem("chat-sidebar-collapsed")
         if (savedGlobal === "true") setIsSidebarCollapsed(true)

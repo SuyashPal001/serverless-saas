@@ -19,6 +19,7 @@ import {
     Card,
     CardContent,
     CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -40,8 +41,8 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { MembersList } from "@/components/platform/members/MembersList";
 import { PermissionGate } from "@/components/platform/PermissionGate";
+import Link from "next/link";
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -249,17 +250,19 @@ export default function WorkspaceSettingsPage() {
     // We need to fetch the actual tenant name from the API to pre-fill the form
     const [workspaceName, setWorkspaceName] = useState("");
     const [currentSlug, setCurrentSlug] = useState(tenantSlug || "");
+    const [memberCount, setMemberCount] = useState<number>(0);
     const [leaveModalOpen, setLeaveModalOpen] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [isFetching, setIsFetching] = useState(true);
 
     useEffect(() => {
-        api.get<{ workspace: { id: string; name: string; slug: string } }>(
+        api.get<{ workspace: { id: string; name: string; slug: string }; memberCount: number }>(
             `/api/v1/workspaces/${tenantId}`
         )
             .then((res) => {
                 setWorkspaceName(res.workspace.name);
                 setCurrentSlug(res.workspace.slug);
+                setMemberCount(res.memberCount);
                 form.reset({ name: res.workspace.name, slug: res.workspace.slug });
             })
             .catch(() => {
@@ -332,182 +335,192 @@ export default function WorkspaceSettingsPage() {
             {/* ── Workspace Details (owner only) ── */}
             {isOwner ? (
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Building2 className="h-5 w-5" />
-                            Workspace Details
-                        </CardTitle>
-                        <CardDescription>
-                            Update the name and URL slug for this workspace.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {isFetching ? (
-                            <div className="space-y-4 max-w-md">
-                                <div className="h-10 w-full animate-pulse rounded-md bg-muted" />
-                                <div className="h-10 w-full animate-pulse rounded-md bg-muted" />
-                            </div>
-                        ) : (
-                            <Form {...form}>
-                                <form
-                                    onSubmit={form.handleSubmit((d) => updateMutation.mutate(d))}
-                                    className="space-y-4 max-w-md"
-                                >
-                                    <FormField
-                                        control={form.control}
-                                        name="name"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Workspace Name</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        placeholder="My Workspace"
-                                                        disabled={updateMutation.isPending}
-                                                        {...field}
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="slug"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Workspace Slug</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        placeholder="my-workspace"
-                                                        disabled={updateMutation.isPending}
-                                                        {...field}
-                                                        onChange={(e) =>
-                                                            field.onChange(
-                                                                e.target.value
-                                                                    .toLowerCase()
-                                                                    .replace(/[^a-z0-9-]/g, "")
-                                                            )
-                                                        }
-                                                    />
-                                                </FormControl>
-                                                <FormDescription>
-                                                    Used in your workspace URL. Changing this will
-                                                    invalidate all existing links.
-                                                </FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <div className="flex justify-end pt-2">
-                                        <Button
-                                            type="submit"
-                                            disabled={updateMutation.isPending}
-                                        >
-                                            {updateMutation.isPending && (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            )}
-                                            Save changes
-                                        </Button>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit((d) => updateMutation.mutate(d))}>
+                            <CardHeader className="border-b">
+                                <CardTitle className="flex items-center gap-2 text-lg">
+                                    <Building2 className="h-5 w-5" />
+                                    Workspace Details
+                                </CardTitle>
+                                <CardDescription>
+                                    Update the name and URL slug for this workspace.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-6 space-y-6 max-w-xl">
+                                {isFetching ? (
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                                            <div className="h-10 w-full animate-pulse rounded-md bg-muted" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+                                            <div className="h-10 w-full animate-pulse rounded-md bg-muted" />
+                                        </div>
                                     </div>
-                                </form>
-                            </Form>
-                        )}
-                    </CardContent>
+                                ) : (
+                                    <>
+                                        <FormField
+                                            control={form.control}
+                                            name="name"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Workspace Name</FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="My Workspace"
+                                                            disabled={updateMutation.isPending}
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="slug"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Workspace Slug</FormLabel>
+                                                    <FormControl>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm text-muted-foreground font-mono">/</span>
+                                                            <Input
+                                                                placeholder="my-workspace"
+                                                                disabled={updateMutation.isPending}
+                                                                {...field}
+                                                                onChange={(e) =>
+                                                                    field.onChange(
+                                                                        e.target.value
+                                                                            .toLowerCase()
+                                                                            .replace(/[^a-z0-9-]/g, "")
+                                                                    )
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Changing your slug will update your workspace URL.
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </>
+                                )}
+                            </CardContent>
+                            <CardFooter className="border-t border-border px-6 py-4 flex justify-end">
+                                <Button
+                                    type="submit"
+                                    disabled={updateMutation.isPending || isFetching}
+                                >
+                                    {updateMutation.isPending && (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    )}
+                                    Save changes
+                                </Button>
+                            </CardFooter>
+                        </form>
+                    </Form>
                 </Card>
             ) : (
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
+                    <CardHeader className="border-b">
+                        <CardTitle className="flex items-center gap-2 text-lg">
                             <Building2 className="h-5 w-5" />
                             Workspace Details
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3 text-sm">
-                            <div className="flex items-center gap-4">
-                                <span className="w-16 text-muted-foreground">Name</span>
+                    <CardContent className="p-6">
+                        <div className="space-y-4 text-sm max-w-xl">
+                            <div className="flex items-center gap-8">
+                                <span className="w-24 text-muted-foreground">Name</span>
                                 <span className="font-medium">{workspaceName || "—"}</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <span className="w-16 text-muted-foreground">Slug</span>
-                                <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-                                    {currentSlug || tenantSlug || "—"}
-                                </span>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
             )}
 
-            {/* ── Members (view only) ── */}
+            {/* ── Members (Redirect) ── */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                <CardHeader className="border-b">
+                    <CardTitle className="flex items-center gap-2 text-lg">
                         <Users className="h-5 w-5" />
-                        Members
+                        Members & Access
                     </CardTitle>
                     <CardDescription>
-                        Current members of this workspace. Manage members in full from the Members
-                        page.
+                        Manage your team, invite new users, and configure roles.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <PermissionGate resource="members" action="read" fallback={
-                        <p className="text-sm text-muted-foreground">
-                            You do not have permission to view members.
-                        </p>
-                    }>
-                        <MembersList />
-                    </PermissionGate>
+                <CardContent className="p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border px-4 py-4 gap-4">
+                        <div>
+                            <p className="text-sm font-medium">Manage Team</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                {isFetching ? (
+                                    <span className="inline-block h-4 w-4 bg-muted animate-pulse rounded" />
+                                ) : (
+                                    memberCount
+                                )}{" "}
+                                active or invited members in this workspace.
+                            </p>
+                        </div>
+                        <Button variant="outline" asChild>
+                            <Link href={`/${tenantSlug}/dashboard/settings/members`}>
+                                Go to Members
+                            </Link>
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 
             {/* ── Danger Zone ── */}
-            <div className="rounded-lg border border-destructive/40 p-6 space-y-4">
-                <div>
-                    <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">
+            <Card className="border-destructive/30">
+                <CardHeader className="border-b border-destructive/20">
+                    <CardTitle className="text-destructive text-lg">Danger Zone</CardTitle>
+                    <CardDescription>
                         Irreversible and destructive actions.
-                    </p>
-                </div>
-
-                {canLeave && (
-                    <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
-                        <div>
-                            <p className="text-sm font-medium">Leave workspace</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Remove yourself from this workspace. You will lose access immediately.
-                            </p>
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                    {canLeave && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border px-4 py-4 gap-4">
+                            <div>
+                                <p className="text-sm font-medium">Leave workspace</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Remove yourself from this workspace. You will lose access immediately.
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => setLeaveModalOpen(true)}
+                            >
+                                Leave workspace
+                            </Button>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => setLeaveModalOpen(true)}
-                        >
-                            Leave workspace
-                        </Button>
-                    </div>
-                )}
+                    )}
 
-                {isOwner && (
-                    <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
-                        <div>
-                            <p className="text-sm font-medium">Delete workspace</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Permanently delete this workspace and all its data.
-                            </p>
+                    {isOwner && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border px-4 py-4 gap-4">
+                            <div>
+                                <p className="text-sm font-medium">Delete workspace</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Permanently delete this workspace and all its data.
+                                </p>
+                            </div>
+                            <Button
+                                variant="destructive"
+                                onClick={() => setDeleteModalOpen(true)}
+                            >
+                                Delete workspace
+                            </Button>
                         </div>
-                        <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setDeleteModalOpen(true)}
-                        >
-                            Delete workspace
-                        </Button>
-                    </div>
-                )}
-            </div>
+                    )}
+                </CardContent>
+            </Card>
 
             <LeaveWorkspaceModal
                 open={leaveModalOpen}

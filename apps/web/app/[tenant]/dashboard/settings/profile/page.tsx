@@ -19,6 +19,7 @@ import {
     Card,
     CardContent,
     CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -289,21 +290,18 @@ function ChangePasswordCard() {
 
     return (
         <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <LockKeyhole className="h-5 w-5" />
-                    Change Password
-                </CardTitle>
-                <CardDescription>
-                    Update your password. Not available for accounts that sign in with Google.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form {...form}>
-                    <form
-                        onSubmit={form.handleSubmit((d) => changePwMutation.mutate(d))}
-                        className="space-y-4 max-w-md"
-                    >
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit((d) => changePwMutation.mutate(d))}>
+                    <CardHeader className="border-b">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <LockKeyhole className="h-5 w-5" />
+                            Change Password
+                        </CardTitle>
+                        <CardDescription>
+                            Update your password. Not available for accounts that sign in with Google.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-6 max-w-xl">
                         <FormField
                             control={form.control}
                             name="currentPassword"
@@ -358,17 +356,18 @@ function ChangePasswordCard() {
                                 </FormItem>
                             )}
                         />
-                        <div className="flex justify-end pt-2">
-                            <Button type="submit" disabled={changePwMutation.isPending}>
-                                {changePwMutation.isPending && (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                )}
-                                Update Password
-                            </Button>
-                        </div>
-                    </form>
-                </Form>
-            </CardContent>
+                    </CardContent>
+                    <CardFooter className="border-t border-border px-6 py-4 flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">Keep your password secure.</p>
+                        <Button type="submit" disabled={changePwMutation.isPending}>
+                            {changePwMutation.isPending && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            )}
+                            Update Password
+                        </Button>
+                    </CardFooter>
+                </form>
+            </Form>
         </Card>
     );
 }
@@ -447,21 +446,18 @@ export default function ProfileSettingsPage() {
 
             {/* ── Personal Info ── */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <User className="h-5 w-5" />
-                        Personal Information
-                    </CardTitle>
-                    <CardDescription>
-                        Update your display name and profile photo.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Form {...form}>
-                        <form
-                            onSubmit={form.handleSubmit((d) => updateMutation.mutate(d))}
-                            className="space-y-6 max-w-2xl"
-                        >
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit((d) => updateMutation.mutate(d))}>
+                        <CardHeader className="border-b">
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <User className="h-5 w-5" />
+                                Personal Information
+                            </CardTitle>
+                            <CardDescription>
+                                Update your display name and profile photo.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-6 space-y-8 max-w-xl">
                             <FormField
                                 control={form.control}
                                 name="avatarUrl"
@@ -499,59 +495,61 @@ export default function ProfileSettingsPage() {
                                 )}
                             />
 
-                            {/* Email — read-only */}
                             <div className="space-y-2">
                                 <p className="text-sm font-medium leading-none">Email</p>
                                 <Input
                                     value={userEmail}
                                     disabled
-                                    className="max-w-md bg-muted/30 text-muted-foreground cursor-not-allowed"
+                                    className="text-muted-foreground cursor-not-allowed"
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     Email address cannot be changed.
                                 </p>
                             </div>
-
-                            <div className="flex justify-end">
-                                <Button type="submit" disabled={updateMutation.isPending}>
-                                    {updateMutation.isPending && (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    )}
-                                    Save changes
-                                </Button>
-                            </div>
-                        </form>
-                    </Form>
-                </CardContent>
+                        </CardContent>
+                        <CardFooter className="border-t border-border px-6 py-4 flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">
+                                Please use 32 characters at maximum.
+                            </p>
+                            <Button type="submit" disabled={updateMutation.isPending}>
+                                {updateMutation.isPending && (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
+                                Save changes
+                            </Button>
+                        </CardFooter>
+                    </form>
+                </Form>
             </Card>
 
             {/* ── Change Password ── */}
             <ChangePasswordCard />
 
             {/* ── Danger Zone ── */}
-            <div className="rounded-lg border border-destructive/40 p-6 space-y-4">
-                <div>
-                    <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">
+            <Card className="border-destructive/30">
+                <CardHeader className="border-b border-destructive/20">
+                    <CardTitle className="text-destructive text-lg">Danger Zone</CardTitle>
+                    <CardDescription>
                         Irreversible and destructive actions.
-                    </p>
-                </div>
-                <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
-                    <div>
-                        <p className="text-sm font-medium">Delete account</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Permanently delete your account and all associated data.
-                        </p>
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border px-4 py-4 gap-4">
+                        <div>
+                            <p className="text-sm font-medium">Delete account</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Permanently delete your account and all associated data.
+                            </p>
+                        </div>
+                        <Button
+                            variant="destructive"
+                            onClick={() => setDeleteModalOpen(true)}
+                        >
+                            Delete account
+                        </Button>
                     </div>
-                    <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setDeleteModalOpen(true)}
-                    >
-                        Delete account
-                    </Button>
-                </div>
-            </div>
+                </CardContent>
+            </Card>
 
             <DeleteAccountModal
                 open={deleteModalOpen}

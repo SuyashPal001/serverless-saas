@@ -44,6 +44,9 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentMessageIdRef = useRef<string | null>(null);
   const connectRef = useRef<() => void>(() => {});
+  // Tracks whether we've already run the ensure-ready check this mount cycle.
+  // Only runs once — reconnect retries skip it so they don't repeat the 90s wait.
+  const hasEnsuredReadyRef = useRef(false);
 
   // Stable refs for all callbacks — the effect reads from these at call time
   // so the WS is never torn down just because a callback prop changed identity.
@@ -97,6 +100,55 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           .split('; ')
           .find(row => row.startsWith('platform_id_token='))
           ?.split('=')[1];
+
+        // ── Ensure agent container is ready (first connect only) ──────────────
+        // Polls GET /agents/ensure-ready every 3s up to 90s. The backend checks
+        // the relay's /health/:tenantId and triggers /provision if needed, then
+        // returns immediately. We loop here because API Gateway's 29s hard timeout
+        // prevents the Lambda from doing the wait itself.
+        if (!hasEnsuredReadyRef.current) {
+          hasEnsuredReadyRef.current = true;
+          const POLL_INTERVAL_MS = 3000;
+          const TIMEOUT_MS = 90_000;
+          const startTime = Date.now();
+          let agentReady = false;
+
+          while (Date.now() - startTime < TIMEOUT_MS) {
+            try {
+              const res = await fetch('/api/proxy/api/v1/agents/ensure-ready');
+              if (res.ok) {
+                const data = await res.json();
+                if (data.ready === true) {
+                  agentReady = true;
+                  break;
+                }
+              }
+            } catch {
+              // Network error — keep polling
+            }
+
+            // Wait before next poll (skip wait on last iteration)
+            if (Date.now() - startTime + POLL_INTERVAL_MS < TIMEOUT_MS) {
+              await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+            } else {
+              break;
+            }
+          }
+
+          if (!agentReady) {
+            console.error('[useAgentEvents] Agent container did not become ready within 90s');
+            onErrorRef.current?.(
+              'AGENT_TIMEOUT',
+              'Your workspace is taking longer than expected to start. Please refresh the page to try again.',
+              true,
+            );
+            hasEnsuredReadyRef.current = false; // allow retry on next connect attempt
+            return;
+          }
+
+          console.log('[useAgentEvents] Agent container ready — connecting WebSocket');
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://agent-saas.fitnearn.com";
 

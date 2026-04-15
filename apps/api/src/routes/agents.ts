@@ -27,6 +27,60 @@ const hashKey = (rawKey: string): string => {
     return createHash('sha256').update(rawKey).digest('hex');
 };
 
+// GET /agents/ensure-ready — check if the GCP agent container is healthy for this tenant.
+// If unhealthy, triggers a provision call (fire-and-forget from the relay's perspective) and
+// returns { ready: false } immediately. The caller is expected to poll this endpoint every 3s
+// until ready or until 90s have elapsed — API Gateway's 29s hard timeout makes server-side
+// polling impossible, so the retry loop lives in the client (useAgentEvents.ts).
+// Returns { ready: true } if healthy, { ready: false, code: 'AGENT_NOT_READY' } if not yet up,
+// or { ready: true, skipped: true } when RELAY_URL is unconfigured (local/test environments).
+agentsRoutes.get('/ensure-ready', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agents', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+
+    // Not configured — local dev or env where relay isn't wired up. Treat as ready.
+    if (!relayUrl || !serviceKey) {
+        return c.json({ ready: true, skipped: true });
+    }
+
+    try {
+        const healthRes = await fetch(`${relayUrl}/health/${tenantId}`, {
+            headers: { 'X-Service-Key': serviceKey },
+            signal: AbortSignal.timeout(5000),
+        });
+
+        if (healthRes.ok) {
+            const data = await healthRes.json().catch(() => ({})) as Record<string, unknown>;
+            const isHealthy = data.healthy === true || data.status === 'healthy' || data.status === 'running';
+            if (isHealthy) {
+                return c.json({ ready: true });
+            }
+        }
+    } catch (err) {
+        // Health check failed (timeout, network error) — treat as not ready and try to provision
+        console.warn(`[agents/ensure-ready] Health check failed for tenant ${tenantId}:`, err);
+    }
+
+    // Container not healthy — fire provision (non-blocking) and let the client poll back
+    fetch(`${relayUrl}/provision/${tenantId}`, {
+        method: 'POST',
+        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    })
+        .then(() => console.log(`[agents/ensure-ready] Provision triggered for tenant ${tenantId}`))
+        .catch((err) => console.error(`[agents/ensure-ready] Provision call failed for tenant ${tenantId}:`, err));
+
+    return c.json({ ready: false, code: 'AGENT_NOT_READY' });
+});
+
 // GET /agents — list all agents for the current tenant
 agentsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;

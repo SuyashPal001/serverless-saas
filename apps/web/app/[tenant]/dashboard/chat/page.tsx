@@ -16,7 +16,7 @@ import { useCanvas } from "@/hooks/useCanvas";
 import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas/types";
 import { VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
-import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from "lucide-react";
+import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive, RefreshCw } from "lucide-react";
 import { useSidebar } from "@/components/platform/SidebarContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -126,6 +126,7 @@ export default function ChatPage() {
     } = useVoice({ conversationId: conversationId || undefined });
 
     const [eventError, setEventError] = useState<string | null>(null);
+    const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
 
     // -------------------------------------------------------------------------
@@ -203,6 +204,10 @@ export default function ChatPage() {
         }, [queryClient]),
 
         onError: useCallback((code: string, message: string) => {
+            if (code === 'AGENT_TIMEOUT') {
+                setAgentTimedOut(true);
+                return;
+            }
             setEventError(`[${code}] ${message}`);
             toast.error(message);
         }, []),
@@ -467,6 +472,25 @@ export default function ChatPage() {
     // -------------------------------------------------------------------------
     return (
         <div className="flex bg-background h-[calc(100vh-64px)] overflow-hidden relative w-full">
+            {agentTimedOut && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background gap-4">
+                    <div className="flex flex-col items-center gap-3 max-w-sm text-center">
+                        <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center border border-border">
+                            <RefreshCw className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h2 className="text-lg font-semibold tracking-tight">Your workspace is warming up</h2>
+                        <p className="text-sm text-muted-foreground">
+                            This can take up to 2 minutes on first launch. Please refresh to try again.
+                        </p>
+                        <Button
+                            onClick={() => window.location.reload()}
+                            className="mt-2"
+                        >
+                            Refresh
+                        </Button>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-1 overflow-hidden relative">
                 {/* Conversations Sidebar */}
                 <div className={cn(
