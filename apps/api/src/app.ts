@@ -40,6 +40,8 @@ import { llmProvidersRoutes } from './routes/llm-providers';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
 import { sessionsRoutes } from './routes/sessions';
+import { usersRoutes } from './routes/users';
+import { workspacesRoutes } from './routes/workspaces';
 import documentsRoutes from './routes/documents';
 import internalRetrieveRoute from './routes/internal/retrieve';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
@@ -134,6 +136,8 @@ api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);
 api.route('/evals', evalsRoutes);
 api.route('/sessions', sessionsRoutes);
+api.route('/users', usersRoutes);
+api.route('/workspaces', workspacesRoutes);
 api.route('/llm-providers', llmProvidersRoutes);
 api.route('/documents', documentsRoutes);
 

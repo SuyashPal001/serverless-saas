@@ -14,6 +14,7 @@ import {
     FolderOpen,
     Plug,
     Palette,
+    UserCircle,
 } from "lucide-react";
 import React from 'react';
 
@@ -89,11 +90,21 @@ export function getSidebarItems(
         });
 
         // 2. SETTINGS SECTION
-        items.push({ 
-            label: "Members", 
-            href: `${base}/settings/members`, 
+        items.push({
+            label: "Profile",
+            href: `${base}/settings/profile`,
+            icon: UserCircle,
+            sectionLabel: "Settings",
+        });
+        items.push({
+            label: "Workspace",
+            href: `${base}/settings/workspace`,
+            icon: Building2,
+        });
+        items.push({
+            label: "Members",
+            href: `${base}/settings/members`,
             icon: Users,
-            sectionLabel: "Settings"
         });
         items.push({ 
             label: "Roles", 
@@ -143,11 +154,22 @@ export function getSidebarItems(
             locked: integrationsLocked,
         });
     } else {
-        // Member only sees Chat & Notifications
-        items.push({ 
-            label: "Notifications", 
-            href: `${base}/notifications`, 
-            icon: Bell 
+        // Regular members see Chat, Notifications, and their own Profile + Workspace
+        items.push({
+            label: "Notifications",
+            href: `${base}/notifications`,
+            icon: Bell,
+        });
+        items.push({
+            label: "Profile",
+            href: `${base}/settings/profile`,
+            icon: UserCircle,
+            sectionLabel: "Settings",
+        });
+        items.push({
+            label: "Workspace",
+            href: `${base}/settings/workspace`,
+            icon: Building2,
         });
     }
 
