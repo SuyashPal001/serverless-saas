@@ -16,6 +16,8 @@ export interface UseAgentEventsOptions {
   onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
   onError?: (code: string, message: string, recoverable: boolean) => void;
   onSessionEnded?: (reason: string, usage?: Record<string, unknown>) => void;
+  /** Called when the ensure-ready check determines the container is still starting up. */
+  onStatus?: (message: string) => void;
 }
 
 export function useAgentEvents(options: UseAgentEventsOptions) {
@@ -31,6 +33,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
     onApprovalRequired,
     onError,
     onSessionEnded,
+    onStatus,
   } = options;
 
   const [isConnected, setIsConnected] = useState(false);
@@ -59,6 +62,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   const onApprovalRequiredRef = useRef(onApprovalRequired);
   const onErrorRef = useRef(onError);
   const onSessionEndedRef = useRef(onSessionEnded);
+  const onStatusRef = useRef(onStatus);
   const agentIdRef = useRef(agentId);
 
   // Keep refs current on every render without triggering the effect
@@ -72,6 +76,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
   onApprovalRequiredRef.current = onApprovalRequired;
   onErrorRef.current = onError;
   onSessionEndedRef.current = onSessionEnded;
+  onStatusRef.current = onStatus;
   agentIdRef.current = agentId;
 
   useEffect(() => {
@@ -102,48 +107,98 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           ?.split('=')[1];
 
         // ── Ensure agent container is ready (first connect only) ──────────────
-        // Polls GET /agents/ensure-ready every 3s up to 90s. The backend checks
+        // Polls GET /agents/ensure-ready every 2s up to 60s. The backend checks
         // the relay's /health/:tenantId and triggers /provision if needed, then
         // returns immediately. We loop here because API Gateway's 29s hard timeout
         // prevents the Lambda from doing the wait itself.
+        //
+        // Loop-prevention: if AGENT_TIMEOUT fired in a previous page load, the flag
+        // 'agent_timeout_hit' is set in sessionStorage. On the next load (after the
+        // user clicks Refresh) we run exactly ONE poll. If the container is still not
+        // ready we surface the error immediately instead of making the user wait 60s
+        // again. If it's ready we clear the flag and proceed normally.
         if (!hasEnsuredReadyRef.current) {
           hasEnsuredReadyRef.current = true;
-          const POLL_INTERVAL_MS = 3000;
-          const TIMEOUT_MS = 90_000;
-          const startTime = Date.now();
-          let agentReady = false;
+          const POLL_INTERVAL_MS = 2000;
+          const TIMEOUT_MS = 60_000;
 
-          while (Date.now() - startTime < TIMEOUT_MS) {
+          const prevTimeout = typeof sessionStorage !== 'undefined'
+            && sessionStorage.getItem('agent_timeout_hit') === '1';
+
+          if (prevTimeout) {
+            // Fast path: run one immediate health check before committing to the full loop
+            let stillDown = true;
             try {
               const res = await fetch('/api/proxy/api/v1/agents/ensure-ready');
               if (res.ok) {
                 const data = await res.json();
                 if (data.ready === true) {
-                  agentReady = true;
-                  break;
+                  stillDown = false;
+                  sessionStorage.removeItem('agent_timeout_hit');
                 }
               }
-            } catch {
-              // Network error — keep polling
+            } catch { /* fall through — treat as still down */ }
+
+            if (stillDown) {
+              onStatusRef.current?.('');
+              onErrorRef.current?.(
+                'AGENT_TIMEOUT',
+                'Your workspace is still starting up. This usually takes 2 minutes on first launch. Please refresh again in a moment.',
+                true,
+              );
+              hasEnsuredReadyRef.current = false;
+              return;
+            }
+            // Container recovered — fall through to WS connect
+          } else {
+            // Normal path: full polling loop up to 60s
+            const startTime = Date.now();
+            let agentReady = false;
+            let firstPollDone = false;
+
+            while (Date.now() - startTime < TIMEOUT_MS) {
+              try {
+                const res = await fetch('/api/proxy/api/v1/agents/ensure-ready');
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.ready === true) {
+                    agentReady = true;
+                    break;
+                  }
+                  // First poll came back not-ready — show status in the loader
+                  if (!firstPollDone && data.code === 'AGENT_NOT_READY') {
+                    onStatusRef.current?.('Starting your workspace for the first time...');
+                  }
+                }
+              } catch {
+                // Network error — keep polling
+              }
+              firstPollDone = true;
+
+              // Wait before next poll (skip wait on last iteration)
+              if (Date.now() - startTime + POLL_INTERVAL_MS < TIMEOUT_MS) {
+                await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+              } else {
+                break;
+              }
             }
 
-            // Wait before next poll (skip wait on last iteration)
-            if (Date.now() - startTime + POLL_INTERVAL_MS < TIMEOUT_MS) {
-              await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-            } else {
-              break;
+            if (!agentReady) {
+              console.error('[useAgentEvents] Agent container did not become ready within 60s');
+              // Record timeout so the next page load short-circuits immediately
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('agent_timeout_hit', '1');
+              }
+              // Clear any stale status message before surfacing the error
+              onStatusRef.current?.('');
+              onErrorRef.current?.(
+                'AGENT_TIMEOUT',
+                'Your workspace is taking longer than expected to start. Please refresh the page to try again.',
+                true,
+              );
+              hasEnsuredReadyRef.current = false; // allow retry on next connect attempt
+              return;
             }
-          }
-
-          if (!agentReady) {
-            console.error('[useAgentEvents] Agent container did not become ready within 90s');
-            onErrorRef.current?.(
-              'AGENT_TIMEOUT',
-              'Your workspace is taking longer than expected to start. Please refresh the page to try again.',
-              true,
-            );
-            hasEnsuredReadyRef.current = false; // allow retry on next connect attempt
-            return;
           }
 
           console.log('[useAgentEvents] Agent container ready — connecting WebSocket');

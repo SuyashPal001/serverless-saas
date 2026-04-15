@@ -116,7 +116,7 @@ function CallbackContent() {
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
         } else {
-          router.push("/onboarding");
+          router.push("/auth/onboarding");
           router.refresh();
         }
       } catch (err: any) {

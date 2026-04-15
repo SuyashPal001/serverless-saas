@@ -210,13 +210,13 @@ export default function InvitePage() {
             await confirmSignUp(invite.email, data.code);
 
             // 2. Sign in to get tokens
-            const { idToken, refreshToken } = await signIn(invite.email, pendingCredentials.password);
+            const { idToken, accessToken, refreshToken } = await signIn(invite.email, pendingCredentials.password);
 
-            // 3. Set session cookie
+            // 3. Set session cookie — pass all three tokens to match the login page pattern
             const sessionRes = await fetch("/api/auth/session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: idToken, refreshToken }),
+                body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
             });
             if (!sessionRes.ok) throw new Error("Failed to create session");
 

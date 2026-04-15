@@ -36,6 +36,13 @@ export function useAuthRefresh() {
 
     useEffect(() => {
         const refresh = async () => {
+            // No-op when there is no active session (auth/public pages, unauthenticated
+            // visitors). platform_id_token is the non-httpOnly copy — its absence means
+            // no session cookie has been set, so there is no platform_refresh_token to
+            // use either. Attempting the refresh would always return 401 {"error":"No
+            // refresh token"} and generate false-positive noise in the console.
+            if (getIdTokenExpiryMs() === null) return;
+
             try {
                 const res = await fetch('/api/auth/refresh', {
                     method: 'POST',
@@ -52,12 +59,12 @@ export function useAuthRefresh() {
             }
         };
 
-        // On mount: only refresh if the token is absent, already expired, or within
-        // EXPIRY_THRESHOLD_MS of expiry. A fresh token (e.g. user just logged in) has
-        // ~55 min remaining and skips this, avoiding a race with concurrent API calls
-        // that read platform_token before the refreshed cookie lands.
+        // On mount: only eager-refresh if a session exists AND is near expiry.
+        // When expiry is null the user has no session (login/signup pages) — skip
+        // silently. A fresh login token has ~55 min remaining and also skips,
+        // avoiding a race with concurrent API calls on the new cookie.
         const expiry = getIdTokenExpiryMs();
-        if (expiry === null || expiry - Date.now() < EXPIRY_THRESHOLD_MS) {
+        if (expiry !== null && expiry - Date.now() < EXPIRY_THRESHOLD_MS) {
             refresh();
         }
 

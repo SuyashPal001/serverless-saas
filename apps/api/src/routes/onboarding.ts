@@ -14,6 +14,7 @@ import type { AppEnv } from '../types';
 
 const onboardingSchema = z.object({
     workspaceName: z.string().min(3).max(20),
+    purpose: z.string().optional(),
 });
 
 const generateSlug = (name: string) => {
@@ -132,21 +133,29 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
-    // Fire-and-forget: provision OpenClaw container via relay (GCP VM)
+    // Step 6: Return response
+    return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+});
+
+onboardingRoutes.post('/provision/:tenantId', async (c) => {
+    const tenantId = c.req.param('tenantId');
     const relayUrl = process.env.RELAY_URL;
     const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-    if (relayUrl && serviceKey) {
-        fetch(`${relayUrl}/provision/${tenantId}`, {
-            method: 'POST',
-            headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        })
-            .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
-            .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
+
+    if (!relayUrl || !serviceKey) {
+        return c.json({ error: 'Relay not configured' }, 500);
     }
 
-    // Step 6: Return response
-    return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+    // Fire-and-forget relay provision call
+    fetch(`${relayUrl}/provision/${tenantId}`, {
+        method: 'POST',
+        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    })
+        .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
+        .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
+
+    return c.json({ success: true, message: 'Provisioning started' });
 });
 
 export { onboardingRoutes };

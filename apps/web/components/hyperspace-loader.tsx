@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { StarfieldCanvas } from "./starfield-canvas";
 
 interface HyperspaceLoaderProps {
     active: boolean;
     isDone?: boolean;
     onComplete?: () => void;
+    statusMessage?: string;
+    mode?: 'signup' | 'signin';
 }
 
-const CHECKPOINTS = [
+const CHECKPOINTS_SIGNIN = [
     { label: "verifying identity", color: "#6c8fff" },
     { label: "loading workspace", color: "#ff9f43" },
     { label: "waking your agents", color: "#48dbfb" },
@@ -16,8 +19,16 @@ const CHECKPOINTS = [
     { label: "destination reached", color: "#a29bfe" },
 ];
 
-export function HyperspaceLoader({ active, isDone, onComplete }: HyperspaceLoaderProps) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+const CHECKPOINTS_SIGNUP = [
+    { label: "verifying identity", color: "#6c8fff" },
+    { label: "creating workspace", color: "#ff9f43" },
+    { label: "provisioning agent", color: "#48dbfb" },
+    { label: "almost ready", color: "#ff6b9d" },
+    { label: "destination reached", color: "#a29bfe" },
+];
+
+export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mode = 'signin' }: HyperspaceLoaderProps) {
+    const checkpoints = mode === 'signup' ? CHECKPOINTS_SIGNUP : CHECKPOINTS_SIGNIN;
 
     const [step, setStep] = useState(0);
 
@@ -50,104 +61,14 @@ export function HyperspaceLoader({ active, isDone, onComplete }: HyperspaceLoade
     const arrival = step >= 6;
 
     useEffect(() => {
-        if (!active || !canvasRef.current) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d', { alpha: false });
-        if (!ctx) return;
-
-        let w = canvas.width = window.innerWidth;
-        let h = canvas.height = window.innerHeight;
-
-        const resize = () => {
-            w = canvas.width = window.innerWidth;
-            h = canvas.height = window.innerHeight;
-        };
-        window.addEventListener('resize', resize);
-
-        const starCount = 320;
-        const stars = Array.from({ length: starCount }, () => ({
-            x: (Math.random() - 0.5) * w * 2,
-            y: (Math.random() - 0.5) * h * 2,
-            z: Math.random() * w, // depth
-            pz: Math.random() * w
-        }));
-
-        let speed = 1.8;
-        let targetSpeed = 52;
-        let animationFrame: number;
-
-        // Slow down slightly before arrival
-        const slowDownDelay = 350 + 600 + 700 + 700 + 700 + 100; // right around CP5 / arrival
-        const slowDownTimeout = setTimeout(() => {
-            targetSpeed = 0.8;
-        }, slowDownDelay);
-
-        const draw = () => {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, w, h);
-
-            speed += (targetSpeed - speed) * 0.05;
-
-            ctx.save();
-            ctx.translate(w / 2, h / 2);
-
-            for (let i = 0; i < stars.length; i++) {
-                const s = stars[i];
-                s.pz = s.z;
-                s.z -= speed;
-
-                if (s.z < 1) {
-                    s.z = w;
-                    s.pz = w;
-                    s.x = (Math.random() - 0.5) * w * 2;
-                    s.y = (Math.random() - 0.5) * h * 2;
-                }
-
-                const sx = (s.x / s.z) * (w / 2);
-                const sy = (s.y / s.z) * (h / 2);
-                const px = (s.x / s.pz) * (w / 2);
-                const py = (s.y / s.pz) * (h / 2);
-
-                const size = Math.max(0.1, (1 - s.z / w) * 2.5);
-                const opacity = Math.max(0, 1 - s.z / w);
-
-                const color = `rgba(200, 210, 255, ${opacity})`;
-
-                const dist = Math.sqrt((sx - px) ** 2 + (sy - py) ** 2);
-
-                if (dist > 1.5 && speed > 5) {
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = size;
-                    ctx.beginPath();
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(sx, sy);
-                    ctx.stroke();
-                } else {
-                    ctx.fillStyle = color;
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-            ctx.restore();
-
-            animationFrame = requestAnimationFrame(draw);
-        };
-
-        draw();
-
-        return () => {
-            cancelAnimationFrame(animationFrame);
-            window.removeEventListener('resize', resize);
-            clearTimeout(slowDownTimeout);
-        };
+        if (!active) return;
     }, [active]);
 
     if (!active) return null;
 
     return (
         <div className="fixed inset-0 z-[9999] pointer-events-none bg-black flex flex-col items-center justify-center overflow-hidden text-white">
-            <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+            <StarfieldCanvas speedMode="warp" active={active} />
 
             <div className={`relative z-10 flex flex-col items-center justify-center transition-opacity duration-500 delay-100 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
                 <div className="absolute -top-32 font-sans tracking-[0.22em] text-[12px] uppercase opacity-40 whitespace-nowrap">
@@ -155,7 +76,7 @@ export function HyperspaceLoader({ active, isDone, onComplete }: HyperspaceLoade
                 </div>
 
                 <div className="flex flex-col gap-6 items-start w-[240px]">
-                    {CHECKPOINTS.map((cp, i) => {
+                    {checkpoints.map((cp, i) => {
                         const isActive = activeIndex === i;
                         const isCompleted = completedIndex >= i;
                         const isVisible = activeIndex >= i || isCompleted;
@@ -193,6 +114,17 @@ export function HyperspaceLoader({ active, isDone, onComplete }: HyperspaceLoade
                     })}
                 </div>
             </div>
+
+            {statusMessage && !arrival && (
+                <div className="absolute bottom-12 left-0 right-0 flex justify-center z-10 pointer-events-none">
+                    <p
+                        className="font-mono text-[11px] tracking-[0.08em] transition-opacity duration-500"
+                        style={{ color: 'rgba(255,255,255,0.35)' }}
+                    >
+                        {statusMessage}
+                    </p>
+                </div>
+            )}
 
             <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? 'opacity-100 bg-black/60' : 'opacity-0 pointer-events-none'}`}>
                 <div className={`text-[16px] font-medium tracking-wide transition-all duration-700 ${arrival ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>

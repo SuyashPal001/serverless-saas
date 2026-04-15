@@ -92,7 +92,7 @@ function LoginPageContent() {
             const me = await meRes.json();
 
             if (me.needsOnboarding || !me.slug) {
-                router.push('/onboarding');
+                router.push('/auth/onboarding');
                 return;
             }
 
@@ -105,7 +105,7 @@ function LoginPageContent() {
 
             if (redirectParam || workspaceList.length <= 1) {
                 const targetPath = redirectParam
-                    ?? (workspaceList[0]?.slug ? `/${workspaceList[0].slug}/dashboard` : '/onboarding');
+                    ?? (workspaceList[0]?.slug ? `/${workspaceList[0].slug}/dashboard` : '/auth/onboarding');
                 
                 if (targetPath.includes('/dashboard')) {
                     startHyperspace();
