@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { Agent, fetch as undiciFetch } from 'undici';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL!;
+const API_BASE = process.env.API_URL!;
 
 async function handler(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
     const { path: pathSegments } = await params;
