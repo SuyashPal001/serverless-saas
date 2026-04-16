@@ -100,6 +100,7 @@ export interface UseChatReturn {
   sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
   cancel: () => void;
   isStreaming: boolean;
+  isRetrying: boolean;
   streamingText: string;
 }
 
@@ -119,11 +120,20 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   } = options;
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [streamingText, setStreamingText] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const parserRef = useRef(new SSEParser());
   const sendMessageRef = useRef<((text: string, attachments?: Attachment[]) => Promise<void>) | null>(null);
+
+  // Retry state
+  const retryStartRef = useRef<number | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[] } | null>(null);
+
+  const RETRY_INTERVAL_MS = 5_000;
+  const RETRY_MAX_MS = 90_000;
 
   // Keep latest option callbacks in refs so they never stale-close over props.
   const onDeltaRef = useRef(onDelta);
@@ -142,13 +152,24 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   conversationIdRef.current = conversationId;
   agentIdRef.current = agentId;
 
+  const clearRetry = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryStartRef.current = null;
+    pendingRetryPayloadRef.current = null;
+    setIsRetrying(false);
+  }, []);
+
   const cancel = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    clearRetry();
     setIsStreaming(false);
-  }, []);
+  }, [clearRetry]);
 
   const sendMessage = useCallback(async (text: string, attachments?: Attachment[]) => {
     // Abort any in-flight request
@@ -159,9 +180,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Store payload for potential retries
+    pendingRetryPayloadRef.current = { text, attachments };
+
     let { accessToken: token, idToken } = getAuthTokens();
 
     if (!token) {
+      clearRetry();
       onErrorRef.current?.('AUTH_ERROR', 'No platform_access_token found in cookies');
       return;
     }
@@ -220,8 +245,33 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         } catch {
           // ignore
         }
-        onErrorRef.current?.('HTTP_ERROR', message);
+
+        // 4xx errors are non-retriable
+        if (response.status >= 400 && response.status < 500) {
+          clearRetry();
+          onErrorRef.current?.('HTTP_ERROR', message);
+          setIsStreaming(false);
+          return;
+        }
+
+        // 5xx — retriable (container not ready / gateway error)
         setIsStreaming(false);
+        const now = Date.now();
+        if (retryStartRef.current === null) retryStartRef.current = now;
+        if (now - retryStartRef.current < RETRY_MAX_MS) {
+          setIsRetrying(true);
+          retryTimerRef.current = setTimeout(() => {
+            if (pendingRetryPayloadRef.current) {
+              sendMessageRef.current?.(
+                pendingRetryPayloadRef.current.text,
+                pendingRetryPayloadRef.current.attachments,
+              );
+            }
+          }, RETRY_INTERVAL_MS);
+        } else {
+          clearRetry();
+          onErrorRef.current?.('WARMUP_TIMEOUT', 'Taking longer than usual. Your workspace is still warming up — please try again in a moment.');
+        }
         return;
       }
 
@@ -272,6 +322,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             case 'done': {
               const finalText = (payload.text as string) ?? accumulatedText;
               const msgId = currentMessageId ?? (payload.messageId as string) ?? crypto.randomUUID();
+              // Successful response — clear any pending retry state
+              clearRetry();
               onDoneRef.current?.(
                 finalText,
                 msgId,
@@ -287,8 +339,33 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             case 'error': {
               const code = (payload.code as string) ?? 'AGENT_ERROR';
               const msg = (payload.message as string) ?? 'Unknown error';
-              onErrorRef.current?.(code, msg);
+
+              // Non-retriable relay errors
+              if (code === 'AGENT_TIMEOUT' || code === 'AUTH_ERROR') {
+                clearRetry();
+                onErrorRef.current?.(code, msg);
+                setIsStreaming(false);
+                break;
+              }
+
+              // AGENT_ERROR and similar — retriable
               setIsStreaming(false);
+              const now = Date.now();
+              if (retryStartRef.current === null) retryStartRef.current = now;
+              if (now - retryStartRef.current < RETRY_MAX_MS) {
+                setIsRetrying(true);
+                retryTimerRef.current = setTimeout(() => {
+                  if (pendingRetryPayloadRef.current) {
+                    sendMessageRef.current?.(
+                      pendingRetryPayloadRef.current.text,
+                      pendingRetryPayloadRef.current.attachments,
+                    );
+                  }
+                }, RETRY_INTERVAL_MS);
+              } else {
+                clearRetry();
+                onErrorRef.current?.('WARMUP_TIMEOUT', 'Taking longer than usual. Your workspace is still warming up — please try again in a moment.');
+              }
               break;
             }
 
@@ -344,15 +421,34 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // User-initiated cancel — not an error
         return;
       }
-      const message = err instanceof Error ? err.message : 'Stream failed';
-      onErrorRef.current?.('STREAM_ERROR', message);
+      // Network / stream failure — retriable
+      setIsStreaming(false);
+      const now = Date.now();
+      if (retryStartRef.current === null) retryStartRef.current = now;
+      if (now - retryStartRef.current < RETRY_MAX_MS) {
+        setIsRetrying(true);
+        retryTimerRef.current = setTimeout(() => {
+          if (pendingRetryPayloadRef.current) {
+            sendMessageRef.current?.(
+              pendingRetryPayloadRef.current.text,
+              pendingRetryPayloadRef.current.attachments,
+            );
+          }
+        }, RETRY_INTERVAL_MS);
+      } else {
+        clearRetry();
+        const message = err instanceof Error ? err.message : 'Stream failed';
+        onErrorRef.current?.('WARMUP_TIMEOUT', 'Taking longer than usual. Your workspace is still warming up — please try again in a moment.');
+        console.error('[useChat] stream error after max retry:', message);
+      }
+      return;
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
       setIsStreaming(false);
     }
-  }, []);
+  }, [clearRetry]);
 
   // Approval decisions are sent as a separate POST (no SSE response needed)
   const sendApproval = useCallback(async (
@@ -388,6 +484,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     sendApproval,
     cancel,
     isStreaming,
+    isRetrying,
     streamingText,
   };
 }

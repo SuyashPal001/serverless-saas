@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
+import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
 import { Attachment } from "@/types/agent-events";
@@ -17,6 +18,7 @@ import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas
 import { VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
 import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive, RefreshCw } from "lucide-react";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useSidebar } from "@/components/platform/SidebarContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,7 +57,12 @@ export default function ChatPage() {
     conversationIdRef.current = conversationId;
 
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
+    const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
+    const autoCreatingRef = useRef(false);
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
+    const tenantClaims = useTenant();
+    const firstName: string = tenantClaims.given_name ?? tenantClaims.name?.split(' ')[0] ?? 'there';
 
     interface LLMProvider {
         id: string;
@@ -132,7 +139,7 @@ export default function ChatPage() {
     // -------------------------------------------------------------------------
     // SSE chat hook — replaces WebSocket-based useAgentEvents
     // -------------------------------------------------------------------------
-    const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming } = useChat({
+    const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
 
@@ -208,6 +215,10 @@ export default function ChatPage() {
                 setAgentTimedOut(true);
                 return;
             }
+            if (code === 'WARMUP_TIMEOUT') {
+                setWarmupMessage(message);
+                return;
+            }
             setEventError(`[${code}] ${message}`);
             toast.error(message);
         }, []),
@@ -251,6 +262,22 @@ export default function ChatPage() {
         return () => { cancel(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);
+
+    // Auto-create a conversation for first-time users (no conversations, no active conversation).
+    useEffect(() => {
+        if (
+            !isLoadingConversations &&
+            !isErrorConversations &&
+            conversations.length === 0 &&
+            !conversationId &&
+            activeAgents.length > 0 &&
+            !autoCreatingRef.current
+        ) {
+            autoCreatingRef.current = true;
+            silentCreateConversation.mutate(activeAgents[0].id);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoadingConversations, isErrorConversations, conversations.length, conversationId, activeAgents.length]);
 
     // -------------------------------------------------------------------------
     // Fetch messages
@@ -327,6 +354,19 @@ export default function ChatPage() {
             const message = error.data?.error;
             const errorMsg = typeof message === 'string' ? message : message?.message || "Failed to start conversation";
             toast.error(errorMsg);
+        },
+    });
+
+    // Silent variant — no toast, used for auto-create on first visit
+    const silentCreateConversation = useMutation({
+        mutationFn: (agentId: string) =>
+            api.post<{ data: Conversation }>("/api/v1/conversations", { agentId }),
+        onSuccess: (response) => {
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            router.push(`/${tenantSlug}/dashboard/chat?id=${response.data.id}`);
+        },
+        onError: () => {
+            autoCreatingRef.current = false;
         },
     });
 
@@ -463,6 +503,8 @@ export default function ChatPage() {
         });
 
         setEventError(null);
+        setWarmupMessage(null);
+        setHasSentFirstMessage(true);
 
         await sendChatMessage(content, enrichedAttachments);
     };
@@ -604,9 +646,10 @@ export default function ChatPage() {
                                 <MessageThread
                                     messages={messages}
                                     isLoading={isLoadingMessages}
-                                    isTyping={isStreaming}
+                                    isTyping={isStreaming || isRetrying}
                                     activeToolCalls={Array.from(activeToolCalls.values())}
                                     error={eventError}
+                                    warmupMessage={warmupMessage}
                                     onApprove={handleApprove}
                                     onDismiss={handleDismiss}
                                 />
@@ -639,32 +682,62 @@ export default function ChatPage() {
                                     <Skeleton className="h-10 w-32 mx-auto rounded-full" />
                                 </div>
                             </div>
+                        ) : isErrorConversations ? (
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
+                                <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
+                                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <h2 className="text-2xl font-bold tracking-tight mb-2">Failed to load chats</h2>
+                                <p className="text-muted-foreground max-w-sm mb-8">
+                                    There was an error loading your conversations. Please try again.
+                                </p>
+                                <Button
+                                    onClick={() => queryClient.invalidateQueries({ queryKey: ["conversations"] })}
+                                    size="lg"
+                                    className="rounded-full shadow-lg h-12 px-6 gap-2"
+                                >
+                                    Retry Loading
+                                </Button>
+                            </div>
+                        ) : conversationId && !hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
+                            <WelcomeView
+                                agentName={activeAgents[0]?.name ?? 'your assistant'}
+                                firstName={firstName}
+                                onSelectPrompt={(text) => handleSendMessage(text)}
+                            >
+                                <ChatInput
+                                    onSend={handleSendMessage}
+                                    onStop={cancel}
+                                    onVoiceClick={openVoice}
+                                    onMediaClick={(type) => toast.info(`Adding ${type}...`)}
+                                    isLoading={false}
+                                    isStreaming={isStreaming}
+                                    disabled={false}
+                                    providers={providers}
+                                    llmProviderId={activeAgents[0]?.llmProviderId}
+                                    onModelChange={(providerId) => {
+                                        if (activeAgents[0]?.id) {
+                                            updateAgentMutation.mutate({ llmProviderId: providerId });
+                                        }
+                                    }}
+                                />
+                            </WelcomeView>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
                                     <MessageSquare className="h-8 w-8 text-muted-foreground" />
                                 </div>
-                                <h2 className="text-2xl font-bold tracking-tight mb-2">
-                                    {isErrorConversations ? "Failed to load chats" : "Select a conversation"}
-                                </h2>
+                                <h2 className="text-2xl font-bold tracking-tight mb-2">Select a conversation</h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">
-                                    {isErrorConversations
-                                        ? "There was an error loading your conversations. Please try again."
-                                        : "Select an existing conversation from the list or start a new one to interact with your agents."}
+                                    Select an existing conversation from the list or start a new one to interact with your agents.
                                 </p>
                                 <Button
-                                    onClick={isErrorConversations ? () => queryClient.invalidateQueries({ queryKey: ["conversations"] }) : handleNewChat}
+                                    onClick={handleNewChat}
                                     size="lg"
                                     className="rounded-full shadow-lg h-12 px-6 gap-2"
                                 >
-                                    {isErrorConversations ? (
-                                        <>Retry Loading</>
-                                    ) : (
-                                        <>
-                                            <Plus className="h-4 w-4" />
-                                            Start New Conversation
-                                        </>
-                                    )}
+                                    <Plus className="h-4 w-4" />
+                                    Start New Conversation
                                 </Button>
                             </div>
                         )}

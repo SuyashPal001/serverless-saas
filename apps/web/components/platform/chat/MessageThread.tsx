@@ -22,11 +22,12 @@ interface MessageThreadProps {
     isTyping?: boolean;
     activeToolCalls?: Message["toolCalls"];
     error?: string | null;
+    warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error, onApprove, onDismiss }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
 
@@ -156,6 +157,14 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
                     <div className="flex justify-center mt-6">
                         <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm max-w-[80%] text-center">
                             {error}
+                        </div>
+                    </div>
+                )}
+
+                {warmupMessage && (
+                    <div className="flex justify-center mt-6">
+                        <div className="bg-muted/50 border border-border text-muted-foreground px-4 py-3 rounded-lg text-sm max-w-[80%] text-center">
+                            {warmupMessage}
                         </div>
                     </div>
                 )}
