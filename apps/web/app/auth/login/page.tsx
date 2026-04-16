@@ -47,7 +47,7 @@ function LoginPageContent() {
     const [isLoading, setIsLoading] = useState(false);
     const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
     const [pendingTokens, setPendingTokens] = useState<{ idToken: string; refreshToken: string; accessToken: string } | null>(null);
-    const { startHyperspace } = useHyperspace();
+    const { startHyperspace, finishHyperspace } = useHyperspace();
 
     // Show success message if redirected from onboarding or invitation
     useEffect(() => {
@@ -70,6 +70,7 @@ function LoginPageContent() {
     async function onSubmit(data: LoginSchema) {
         setIsLoading(true);
         setError(null);
+        startHyperspace('signin');
 
         try {
             // 1. Authenticate directly with Cognito — returns idToken, accessToken, refreshToken
@@ -93,6 +94,7 @@ function LoginPageContent() {
             const me = await meRes.json();
 
             if (me.needsOnboarding || !me.slug) {
+                finishHyperspace();
                 router.push('/auth/onboarding');
                 return;
             }
@@ -107,20 +109,18 @@ function LoginPageContent() {
             if (redirectParam || workspaceList.length <= 1) {
                 const targetPath = redirectParam
                     ?? (workspaceList[0]?.slug ? `/${workspaceList[0].slug}/dashboard` : '/auth/onboarding');
-                
-                if (targetPath.includes('/dashboard')) {
-                    startHyperspace();
-                }
                 router.push(targetPath);
                 router.refresh();
                 return;
             }
 
-            // 6. Multiple workspaces — hold tokens and show picker
+            // 6. Multiple workspaces — clear animation then show picker
+            finishHyperspace();
             setPendingTokens({ idToken, refreshToken, accessToken });
             setWorkspaces(workspaceList);
         } catch (err: any) {
             console.error("Login error:", err);
+            finishHyperspace();
             setError(err.message || "Invalid email or password. Please try again.");
         } finally {
             setIsLoading(false);

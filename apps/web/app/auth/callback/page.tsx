@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 function CallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { startHyperspace } = useHyperspace();
+  const { startHyperspace, finishHyperspace } = useHyperspace();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +64,11 @@ function CallbackContent() {
           throw new Error("Failed to create session on the server");
         }
 
+        // Start transition immediately — covers the /auth/me + routing time for returning users.
+        // Invite path navigates to dashboard (layout calls finishHyperspace ✓).
+        // New-user path calls finishHyperspace() before navigating to onboarding.
+        startHyperspace('signin');
+
         // 3. Check for invite redirect in sessionStorage
         const authRedirect = sessionStorage.getItem("auth_redirect");
         if (authRedirect) {
@@ -112,15 +117,16 @@ function CallbackContent() {
         // 5. Hard redirect — forces full page load so cookie is read fresh
         // Redirect using Next.js router. The layout mounting will finish the animation.
         if (profile.slug && !profile.needsOnboarding) {
-          startHyperspace('signin');
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
         } else {
+          finishHyperspace();
           router.push("/auth/onboarding");
           router.refresh();
         }
       } catch (err: any) {
         console.error("Auth callback error:", err);
+        finishHyperspace();
         setError(err.message || "An error occurred during authentication.");
       }
     }
