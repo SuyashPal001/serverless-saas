@@ -642,37 +642,64 @@ export default function ChatPage() {
                                     </div>
                                 </div>
 
-                                {/* Messages */}
-                                <MessageThread
-                                    messages={messages}
-                                    isLoading={isLoadingMessages}
-                                    isTyping={isStreaming || isRetrying}
-                                    activeToolCalls={Array.from(activeToolCalls.values())}
-                                    error={eventError}
-                                    warmupMessage={warmupMessage}
-                                    onApprove={handleApprove}
-                                    onDismiss={handleDismiss}
-                                />
+                                {/* Welcome view — first-time user, no messages sent yet */}
+                                {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
+                                    <WelcomeView
+                                        agentName={activeAgents[0]?.name ?? 'your assistant'}
+                                        firstName={firstName}
+                                        onSelectPrompt={(text) => handleSendMessage(text)}
+                                    >
+                                        <ChatInput
+                                            onSend={handleSendMessage}
+                                            onStop={cancel}
+                                            onVoiceClick={openVoice}
+                                            onMediaClick={(type) => toast.info(`Adding ${type}...`)}
+                                            isLoading={false}
+                                            isStreaming={isStreaming}
+                                            disabled={selectedConversation.status !== 'active'}
+                                            providers={providers}
+                                            llmProviderId={selectedConversation.agent?.llmProviderId ?? activeAgents[0]?.llmProviderId}
+                                            onModelChange={(providerId) => {
+                                                const agentId = selectedConversation.agent?.id ?? activeAgents[0]?.id;
+                                                if (agentId) updateAgentMutation.mutate({ llmProviderId: providerId });
+                                            }}
+                                        />
+                                    </WelcomeView>
+                                ) : (
+                                    <>
+                                        {/* Messages */}
+                                        <MessageThread
+                                            messages={messages}
+                                            isLoading={isLoadingMessages}
+                                            isTyping={isStreaming || isRetrying}
+                                            activeToolCalls={Array.from(activeToolCalls.values())}
+                                            error={eventError}
+                                            warmupMessage={warmupMessage}
+                                            onApprove={handleApprove}
+                                            onDismiss={handleDismiss}
+                                        />
 
-                                {/* Input */}
-                                <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                    <ChatInput
-                                        onSend={handleSendMessage}
-                                        onStop={cancel}
-                                        onVoiceClick={openVoice}
-                                        onMediaClick={(type) => toast.info(`Adding ${type}...`)}
-                                        isLoading={false}
-                                        isStreaming={isStreaming}
-                                        disabled={selectedConversation.status !== 'active'}
-                                        providers={providers}
-                                        llmProviderId={selectedConversation.agent?.llmProviderId}
-                                        onModelChange={(providerId) => {
-                                            if (selectedConversation.agent?.id) {
-                                                updateAgentMutation.mutate({ llmProviderId: providerId });
-                                            }
-                                        }}
-                                    />
-                                </div>
+                                        {/* Input */}
+                                        <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                                            <ChatInput
+                                                onSend={handleSendMessage}
+                                                onStop={cancel}
+                                                onVoiceClick={openVoice}
+                                                onMediaClick={(type) => toast.info(`Adding ${type}...`)}
+                                                isLoading={false}
+                                                isStreaming={isStreaming}
+                                                disabled={selectedConversation.status !== 'active'}
+                                                providers={providers}
+                                                llmProviderId={selectedConversation.agent?.llmProviderId}
+                                                onModelChange={(providerId) => {
+                                                    if (selectedConversation.agent?.id) {
+                                                        updateAgentMutation.mutate({ llmProviderId: providerId });
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </>
                         ) : isLoadingConversations ? (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
@@ -699,29 +726,6 @@ export default function ChatPage() {
                                     Retry Loading
                                 </Button>
                             </div>
-                        ) : conversationId && !hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
-                            <WelcomeView
-                                agentName={activeAgents[0]?.name ?? 'your assistant'}
-                                firstName={firstName}
-                                onSelectPrompt={(text) => handleSendMessage(text)}
-                            >
-                                <ChatInput
-                                    onSend={handleSendMessage}
-                                    onStop={cancel}
-                                    onVoiceClick={openVoice}
-                                    onMediaClick={(type) => toast.info(`Adding ${type}...`)}
-                                    isLoading={false}
-                                    isStreaming={isStreaming}
-                                    disabled={false}
-                                    providers={providers}
-                                    llmProviderId={activeAgents[0]?.llmProviderId}
-                                    onModelChange={(providerId) => {
-                                        if (activeAgents[0]?.id) {
-                                            updateAgentMutation.mutate({ llmProviderId: providerId });
-                                        }
-                                    }}
-                                />
-                            </WelcomeView>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
