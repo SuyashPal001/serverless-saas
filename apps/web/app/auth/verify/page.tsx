@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { confirmSignUp, resendConfirmationCode } from "@/lib/auth";
+import { StarfieldCanvas } from "@/components/starfield-canvas";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -83,8 +84,9 @@ function VerifyPageContent() {
     }
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+        <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
+            <StarfieldCanvas speedMode="idle" />
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                 <div className="text-center space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Verify your email</h1>
                     <p className="text-sm text-muted-foreground">

@@ -10,6 +10,7 @@ import { initiateGoogleSignIn } from "@/lib/auth-google";
 import { decodeTenantClaims } from "@/lib/tenant";
 
 import { useHyperspace } from "@/components/hyperspace-provider";
+import { StarfieldCanvas } from "@/components/starfield-canvas";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -163,8 +164,9 @@ function LoginPageContent() {
 
     if (workspaces) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-background">
-                    <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+            <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
+                <StarfieldCanvas speedMode="idle" />
+                    <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                     <div className="text-center space-y-2">
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Choose a workspace</h1>
                         <p className="text-sm text-muted-foreground">You belong to multiple workspaces</p>
@@ -209,8 +211,9 @@ function LoginPageContent() {
     }
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+        <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
+            <StarfieldCanvas speedMode="idle" />
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                 <div className="text-center space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Platform</h1>
                     <p className="text-sm text-muted-foreground">Sign in to your account</p>
@@ -297,7 +300,7 @@ export default function LoginPage() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+                <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                     <div className="text-center">
                         <p className="text-sm text-muted-foreground">Loading...</p>
                     </div>

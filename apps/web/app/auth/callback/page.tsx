@@ -53,10 +53,10 @@ function CallbackContent() {
         const sessionResponse = await fetch("/api/auth/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            token: idToken, 
+          body: JSON.stringify({
+            token: idToken,
             accessToken,
-            refreshToken: tokens.refresh_token 
+            refreshToken: tokens.refresh_token
           }),
         });
 
@@ -68,7 +68,7 @@ function CallbackContent() {
         const authRedirect = sessionStorage.getItem("auth_redirect");
         if (authRedirect) {
           sessionStorage.removeItem("auth_redirect");
-          
+
           if (authRedirect.startsWith("/auth/invite/")) {
             const token = authRedirect.split("/").pop();
             if (token) {
@@ -79,9 +79,9 @@ function CallbackContent() {
                     Authorization: `Bearer ${idToken}`,
                   },
                 });
-                
+
                 const acceptData = await acceptRes.json();
-                
+
                 if (acceptRes.ok) {
                   // Global loader will finish when the dashboard layout mounts
                   router.push(`/${acceptData.tenantSlug}/dashboard`);
@@ -109,51 +109,13 @@ function CallbackContent() {
         if (!profileRes.ok) throw new Error("Failed to fetch user profile");
         const profile = await profileRes.json();
 
-        // 5. Route based on onboarding status
+        // 5. Hard redirect — forces full page load so cookie is read fresh
+        // Redirect using Next.js router. The layout mounting will finish the animation.
         if (profile.slug && !profile.needsOnboarding) {
           startHyperspace('signin');
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
         } else {
-          // New user — create the tenant early so the agent container starts
-          // warming up while the user is filling in the workspace name form.
-          // This gives ~15-30s of cold-start head time before the WS connects.
-          try {
-            // Decode idToken payload to extract first name for default workspace name
-            const payloadB64 = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-            const payload = JSON.parse(atob(payloadB64));
-            const fullName: string = payload.name || payload.given_name || '';
-            const firstName = fullName.split(' ')[0] || '';
-            const defaultName = firstName ? `${firstName}'s Workspace` : 'My Workspace';
-
-            const onboardRes = await fetch('/api/proxy/api/v1/onboarding/complete', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspaceName: defaultName }),
-            });
-
-            if (onboardRes.ok) {
-              const onboardData = await onboardRes.json();
-              sessionStorage.setItem('pending_onboarding_tenant_id', onboardData.tenantId);
-              sessionStorage.setItem('pending_onboarding_slug', onboardData.slug);
-              sessionStorage.setItem('pending_onboarding_default_name', defaultName);
-
-              // Refresh JWT so it carries custom:tenantId — required for the
-              // PATCH /workspaces call on the onboarding page.
-              await fetch('/api/auth/refresh', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: onboardData.tenantId }),
-              }).catch((e) => console.error('[callback] Post-onboard refresh failed:', e));
-            } else {
-              // onboarding/complete failed — onboarding page falls back to its own create flow
-              sessionStorage.setItem('pending_onboarding_error', '1');
-            }
-          } catch (e) {
-            console.error('[callback] Early provision failed:', e);
-            sessionStorage.setItem('pending_onboarding_error', '1');
-          }
-
           router.push("/auth/onboarding");
           router.refresh();
         }
