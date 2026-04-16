@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot } from "lucide-react";
+import { AgentOrb } from "./AgentOrb";
 import { cn } from "@/lib/utils";
 import { ToolCall } from "./types";
 
@@ -47,20 +47,13 @@ const WARMUP_STEP_INTERVAL_MS = 8_000;
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function AgentAvatar() {
-    return (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-            <Bot className="h-4 w-4" />
-        </div>
-    );
-}
 
 function PulsingDots() {
     return (
-        <span className="flex gap-1 items-center">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" />
+        <span className="flex gap-[3px] items-center">
+            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce" />
         </span>
     );
 }
@@ -112,7 +105,7 @@ export function ThinkingIndicator({
     if (isRetrying) {
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
-                <AgentAvatar />
+                <AgentOrb size={40} state="thinking" />
                 <div className="flex flex-col gap-1.5 pt-1">
                     {WARMUP_STEPS.slice(0, stepIndex + 1).map((step, i) => {
                         const isDone = i < stepIndex;
@@ -122,11 +115,11 @@ export function ThinkingIndicator({
                                 key={step}
                                 className={cn(
                                     "flex items-center gap-2 text-sm font-mono animate-in fade-in duration-500",
-                                    isDone ? "text-muted-foreground/60" : "text-foreground"
+                                    isDone ? "text-[#3a3a3a]" : "text-[#c4b5fd]"
                                 )}
                             >
                                 {isDone ? (
-                                    <span className="text-emerald-500/70 text-xs w-4 shrink-0">✓</span>
+                                    <span className="text-[#22c55e] text-xs w-4 shrink-0">✓</span>
                                 ) : isCurrent ? (
                                     <span className="w-4 shrink-0 flex items-center">
                                         <PulsingDots />
@@ -148,21 +141,21 @@ export function ThinkingIndicator({
     if (isStreaming && (loadingTools.length > 0 || completedToolCallLabels.length > 0)) {
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
-                <AgentAvatar />
+                <AgentOrb size={40} state="searching" />
                 <div className="flex flex-col gap-1.5 pt-1">
                     {completedToolCallLabels.map((label, i) => (
                         <div
                             key={`done-${i}`}
-                            className="flex items-center gap-2 text-sm font-mono text-muted-foreground/60"
+                            className="flex items-center gap-2 text-sm font-mono text-[#3a3a3a]"
                         >
-                            <span className="text-emerald-500/70 text-xs w-4 shrink-0">✓</span>
+                            <span className="text-[#22c55e] text-xs w-4 shrink-0">✓</span>
                             {label}
                         </div>
                     ))}
                     {loadingTools.map(tool => (
                         <div
                             key={tool.id}
-                            className="flex items-center gap-2 text-sm font-mono text-foreground animate-in fade-in duration-300"
+                            className="flex items-center gap-2 text-sm font-mono text-[#c4b5fd] animate-in fade-in duration-300"
                         >
                             <span className="w-4 shrink-0 flex items-center">
                                 <PulsingDots />
@@ -181,10 +174,10 @@ export function ThinkingIndicator({
     if (isStreaming) {
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
-                <AgentAvatar />
+                <AgentOrb size={40} state="thinking" />
                 <div className="flex items-center gap-2 pt-1.5">
                     <PulsingDots />
-                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                    <span className="text-sm text-[#c4b5fd] font-mono">Thinking...</span>
                 </div>
             </div>
         );

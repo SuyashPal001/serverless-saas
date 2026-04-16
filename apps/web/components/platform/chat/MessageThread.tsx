@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, User, Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { AgentOrb } from "./AgentOrb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Message } from "./types";
 import { cn } from "@/lib/utils";
@@ -92,7 +93,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
     return (
         <div ref={scrollRef} className="flex-1 px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-8 pb-4">
+            <div className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -105,15 +106,20 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
 
-                {messages.map((message) => (
-                    <MessageItem 
-                        key={message.id} 
-                        message={message} 
-                        freshUrls={freshUrls} 
-                        onApprove={onApprove}
-                        onDismiss={onDismiss}
-                    />
-                ))}
+                {messages.map((message, i) => {
+                    const prevRole = i > 0 ? messages[i - 1].role : null;
+                    return (
+                        <MessageItem
+                            key={message.id}
+                            message={message}
+                            isFirstInSequence={prevRole === null || prevRole !== message.role}
+                            isNewExchange={prevRole !== null && prevRole !== message.role}
+                            freshUrls={freshUrls}
+                            onApprove={onApprove}
+                            onDismiss={onDismiss}
+                        />
+                    );
+                })}
 
                 {(isStreaming || isRetrying) ? (
                     <ThinkingIndicator
@@ -129,9 +135,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
                 {activeToolCalls && activeToolCalls.length > 0 && (
                     <div className="flex items-start gap-3 mt-4">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                            <Bot className="h-4 w-4" />
-                        </div>
+                        <AgentOrb size={40} state="searching" />
                         <div className="flex-1 max-w-[80%] pt-1">
                             <div className="flex items-center gap-2 text-muted-foreground mb-2 px-1">
                                 <span className="text-xs uppercase font-semibold tracking-wider">Using Tools</span>
@@ -174,14 +178,18 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     );
 }
 
-function MessageItem({ 
-    message, 
-    freshUrls, 
-    onApprove, 
-    onDismiss 
-}: { 
-    message: Message; 
+function MessageItem({
+    message,
+    freshUrls,
+    isFirstInSequence,
+    isNewExchange,
+    onApprove,
+    onDismiss
+}: {
+    message: Message;
     freshUrls: Record<string, string>;
+    isFirstInSequence?: boolean;
+    isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
 }) {
@@ -203,26 +211,30 @@ function MessageItem({
     return (
         <div className={cn(
             "flex items-start gap-4 group/msg",
-            isUser ? "flex-row-reverse" : "flex-row"
+            isUser ? "flex-row-reverse" : "flex-row",
+            isNewExchange && "mt-6"
         )}>
-            <div className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-sm",
-                isAssistant ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-foreground border-border"
-            )}>
-                {isAssistant ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
-            </div>
+            {isAssistant && <AgentOrb size={40} state="idle" />}
             
             <div className={cn(
                 "flex flex-col gap-1 flex-1",
                 isUser ? "items-end max-w-[75%]" : "items-start w-full"
             )}>
+                {isAssistant && isFirstInSequence && (
+                    <span className="text-[10px] font-mono tracking-[0.08em] text-[#444] uppercase select-none mb-1 block">
+                        SAARTHI
+                    </span>
+                )}
                 {(message.content.trim() || (isAssistant && message.isStreaming)) && (
-                    <div className={cn(
-                        "text-sm",
-                        isUser
-                            ? "rounded-2xl px-4 py-2.5 shadow-sm bg-primary text-primary-foreground rounded-tr-none"
-                            : "leading-7 w-full"
-                    )}>
+                    <div
+                        className={cn(
+                            "text-sm",
+                            isUser
+                                ? "px-5 py-4 bg-[#1a1a1a] border border-[#2a2a2a]/50 text-[#e8e8e8] leading-[1.55]"
+                                : "text-[#d4d4d4] leading-[1.75] w-full"
+                        )}
+                        style={isUser ? { borderRadius: '18px 18px 4px 18px' } : undefined}
+                    >
                         {isAssistant && message.isStreaming ? (
                             <StreamingMessage 
                                 isStreaming={true} 
@@ -362,9 +374,11 @@ function MessageItem({
                     <MessageFeedback messageId={message.id} conversationId={message.conversationId} />
                 )}
 
-                <span className="text-[10px] text-muted-foreground px-1 mt-1">
-                    {format(new Date(message.createdAt), 'h:mm a')}
-                </span>
+                {isAssistant && (
+                    <span className="text-[11px] text-[#333] px-1 mt-1">
+                        {format(new Date(message.createdAt), 'h:mm a')}
+                    </span>
+                )}
             </div>
         </div>
     );
@@ -518,16 +532,14 @@ function MessageFeedback({ messageId, conversationId }: { messageId: string; con
 function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
-                <Bot className="h-4 w-4" />
-            </div>
+            <AgentOrb size={40} state="thinking" />
             <div className="flex items-center gap-2 pt-1.5">
-                <span className="flex gap-1 items-center">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" />
+                <span className="flex gap-[3px] items-center">
+                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce" />
                 </span>
-                <span className="text-sm text-muted-foreground">{label}</span>
+                <span className="text-sm text-[#c4b5fd] font-mono">{label}</span>
             </div>
         </div>
     );

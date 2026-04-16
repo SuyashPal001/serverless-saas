@@ -14,6 +14,16 @@ interface ToolCallCardProps {
   durationMs?: number;
 }
 
+function resultSummary(result: unknown): string {
+    if (result === undefined) return '';
+    if (typeof result === 'string') {
+        const t = result.trim();
+        return t.slice(0, 55) + (t.length > 55 ? '…' : '');
+    }
+    if (Array.isArray(result)) return `${result.length} result${result.length !== 1 ? 's' : ''}`;
+    return '1 result';
+}
+
 export function ToolCallCard({
   toolName,
   toolCallId,
@@ -28,11 +38,11 @@ export function ToolCallCard({
   const status = isLoading ? 'loading' : error ? 'error' : result !== undefined ? 'success' : 'pending';
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden my-2 text-foreground">
+    <div className="bg-[#141414] border-[0.5px] border-[#222] rounded-[10px] overflow-hidden my-2 text-foreground">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 p-3 bg-muted/50 hover:bg-muted transition-colors"
+        className="w-full flex items-center gap-2 px-[14px] py-[10px] bg-transparent hover:bg-white/[0.02] transition-colors"
       >
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -43,7 +53,13 @@ export function ToolCallCard({
         <Wrench className="h-4 w-4 text-primary" />
         
         <span className="font-medium text-sm">{toolName}</span>
-        
+
+        {!isExpanded && result !== undefined && (
+            <span className="text-xs text-[#444] font-mono truncate max-w-[180px]">
+                {resultSummary(result)}
+            </span>
+        )}
+
         <div className="flex-1" />
         
         {status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -57,7 +73,7 @@ export function ToolCallCard({
 
       {/* Expanded Content */}
       {isExpanded && (
-        <div className="p-3 border-t border-border space-y-3 bg-background">
+        <div className="px-[14px] py-[10px] border-t border-[#222] space-y-3 bg-[#0e0e0e]">
           {args && Object.keys(args).length > 0 && (
             <div>
               <div className="text-xs font-medium text-muted-foreground mb-1">Arguments</div>

@@ -328,7 +328,7 @@ export function ChatInput({
     }, [content]);
 
     return (
-        <div className="pb-6 pt-2 px-4 bg-transparent w-full">
+        <div className="pb-6 pt-2 px-4 bg-transparent w-full border-t border-[#1a1a1a]">
             <input 
                 type="file" 
                 ref={fileInputRef}

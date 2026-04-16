@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot } from "lucide-react";
+import { AgentOrb } from "./AgentOrb";
 import { Button } from "@/components/ui/button";
 import type { PillType } from "./WizardView";
 
@@ -22,8 +22,8 @@ export function WelcomeView({ agentName, firstName, onSelectPill, children }: We
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
-                <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 shadow-sm border border-border">
-                    <Bot className="h-8 w-8 text-muted-foreground" />
+                <div className="mb-6">
+                    <AgentOrb size={64} state="idle" />
                 </div>
 
                 <h2 className="text-2xl font-bold tracking-tight mb-1">
