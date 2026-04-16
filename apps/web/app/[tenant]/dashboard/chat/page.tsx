@@ -8,6 +8,7 @@ import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
+import { WizardView, type PillType } from "@/components/platform/chat/WizardView";
 import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
 import { Attachment } from "@/types/agent-events";
@@ -59,6 +60,7 @@ export default function ChatPage() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
     const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
+    const [activePill, setActivePill] = useState<PillType | null>(null);
     const autoCreatingRef = useRef(false);
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     const tenantClaims = useTenant();
@@ -135,6 +137,9 @@ export default function ChatPage() {
     const [eventError, setEventError] = useState<string | null>(null);
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
+    const [completedToolCallLabels, setCompletedToolCallLabels] = useState<string[]>([]);
+    const completedToolCallsRef = useRef<string[]>([]);
+    const prevToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
 
     // -------------------------------------------------------------------------
     // SSE chat hook — replaces WebSocket-based useAgentEvents
@@ -263,6 +268,53 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);
 
+    // Track completed tool calls so ThinkingIndicator can show ✓ checkmarks.
+    // When a tool call disappears from activeToolCalls it has finished — capture its label.
+    useEffect(() => {
+        const toolLabelMap: Record<string, string> = {
+            retrieve_documents:  "Searching documents",
+            web_search:          "Searching the web",
+            GMAIL_SEND:          "Sending email",
+            GMAIL_READ:          "Reading email",
+            GCAL_CREATE_EVENT:   "Creating calendar event",
+            GCAL_LIST_EVENTS:    "Checking calendar",
+            code_execution:      "Running code",
+            browser:             "Browsing the web",
+            send_email:          "Sending email",
+        };
+        const getFriendlyLabel = (toolName: string): string => {
+            if (toolLabelMap[toolName]) return toolLabelMap[toolName];
+            if (toolName.startsWith("ZOHO_CRM")) return "Accessing CRM";
+            if (toolName.startsWith("ZOHO_MAIL")) return "Sending email";
+            if (toolName.startsWith("ZOHO_CLIQ")) return "Sending message";
+            if (toolName.startsWith("GCAL")) return "Accessing calendar";
+            if (toolName.startsWith("GMAIL")) return "Accessing email";
+            if (toolName.startsWith("JIRA")) return "Accessing Jira";
+            return "Using tools";
+        };
+
+        const prev = prevToolCallsRef.current;
+        const newlyCompleted: string[] = [];
+        for (const [id, call] of prev) {
+            if (!activeToolCalls.has(id)) {
+                newlyCompleted.push(getFriendlyLabel(call.toolName));
+            }
+        }
+
+        if (newlyCompleted.length > 0) {
+            completedToolCallsRef.current = [...completedToolCallsRef.current, ...newlyCompleted];
+            setCompletedToolCallLabels([...completedToolCallsRef.current]);
+        }
+
+        // Reset completed list when activeToolCalls is fully cleared (onDone fires)
+        if (activeToolCalls.size === 0 && prev.size > 0) {
+            completedToolCallsRef.current = [];
+            setCompletedToolCallLabels([]);
+        }
+
+        prevToolCallsRef.current = new Map(activeToolCalls);
+    }, [activeToolCalls]);
+
     // Auto-create a conversation for first-time users (no conversations, no active conversation).
     useEffect(() => {
         if (
@@ -297,6 +349,12 @@ export default function ChatPage() {
     });
 
     const messages = messagesData?.data || [];
+
+    // True once the first streaming token lands — collapses ThinkingIndicator.
+    const hasContent = useMemo(() => {
+        const last = messages[messages.length - 1];
+        return !!(last?.role === 'assistant' && last.content.length > 0);
+    }, [messages]);
 
     // -------------------------------------------------------------------------
     // Approval handlers
@@ -642,29 +700,53 @@ export default function ChatPage() {
                                     </div>
                                 </div>
 
-                                {/* Welcome view — first-time user, no messages sent yet */}
+                                {/* Welcome / wizard — first-time user, no messages sent yet */}
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
-                                    <WelcomeView
-                                        agentName={activeAgents[0]?.name ?? 'your assistant'}
-                                        firstName={firstName}
-                                        onSelectPrompt={(text) => handleSendMessage(text)}
-                                    >
-                                        <ChatInput
-                                            onSend={handleSendMessage}
-                                            onStop={cancel}
-                                            onVoiceClick={openVoice}
-                                            onMediaClick={(type) => toast.info(`Adding ${type}...`)}
-                                            isLoading={false}
-                                            isStreaming={isStreaming}
-                                            disabled={selectedConversation.status !== 'active'}
-                                            providers={providers}
-                                            llmProviderId={selectedConversation.agent?.llmProviderId ?? activeAgents[0]?.llmProviderId}
-                                            onModelChange={(providerId) => {
-                                                const agentId = selectedConversation.agent?.id ?? activeAgents[0]?.id;
-                                                if (agentId) updateAgentMutation.mutate({ llmProviderId: providerId });
-                                            }}
-                                        />
-                                    </WelcomeView>
+                                    activePill !== null ? (
+                                        <WizardView
+                                            pill={activePill}
+                                            onBack={() => setActivePill(null)}
+                                            onSubmit={(prompt) => handleSendMessage(prompt)}
+                                        >
+                                            <ChatInput
+                                                onSend={handleSendMessage}
+                                                onStop={cancel}
+                                                onVoiceClick={openVoice}
+                                                onMediaClick={(type) => toast.info(`Adding ${type}...`)}
+                                                isLoading={false}
+                                                isStreaming={isStreaming}
+                                                disabled={selectedConversation.status !== 'active'}
+                                                providers={providers}
+                                                llmProviderId={selectedConversation.agent?.llmProviderId ?? activeAgents[0]?.llmProviderId}
+                                                onModelChange={(providerId) => {
+                                                    const agentId = selectedConversation.agent?.id ?? activeAgents[0]?.id;
+                                                    if (agentId) updateAgentMutation.mutate({ llmProviderId: providerId });
+                                                }}
+                                            />
+                                        </WizardView>
+                                    ) : (
+                                        <WelcomeView
+                                            agentName={activeAgents[0]?.name ?? 'your assistant'}
+                                            firstName={firstName}
+                                            onSelectPill={(pill) => setActivePill(pill)}
+                                        >
+                                            <ChatInput
+                                                onSend={handleSendMessage}
+                                                onStop={cancel}
+                                                onVoiceClick={openVoice}
+                                                onMediaClick={(type) => toast.info(`Adding ${type}...`)}
+                                                isLoading={false}
+                                                isStreaming={isStreaming}
+                                                disabled={selectedConversation.status !== 'active'}
+                                                providers={providers}
+                                                llmProviderId={selectedConversation.agent?.llmProviderId ?? activeAgents[0]?.llmProviderId}
+                                                onModelChange={(providerId) => {
+                                                    const agentId = selectedConversation.agent?.id ?? activeAgents[0]?.id;
+                                                    if (agentId) updateAgentMutation.mutate({ llmProviderId: providerId });
+                                                }}
+                                            />
+                                        </WelcomeView>
+                                    )
                                 ) : (
                                     <>
                                         {/* Messages */}
@@ -672,7 +754,11 @@ export default function ChatPage() {
                                             messages={messages}
                                             isLoading={isLoadingMessages}
                                             isTyping={isStreaming || isRetrying}
+                                            isStreaming={isStreaming}
+                                            isRetrying={isRetrying}
+                                            hasContent={hasContent}
                                             activeToolCalls={Array.from(activeToolCalls.values())}
+                                            completedToolCallLabels={completedToolCallLabels}
                                             error={eventError}
                                             warmupMessage={warmupMessage}
                                             onApprove={handleApprove}

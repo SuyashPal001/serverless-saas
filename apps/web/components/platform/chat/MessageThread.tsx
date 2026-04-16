@@ -13,6 +13,7 @@ import { ToolCallCard } from "./ToolCallCard";
 import { ApprovalCard } from "./ApprovalCard";
 import { StreamingMessage } from "./StreamingMessage";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 import { api } from "@/lib/api";
 import { useState } from "react";
 
@@ -20,14 +21,18 @@ interface MessageThreadProps {
     messages: Message[];
     isLoading?: boolean;
     isTyping?: boolean;
+    isStreaming?: boolean;
+    isRetrying?: boolean;
+    hasContent?: boolean;
     activeToolCalls?: Message["toolCalls"];
+    completedToolCallLabels?: string[];
     error?: string | null;
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCallLabels, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
 
@@ -110,21 +115,17 @@ export function MessageThread({ messages, isLoading, isTyping, activeToolCalls, 
                     />
                 ))}
 
-                {isTyping && (
-                    <ThinkingIndicator label={
-                        (() => {
-                            const toolLabelMap: Record<string, string> = {
-                                web_search: 'Searching the web...',
-                                retrieve_documents: 'Reading documents...',
-                                code_execution: 'Running code...',
-                                browser: 'Browsing the web...',
-                                send_email: 'Sending email...',
-                            };
-                            const activeTool = activeToolCalls?.find(t => t.isLoading)?.toolName;
-                            return activeTool ? (toolLabelMap[activeTool] ?? `Using ${activeTool}...`) : 'Thinking...';
-                        })()
-                    } />
-                )}
+                {(isStreaming || isRetrying) ? (
+                    <ThinkingIndicator
+                        isRetrying={isRetrying ?? false}
+                        isStreaming={isStreaming ?? false}
+                        activeToolCalls={activeToolCalls ?? []}
+                        completedToolCallLabels={completedToolCallLabels ?? []}
+                        hasContent={hasContent ?? false}
+                    />
+                ) : isTyping ? (
+                    <ThinkingDots label="Thinking..." />
+                ) : null}
 
                 {activeToolCalls && activeToolCalls.length > 0 && (
                     <div className="flex items-start gap-3 mt-4">
@@ -514,7 +515,7 @@ function MessageFeedback({ messageId, conversationId }: { messageId: string; con
     );
 }
 
-function ThinkingIndicator({ label = 'Thinking...' }: { label?: string }) {
+function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">

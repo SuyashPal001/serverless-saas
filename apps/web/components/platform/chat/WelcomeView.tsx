@@ -2,22 +2,23 @@
 
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { PillType } from "./WizardView";
 
-const SUGGESTED_PROMPTS = [
-    { emoji: "📄", label: "Summarize a document" },
-    { emoji: "📅", label: "Schedule a meeting" },
-    { emoji: "🔍", label: "Research a topic" },
-    { emoji: "✍️", label: "Draft an email" },
+const SUGGESTED_PROMPTS: { emoji: string; label: string; pill: PillType }[] = [
+    { emoji: "📄", label: "Summarize a document", pill: "summarize" },
+    { emoji: "📅", label: "Schedule a meeting",   pill: "schedule"  },
+    { emoji: "🔍", label: "Research a topic",     pill: "research"  },
+    { emoji: "✍️", label: "Draft an email",        pill: "draft"     },
 ];
 
 interface WelcomeViewProps {
     agentName: string;
     firstName: string;
-    onSelectPrompt: (text: string) => void;
+    onSelectPill: (pill: PillType) => void;
     children: React.ReactNode;
 }
 
-export function WelcomeView({ agentName, firstName, onSelectPrompt, children }: WelcomeViewProps) {
+export function WelcomeView({ agentName, firstName, onSelectPill, children }: WelcomeViewProps) {
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
@@ -33,12 +34,12 @@ export function WelcomeView({ agentName, firstName, onSelectPrompt, children }: 
                 </p>
 
                 <div className="flex flex-wrap gap-3 justify-center max-w-md">
-                    {SUGGESTED_PROMPTS.map(({ emoji, label }) => (
+                    {SUGGESTED_PROMPTS.map(({ emoji, label, pill }) => (
                         <Button
-                            key={label}
+                            key={pill}
                             variant="outline"
                             className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
-                            onClick={() => onSelectPrompt(`${emoji} ${label}`)}
+                            onClick={() => onSelectPill(pill)}
                         >
                             {emoji} {label}
                         </Button>
