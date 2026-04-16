@@ -40,14 +40,14 @@ export default function OnboardingPage() {
 
         try {
             // Create tenant + agent
-            const res = await api.post<{ tenantId: string; slug: string }>('/v1/onboarding/complete', {
+            const res = await api.post<{ tenantId: string; slug: string }>('/api/v1/onboarding/complete', {
                 workspaceName: workspaceName.trim(),
                 purpose: purpose || undefined,
             });
 
             // Fire-and-forget provision call
             if (res.tenantId) {
-                api.post(`/v1/onboarding/provision/${res.tenantId}`, {}).catch((err) => {
+                api.post(`/api/v1/onboarding/provision/${res.tenantId}`, {}).catch((err) => {
                     console.error("Background provision failed:", err);
                 });
             }
