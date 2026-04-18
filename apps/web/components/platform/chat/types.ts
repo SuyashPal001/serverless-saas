@@ -68,3 +68,16 @@ export interface CreateConversationRequest {
 export interface SendMessageRequest {
     content: string;
 }
+
+export interface ToolCallSearchResult {
+    title: string;
+    domain: string;
+    favicon?: string;
+}
+
+export interface CompletedToolCall {
+    id: string;
+    toolName: string;
+    query: string;
+    results?: ToolCallSearchResult[];
+}

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Terminal, Info, MessageSquare, Image as ImageIcon, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Message } from "./types";
+import { Message, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -26,14 +26,14 @@ interface MessageThreadProps {
     isRetrying?: boolean;
     hasContent?: boolean;
     activeToolCalls?: Message["toolCalls"];
-    completedToolCallLabels?: string[];
+    completedToolCalls?: CompletedToolCall[];
     error?: string | null;
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCallLabels, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
 
@@ -126,37 +126,12 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
-                        completedToolCallLabels={completedToolCallLabels ?? []}
+                        completedToolCalls={completedToolCalls ?? []}
                         hasContent={hasContent ?? false}
                     />
                 ) : isTyping ? (
                     <ThinkingDots label="Thinking..." />
                 ) : null}
-
-                {activeToolCalls && activeToolCalls.length > 0 && (
-                    <div className="flex items-start gap-3 mt-4">
-                        <AgentOrb size={40} state="searching" />
-                        <div className="flex-1 max-w-[80%] pt-1">
-                            <div className="flex items-center gap-2 text-muted-foreground mb-2 px-1">
-                                <span className="text-xs uppercase font-semibold tracking-wider">Using Tools</span>
-                            </div>
-                            <div className="space-y-2">
-                                {activeToolCalls.map(tool => (
-                                    <ToolCallCard
-                                        key={tool.id}
-                                        toolName={tool.toolName}
-                                        toolCallId={tool.id}
-                                        arguments={tool.arguments}
-                                        result={tool.result}
-                                        error={tool.error}
-                                        isLoading={tool.isLoading}
-                                        durationMs={tool.durationMs}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
                 
                 {error && (
                     <div className="flex justify-center mt-6">
@@ -354,17 +329,13 @@ function MessageItem({
                 )}
                 
                 {message.toolCalls && message.toolCalls.length > 0 && (
-                    <div className="w-full mt-2 space-y-2">
+                    <div className="w-full mt-2">
                         {message.toolCalls.map(tool => (
                             <ToolCallCard
                                 key={tool.id}
                                 toolName={tool.toolName}
-                                toolCallId={tool.id}
-                                arguments={tool.arguments}
-                                result={tool.result}
-                                error={tool.error}
-                                isLoading={tool.isLoading}
-                                durationMs={tool.durationMs}
+                                query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
+                                status={tool.isLoading ? 'loading' : 'done'}
                             />
                         ))}
                     </div>

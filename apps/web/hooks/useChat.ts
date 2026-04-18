@@ -92,6 +92,7 @@ export interface UseChatOptions {
   onDone?: (fullText: string, messageId: string, conversationId?: string) => void;
   onError?: (code: string, message: string) => void;
   onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
+  onToolDone?: (toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
   onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
 }
 
@@ -116,6 +117,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onDone,
     onError,
     onToolCall,
+    onToolDone,
     onApprovalRequired,
   } = options;
 
@@ -140,6 +142,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const onDoneRef = useRef(onDone);
   const onErrorRef = useRef(onError);
   const onToolCallRef = useRef(onToolCall);
+  const onToolDoneRef = useRef(onToolDone);
   const onApprovalRequiredRef = useRef(onApprovalRequired);
   const conversationIdRef = useRef(conversationId);
   const agentIdRef = useRef(agentId);
@@ -148,6 +151,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   onDoneRef.current = onDone;
   onErrorRef.current = onError;
   onToolCallRef.current = onToolCall;
+  onToolDoneRef.current = onToolDone;
   onApprovalRequiredRef.current = onApprovalRequired;
   conversationIdRef.current = conversationId;
   agentIdRef.current = agentId;
@@ -370,10 +374,21 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             }
 
             case 'tool_call': {
+              const toolName = (payload.toolName || payload.tool) as string;
+              const toolCallId = (payload.toolCallId || crypto.randomUUID()) as string;
+              const args = (payload.arguments || payload.args) as Record<string, unknown> ?? {};
               onToolCallRef.current?.(
-                payload.toolName as string,
+                toolName,
+                toolCallId,
+                args,
+              );
+              break;
+            }
+
+            case 'tool_done': {
+              onToolDoneRef.current?.(
                 payload.toolCallId as string,
-                (payload.arguments as Record<string, unknown>) ?? {},
+                payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
               );
               break;
             }

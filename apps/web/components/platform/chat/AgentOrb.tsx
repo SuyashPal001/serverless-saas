@@ -8,6 +8,7 @@ export type OrbState = 'idle' | 'thinking' | 'searching';
 interface AgentOrbProps {
     state?: OrbState;
     size?: number;
+    isLoading?: boolean;
 }
 
 interface Vars {
@@ -32,7 +33,7 @@ interface Vars {
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
 
-export function AgentOrb({ state = 'idle', size = 32 }: AgentOrbProps) {
+export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
     const stateRef = useRef<OrbState>(state);
@@ -46,6 +47,15 @@ export function AgentOrb({ state = 'idle', size = 32 }: AgentOrbProps) {
     const rafId = useRef(0);
 
     useEffect(() => { stateRef.current = state; }, [state]);
+
+    useEffect(() => {
+        if (!isLoading) return;
+        const interval = setInterval(() => {
+            setIsJumping(true);
+            setTimeout(() => setIsJumping(false), 500);
+        }, 800);
+        return () => clearInterval(interval);
+    }, [isLoading]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -337,7 +347,7 @@ export function AgentOrb({ state = 'idle', size = 32 }: AgentOrbProps) {
             onClick={handleClick}
             className={cn(
                 "cursor-pointer transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-                isJumping ? "-translate-y-8 scale-y-105 scale-x-95" : "translate-y-0 scale-100"
+                (isJumping || isLoading) ? "-translate-y-8 scale-y-105 scale-x-95" : "translate-y-0 scale-100"
             )}
             style={{ display: 'block', width: size, height: size, touchAction: 'none' }}
         />

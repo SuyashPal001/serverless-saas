@@ -1,107 +1,194 @@
 'use client';
 
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight, Wrench, Check, X, Loader2 } from 'lucide-react';
+import type { ToolCallSearchResult } from './types';
 
 interface ToolCallCardProps {
   toolName: string;
-  toolCallId: string;
-  arguments?: Record<string, unknown>;
-  result?: unknown;
-  error?: string;
-  isLoading?: boolean;
-  durationMs?: number;
+  query: string;
+  status: 'loading' | 'done';
+  results?: ToolCallSearchResult[];
 }
 
-function resultSummary(result: unknown): string {
-    if (result === undefined) return '';
-    if (typeof result === 'string') {
-        const t = result.trim();
-        return t.slice(0, 55) + (t.length > 55 ? '…' : '');
-    }
-    if (Array.isArray(result)) return `${result.length} result${result.length !== 1 ? 's' : ''}`;
-    return '1 result';
-}
+function ToolIcon({ toolName }: { toolName: string }) {
+  const isSearch = toolName === 'web_search' || toolName === 'browser';
+  const isDocs = toolName === 'retrieve_documents';
+  const isEmail = toolName === 'gmail' || toolName === 'send_email' || toolName.startsWith('GMAIL');
+  const isDrive = toolName === 'google_drive';
+  const isCRM = toolName === 'zoho_crm' || toolName.startsWith('ZOHO_CRM');
 
-export function ToolCallCard({
-  toolName,
-  toolCallId,
-  arguments: args,
-  result,
-  error,
-  isLoading,
-  durationMs,
-}: ToolCallCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  if (isSearch) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1"/>
+      <ellipse cx="7" cy="7" rx="2.5" ry="5.5" stroke="currentColor" strokeWidth="1"/>
+      <line x1="1.5" y1="7" x2="12.5" y2="7" stroke="currentColor" strokeWidth="1"/>
+      <line x1="2" y1="4.5" x2="12" y2="4.5" stroke="currentColor" strokeWidth="0.8"/>
+      <line x1="2" y1="9.5" x2="12" y2="9.5" stroke="currentColor" strokeWidth="0.8"/>
+    </svg>
+  );
 
-  const status = isLoading ? 'loading' : error ? 'error' : result !== undefined ? 'success' : 'pending';
+  if (isDocs) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <rect x="2.5" y="1.5" width="8" height="11" rx="1" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4.5" y1="4.5" x2="9.5" y2="4.5" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4.5" y1="6.5" x2="9.5" y2="6.5" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4.5" y1="8.5" x2="7.5" y2="8.5" stroke="currentColor" strokeWidth="1"/>
+    </svg>
+  );
+
+  if (isEmail) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <rect x="1.5" y="3" width="11" height="8" rx="1" stroke="currentColor" strokeWidth="1"/>
+      <polyline points="1.5,3.5 7,8 12.5,3.5" stroke="currentColor" strokeWidth="1" fill="none"/>
+    </svg>
+  );
+
+  if (isDrive) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <polygon points="7,1.5 13,12.5 1,12.5" stroke="currentColor" strokeWidth="1" fill="none"/>
+    </svg>
+  );
+
+  if (isCRM) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1"/>
+      <path d="M1.5 13c0-3.04 2.46-5.5 5.5-5.5s5.5 2.46 5.5 5.5" stroke="currentColor" strokeWidth="1" fill="none"/>
+    </svg>
+  );
 
   return (
-    <div className="bg-[#141414] border-[0.5px] border-[#222] rounded-[10px] overflow-hidden my-2 text-foreground">
-      {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-[14px] py-[10px] bg-transparent hover:bg-white/[0.02] transition-colors"
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <path d="M9.5 2A3.5 3.5 0 0 0 7 7.5L2.5 12a1.06 1.06 0 1 0 1.5 1.5L8.5 9A3.5 3.5 0 0 0 9.5 2z" stroke="currentColor" strokeWidth="1" fill="none"/>
+      <circle cx="9.5" cy="4.5" r="0.75" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function toolLabel(toolName: string, query: string, status: 'loading' | 'done'): { prefix: string; highlight: string } {
+  const done = status === 'done';
+  const q = query ? `"${query}"` : '';
+
+  if (toolName === 'web_search' || toolName === 'browser') {
+    return { prefix: done ? 'Searched the web for ' : 'Searching the web for ', highlight: q };
+  }
+  if (toolName === 'retrieve_documents') {
+    return { prefix: done ? 'Read documents' : 'Reading documents', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName === 'GMAIL_READ' || toolName === 'gmail') {
+    return { prefix: done ? 'Checked Gmail' : 'Checking Gmail', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName === 'GMAIL_SEND' || toolName === 'send_email') {
+    return { prefix: done ? 'Sent email to ' : 'Sending email to ', highlight: query };
+  }
+  if (toolName === 'GCAL_CREATE_EVENT') {
+    return { prefix: done ? 'Created event' : 'Creating event', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('GCAL')) {
+    return { prefix: done ? 'Checked calendar' : 'Checking calendar', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('ZOHO_CRM')) {
+    return { prefix: done ? 'Accessed CRM' : 'Accessing CRM', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('ZOHO_MAIL')) {
+    return { prefix: done ? 'Sent email' : 'Sending email', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('ZOHO_CLIQ')) {
+    return { prefix: done ? 'Sent message' : 'Sending message', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('GMAIL')) {
+    return { prefix: done ? 'Accessed email' : 'Accessing email', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName.startsWith('JIRA')) {
+    return { prefix: done ? 'Accessed Jira' : 'Accessing Jira', highlight: query ? ` — ${query}` : '' };
+  }
+  if (toolName === 'code_execution') {
+    return { prefix: done ? 'Ran code' : 'Running code', highlight: '' };
+  }
+
+  const friendly = toolName.replace(/_/g, ' ').toLowerCase();
+  return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${query}` : '' };
+}
+
+const DOMAIN_PALETTE = [
+  '#4f46e5', '#7c3aed', '#db2777', '#dc2626', '#d97706',
+  '#16a34a', '#0284c7', '#0891b2', '#be185d', '#b45309',
+];
+
+function domainColor(domain: string): string {
+  let h = 0;
+  for (let i = 0; i < domain.length; i++) h = domain.charCodeAt(i) + ((h << 5) - h);
+  return DOMAIN_PALETTE[Math.abs(h) % DOMAIN_PALETTE.length];
+}
+
+export function ToolCallCard({ toolName, query, status, results }: ToolCallCardProps) {
+  const [expanded, setExpanded] = useState(true);
+  const hasResults = status === 'done' && !!results?.length;
+  const { prefix, highlight } = toolLabel(toolName, query, status);
+
+  return (
+    <div
+      className="my-1 overflow-hidden text-foreground"
+      style={{
+        background: 'var(--color-background-secondary, #111)',
+        border: '0.5px solid var(--color-border-tertiary, #222)',
+        borderRadius: 'var(--border-radius-md, 8px)',
+        padding: hasResults ? '8px 12px 0 12px' : '8px 12px',
+      }}
+    >
+      <div
+        className="flex items-center gap-2"
+        style={{ cursor: hasResults ? 'pointer' : 'default' }}
+        onClick={() => hasResults && setExpanded(e => !e)}
       >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        )}
-        
-        <Wrench className="h-4 w-4 text-primary" />
-        
-        <span className="font-medium text-sm">{toolName}</span>
+        <ToolIcon toolName={toolName} />
 
-        {!isExpanded && result !== undefined && (
-            <span className="text-xs text-[#444] font-mono truncate max-w-[180px]">
-                {resultSummary(result)}
+        <span className="text-xs text-muted-foreground flex-1 truncate">
+          {prefix}
+          {highlight && (
+            <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
+              {highlight}
             </span>
+          )}
+        </span>
+
+        {status === 'loading' ? (
+          <span className="flex gap-[3px] items-center shrink-0">
+            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-60 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
+          </span>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-500">
+            <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         )}
+      </div>
 
-        <div className="flex-1" />
-        
-        {status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        {status === 'success' && <Check className="h-4 w-4 text-green-500" />}
-        {status === 'error' && <X className="h-4 w-4 text-red-500" />}
-        
-        {durationMs !== undefined && (
-          <span className="text-xs text-muted-foreground">{durationMs}ms</span>
-        )}
-      </button>
-
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="px-[14px] py-[10px] border-t border-[#222] space-y-3 bg-[#0e0e0e]">
-          {args && Object.keys(args).length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Arguments</div>
-              <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
-                {JSON.stringify(args, null, 2)}
-              </pre>
+      {hasResults && expanded && (
+        <div
+          className="mt-2 pt-2 pb-2 space-y-[5px]"
+          style={{ borderTop: '0.5px solid var(--color-border-tertiary, #222)' }}
+        >
+          {results!.slice(0, 3).map((r, i) => (
+            <div key={i} className="flex items-center gap-2 min-w-0">
+              <div
+                className="shrink-0 flex items-center justify-center select-none"
+                style={{
+                  width: 14, height: 14, borderRadius: 2,
+                  background: domainColor(r.domain),
+                  color: '#fff', fontSize: 8, fontWeight: 700, lineHeight: 1,
+                }}
+              >
+                {(r.favicon ?? r.domain.charAt(0)).toUpperCase()}
+              </div>
+              <span className="text-xs text-foreground truncate flex-1">{r.title}</span>
+              <span className="text-xs text-muted-foreground shrink-0">{r.domain}</span>
             </div>
-          )}
-
-          {result !== undefined && (
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Result</div>
-              <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">
-                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {error && (
-            <div>
-              <div className="text-xs font-medium text-red-500 mb-1">Error</div>
-              <pre className="text-xs bg-red-500/10 text-red-500 p-2 rounded whitespace-pre-wrap">
-                {error}
-              </pre>
-            </div>
-          )}
+          ))}
         </div>
       )}
+
+      {hasResults && !expanded && <div className="pb-2" />}
     </div>
   );
 }

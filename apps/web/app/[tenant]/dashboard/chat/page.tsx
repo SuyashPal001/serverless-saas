@@ -9,7 +9,7 @@ import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView, type PillType } from "@/components/platform/chat/WizardView";
-import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall } from "@/components/platform/chat/types";
+import { Conversation, ConversationsResponse, MessagesResponse, Message, ToolCall, CompletedToolCall } from "@/components/platform/chat/types";
 import { Agent } from "@/components/platform/agents/types";
 import { Attachment } from "@/types/agent-events";
 import { useChat } from "@/hooks/useChat";
@@ -137,8 +137,8 @@ export default function ChatPage() {
     const [eventError, setEventError] = useState<string | null>(null);
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
-    const [completedToolCallLabels, setCompletedToolCallLabels] = useState<string[]>([]);
-    const completedToolCallsRef = useRef<string[]>([]);
+    const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
+    const completedToolCallsRef = useRef<CompletedToolCall[]>([]);
     const prevToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
 
     // -------------------------------------------------------------------------
@@ -206,7 +206,9 @@ export default function ChatPage() {
                     ),
                 };
             });
-            setActiveToolCalls(new Map());
+            setTimeout(() => {
+                setActiveToolCalls(new Map());
+            }, 1500);
             // Delay sync so the relay's DB writes have time to land before we refetch.
             // The cache already has the correct optimistic state, so this is just a
             // background reconciliation — not needed for correctness.
@@ -241,6 +243,13 @@ export default function ChatPage() {
             });
         }, []),
 
+        onToolDone: useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+            if (!results?.length) return;
+            setCompletedToolCalls(prev =>
+                prev.map(tc => tc.id === toolCallId ? { ...tc, results } : tc)
+            );
+        }, []),
+
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newMessage: Message = {
@@ -269,47 +278,29 @@ export default function ChatPage() {
     }, [conversationId]);
 
     // Track completed tool calls so ThinkingIndicator can show ✓ checkmarks.
-    // When a tool call disappears from activeToolCalls it has finished — capture its label.
+    // When a tool call disappears from activeToolCalls it has finished — move it to completedToolCalls.
     useEffect(() => {
-        const toolLabelMap: Record<string, string> = {
-            retrieve_documents:  "Searching documents",
-            web_search:          "Searching the web",
-            GMAIL_SEND:          "Sending email",
-            GMAIL_READ:          "Reading email",
-            GCAL_CREATE_EVENT:   "Creating calendar event",
-            GCAL_LIST_EVENTS:    "Checking calendar",
-            code_execution:      "Running code",
-            browser:             "Browsing the web",
-            send_email:          "Sending email",
-        };
-        const getFriendlyLabel = (toolName: string): string => {
-            if (toolLabelMap[toolName]) return toolLabelMap[toolName];
-            if (toolName.startsWith("ZOHO_CRM")) return "Accessing CRM";
-            if (toolName.startsWith("ZOHO_MAIL")) return "Sending email";
-            if (toolName.startsWith("ZOHO_CLIQ")) return "Sending message";
-            if (toolName.startsWith("GCAL")) return "Accessing calendar";
-            if (toolName.startsWith("GMAIL")) return "Accessing email";
-            if (toolName.startsWith("JIRA")) return "Accessing Jira";
-            return "Using tools";
-        };
-
         const prev = prevToolCallsRef.current;
-        const newlyCompleted: string[] = [];
+        const newlyCompleted: CompletedToolCall[] = [];
         for (const [id, call] of prev) {
             if (!activeToolCalls.has(id)) {
-                newlyCompleted.push(getFriendlyLabel(call.toolName));
+                newlyCompleted.push({
+                    id,
+                    toolName: call.toolName,
+                    query: String(call.arguments?.query ?? call.arguments?.filename ?? call.arguments?.subject ?? ''),
+                });
             }
         }
 
         if (newlyCompleted.length > 0) {
             completedToolCallsRef.current = [...completedToolCallsRef.current, ...newlyCompleted];
-            setCompletedToolCallLabels([...completedToolCallsRef.current]);
+            setCompletedToolCalls([...completedToolCallsRef.current]);
         }
 
         // Reset completed list when activeToolCalls is fully cleared (onDone fires)
         if (activeToolCalls.size === 0 && prev.size > 0) {
             completedToolCallsRef.current = [];
-            setCompletedToolCallLabels([]);
+            setCompletedToolCalls([]);
         }
 
         prevToolCallsRef.current = new Map(activeToolCalls);
@@ -758,7 +749,7 @@ export default function ChatPage() {
                                             isRetrying={isRetrying}
                                             hasContent={hasContent}
                                             activeToolCalls={Array.from(activeToolCalls.values())}
-                                            completedToolCallLabels={completedToolCallLabels}
+                                            completedToolCalls={completedToolCalls}
                                             error={eventError}
                                             warmupMessage={warmupMessage}
                                             onApprove={handleApprove}
