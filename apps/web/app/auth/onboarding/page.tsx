@@ -1,17 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AgentOrb } from "@/components/platform/chat/AgentOrb";
+import { toast } from "sonner";
 
 const PURPOSES = [
     { value: 'personal', label: 'Personal work' },
     { value: 'team', label: 'Team collaboration' },
     { value: 'client', label: 'Client projects' }
 ];
+
+const POLL_INTERVAL_MS = 2_000;
+const POLL_TIMEOUT_MS = 60_000;
 
 export default function OnboardingPage() {
     const router = useRouter();
@@ -21,6 +26,7 @@ export default function OnboardingPage() {
     const [purpose, setPurpose] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [provisioning, setProvisioning] = useState<{ agentId: string; slug: string } | null>(null);
 
     const isNameValid = workspaceName.trim().length >= 2;
 
@@ -39,29 +45,92 @@ export default function OnboardingPage() {
         setError(null);
 
         try {
-            // Create tenant + agent
-            const res = await api.post<{ tenantId: string; slug: string }>('/api/v1/onboarding/complete', {
-                workspaceName: workspaceName.trim(),
-                purpose: purpose || undefined,
-            });
+            const res = await api.post<{ tenantId: string; agentId: string; slug: string }>(
+                '/api/v1/onboarding/complete',
+                { workspaceName: workspaceName.trim(), purpose: purpose || undefined },
+            );
 
-            // Fire-and-forget provision call
+            // Fire-and-forget provision — starts the GCP container for this tenant
             if (res.tenantId) {
                 api.post(`/api/v1/onboarding/provision/${res.tenantId}`, {}).catch((err) => {
                     console.error("Background provision failed:", err);
                 });
             }
 
-            // Clear HTTP session token (so login can start fresh and get tenantId claims)
-            await fetch('/api/auth/session', { method: 'DELETE' });
-
-            router.push(`/auth/login?onboarded=true&slug=${res.slug}`);
+            // Transition to setup screen — polling begins via useEffect
+            setProvisioning({ agentId: res.agentId, slug: res.slug });
 
         } catch (err: any) {
             console.error("Onboarding failed:", err);
             setError(err.message || "Failed to create workspace. Please try again.");
             setIsLoading(false);
         }
+    }
+
+    // Poll /onboarding/provision-status/:agentId while the setup screen is showing.
+    // Session clear + redirect happens here (not in handleSubmit) so the JWT is still
+    // valid for the status poll requests.
+    useEffect(() => {
+        if (!provisioning) return;
+
+        const { agentId, slug } = provisioning;
+        let cancelled = false;
+        const startedAt = Date.now();
+
+        const finish = async (timedOut: boolean) => {
+            if (timedOut) {
+                toast.warning("Your workspace is still warming up — you can start chatting in a moment.");
+            }
+            await fetch('/api/auth/session', { method: 'DELETE' });
+            router.push(`/auth/login?onboarded=true&slug=${slug}`);
+        };
+
+        const poll = async () => {
+            if (cancelled) return;
+
+            if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+                finish(true);
+                return;
+            }
+
+            try {
+                const res = await api.get<{ status: string }>(`/api/v1/onboarding/provision-status/${agentId}`);
+                if (!cancelled && res.status === 'ready') {
+                    finish(false);
+                    return;
+                }
+            } catch (err) {
+                console.warn('[onboarding] Status poll failed:', err);
+            }
+
+            if (!cancelled) {
+                setTimeout(poll, POLL_INTERVAL_MS);
+            }
+        };
+
+        poll();
+
+        return () => { cancelled = true; };
+    }, [provisioning, router]);
+
+    // Setup screen — shown after workspace creation while container warms up
+    if (provisioning) {
+        return (
+            <div className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center overflow-hidden">
+                <StarfieldCanvas speedMode="idle" active={true} />
+                <div className="relative z-10 flex flex-col items-center gap-8">
+                    <AgentOrb size={80} state="thinking" isLoading />
+                    <div className="text-center space-y-2">
+                        <p className="text-2xl md:text-3xl font-medium tracking-tight">
+                            Setting up your workspace...
+                        </p>
+                        <p className="text-sm text-white/40">
+                            Starting your agent runtime. This usually takes about 30 seconds.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (

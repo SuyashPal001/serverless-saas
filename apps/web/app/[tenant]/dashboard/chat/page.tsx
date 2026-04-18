@@ -231,6 +231,7 @@ export default function ChatPage() {
         }, []),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
+            const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
             setActiveToolCalls(prev => {
                 const next = new Map(prev);
                 next.set(toolCallId, {
@@ -238,17 +239,23 @@ export default function ChatPage() {
                     toolName,
                     arguments: args,
                     isLoading: true,
+                    query,
                 });
                 return next;
             });
         }, []),
 
         onToolDone: useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
-            if (!results?.length) return;
-            setCompletedToolCalls(prev =>
-                prev.map(tc => tc.id === toolCallId ? { ...tc, results } : tc)
-            );
-        }, []),
+            const call = activeToolCalls.get(toolCallId);
+            if (call) {
+                setCompletedToolCalls(prev => [...prev, { ...call, results }]);
+                setActiveToolCalls(prev => {
+                    const next = new Map(prev);
+                    next.delete(toolCallId);
+                    return next;
+                });
+            }
+        }, [activeToolCalls]),
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
@@ -277,34 +284,7 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);
 
-    // Track completed tool calls so ThinkingIndicator can show ✓ checkmarks.
-    // When a tool call disappears from activeToolCalls it has finished — move it to completedToolCalls.
-    useEffect(() => {
-        const prev = prevToolCallsRef.current;
-        const newlyCompleted: CompletedToolCall[] = [];
-        for (const [id, call] of prev) {
-            if (!activeToolCalls.has(id)) {
-                newlyCompleted.push({
-                    id,
-                    toolName: call.toolName,
-                    query: String(call.arguments?.query ?? call.arguments?.filename ?? call.arguments?.subject ?? ''),
-                });
-            }
-        }
 
-        if (newlyCompleted.length > 0) {
-            completedToolCallsRef.current = [...completedToolCallsRef.current, ...newlyCompleted];
-            setCompletedToolCalls([...completedToolCallsRef.current]);
-        }
-
-        // Reset completed list when activeToolCalls is fully cleared (onDone fires)
-        if (activeToolCalls.size === 0 && prev.size > 0) {
-            completedToolCallsRef.current = [];
-            setCompletedToolCalls([]);
-        }
-
-        prevToolCallsRef.current = new Map(activeToolCalls);
-    }, [activeToolCalls]);
 
     // Auto-create a conversation for first-time users (no conversations, no active conversation).
     useEffect(() => {

@@ -137,6 +137,64 @@ onboardingRoutes.post('/complete', async (c) => {
     return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
 
+// GET /onboarding/provision-status/:agentId
+// Accessible with empty custom:tenantId (pre-auth, mounted before tenantResolutionMiddleware).
+// Used by the onboarding setup screen to poll container readiness before the first login.
+// Auth: verifies userId has a membership for the agent's tenant — no session or tenantId claim needed.
+onboardingRoutes.get('/provision-status/:agentId', async (c) => {
+    const userId = c.get('userId');
+    if (!userId) {
+        return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const agentId = c.req.param('agentId');
+
+    const agent = (await db.select().from(agents).where(eq(agents.id, agentId)).limit(1))[0];
+
+    if (!agent) {
+        return c.json({ status: 'not_found' });
+    }
+
+    // Verify the requesting user is a member of this agent's tenant
+    const membership = (await db.select()
+        .from(memberships)
+        .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, agent.tenantId)))
+        .limit(1))[0];
+
+    if (!membership) {
+        return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+
+    if (!relayUrl || !serviceKey) {
+        return c.json({ status: 'ready' }); // local dev — relay not wired up
+    }
+
+    try {
+        const res = await fetch(`${relayUrl}/health/${agent.tenantId}`, {
+            headers: { 'X-Service-Key': serviceKey },
+            signal: AbortSignal.timeout(5000),
+        });
+
+        if (res.ok) {
+            const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+            const isHealthy = data.healthy === true || data.status === 'running' || data.status === 'healthy';
+            return c.json({ status: isHealthy ? 'ready' : 'provisioning' });
+        }
+
+        if (res.status === 404) {
+            return c.json({ status: 'not_found' });
+        }
+
+        return c.json({ status: 'provisioning' });
+    } catch (err) {
+        console.warn(`[onboarding/provision-status] Health check failed for agent ${agentId}:`, err);
+        return c.json({ status: 'provisioning' });
+    }
+});
+
 onboardingRoutes.post('/provision/:tenantId', async (c) => {
     const tenantId = c.req.param('tenantId');
     const relayUrl = process.env.RELAY_URL;

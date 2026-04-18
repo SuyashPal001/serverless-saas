@@ -65,48 +65,31 @@ function ToolIcon({ toolName }: { toolName: string }) {
 }
 
 function toolLabel(toolName: string, query: string, status: 'loading' | 'done'): { prefix: string; highlight: string } {
-  const done = status === 'done';
-  const q = query ? `"${query}"` : '';
+    const done = status === 'done';
+    const q = query ? `"${query}"` : '';
 
-  if (toolName === 'web_search' || toolName === 'browser') {
-    return { prefix: done ? 'Searched the web for ' : 'Searching the web for ', highlight: q };
-  }
-  if (toolName === 'retrieve_documents') {
-    return { prefix: done ? 'Read documents' : 'Reading documents', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName === 'GMAIL_READ' || toolName === 'gmail') {
-    return { prefix: done ? 'Checked Gmail' : 'Checking Gmail', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName === 'GMAIL_SEND' || toolName === 'send_email') {
-    return { prefix: done ? 'Sent email to ' : 'Sending email to ', highlight: query };
-  }
-  if (toolName === 'GCAL_CREATE_EVENT') {
-    return { prefix: done ? 'Created event' : 'Creating event', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('GCAL')) {
-    return { prefix: done ? 'Checked calendar' : 'Checking calendar', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('ZOHO_CRM')) {
-    return { prefix: done ? 'Accessed CRM' : 'Accessing CRM', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('ZOHO_MAIL')) {
-    return { prefix: done ? 'Sent email' : 'Sending email', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('ZOHO_CLIQ')) {
-    return { prefix: done ? 'Sent message' : 'Sending message', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('GMAIL')) {
-    return { prefix: done ? 'Accessed email' : 'Accessing email', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName.startsWith('JIRA')) {
-    return { prefix: done ? 'Accessed Jira' : 'Accessing Jira', highlight: query ? ` — ${query}` : '' };
-  }
-  if (toolName === 'code_execution') {
-    return { prefix: done ? 'Ran code' : 'Running code', highlight: '' };
-  }
+    if (status === 'loading') {
+        if (toolName === 'web_search') return { prefix: 'Searching the web for ', highlight: q };
+        if (toolName === 'retrieve_documents') return { prefix: 'Searching your documents for ', highlight: q };
+        if (toolName === 'browser') return { prefix: 'Browsing ', highlight: q };
+        if (toolName === 'code_exec' || toolName === 'code_execution') return { prefix: 'Running code...', highlight: '' };
+    }
 
-  const friendly = toolName.replace(/_/g, ' ').toLowerCase();
-  return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${query}` : '' };
+    if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
+    if (toolName === 'retrieve_documents') return { prefix: 'Read documents', highlight: query ? ` — ${q}` : '' };
+    if (toolName === 'GMAIL_READ' || toolName === 'gmail') return { prefix: done ? 'Checked Gmail' : 'Checking Gmail', highlight: query ? ` — ${q}` : '' };
+    if (toolName === 'GMAIL_SEND' || toolName === 'send_email') return { prefix: done ? 'Sent email to ' : 'Sending email to ', highlight: query };
+    if (toolName === 'GCAL_CREATE_EVENT') return { prefix: done ? 'Created event' : 'Creating event', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('GCAL')) return { prefix: done ? 'Checked calendar' : 'Checking calendar', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('ZOHO_CRM')) return { prefix: done ? 'Accessed CRM' : 'Accessing CRM', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('ZOHO_MAIL')) return { prefix: done ? 'Sent email' : 'Sending email', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('ZOHO_CLIQ')) return { prefix: done ? 'Sent message' : 'Sending message', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('GMAIL')) return { prefix: done ? 'Accessed email' : 'Accessing email', highlight: query ? ` — ${q}` : '' };
+    if (toolName.startsWith('JIRA')) return { prefix: done ? 'Accessed Jira' : 'Accessing Jira', highlight: query ? ` — ${q}` : '' };
+    if (toolName === 'code_execution' || toolName === 'code_exec') return { prefix: 'Ran code', highlight: '' };
+
+    const friendly = toolName.replace(/_/g, ' ').toLowerCase();
+    return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };
 }
 
 const DOMAIN_PALETTE = [

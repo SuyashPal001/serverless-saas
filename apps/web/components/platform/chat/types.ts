@@ -6,6 +6,7 @@ export interface ToolCall {
     id: string;
     toolName: string;
     arguments?: Record<string, unknown>;
+    query: string;
     result?: unknown;
     error?: string;
     isLoading?: boolean;

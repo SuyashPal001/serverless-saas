@@ -81,6 +81,60 @@ agentsRoutes.get('/ensure-ready', async (c) => {
     return c.json({ ready: false, code: 'AGENT_NOT_READY' });
 });
 
+// GET /agents/:id/status — check if the GCP container for this agent is ready.
+// Returns { status: 'ready' | 'provisioning' | 'not_found' }.
+// Used by the dashboard to show container warm-up state post-login.
+// For the onboarding setup screen (empty tenantId), use GET /onboarding/provision-status/:agentId instead.
+agentsRoutes.get('/:id/status', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agents', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const agentId = c.req.param('id');
+
+    const agent = (await db.select().from(agents).where(and(
+        eq(agents.id, agentId),
+        eq(agents.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!agent) {
+        return c.json({ error: 'Agent not found' }, 404);
+    }
+
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+
+    if (!relayUrl || !serviceKey) {
+        return c.json({ status: 'ready' }); // local dev — relay not wired up
+    }
+
+    try {
+        const res = await fetch(`${relayUrl}/health/${tenantId}`, {
+            headers: { 'X-Service-Key': serviceKey },
+            signal: AbortSignal.timeout(5000),
+        });
+
+        if (res.ok) {
+            const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+            const isHealthy = data.healthy === true || data.status === 'running' || data.status === 'healthy';
+            return c.json({ status: isHealthy ? 'ready' : 'provisioning' });
+        }
+
+        if (res.status === 404) {
+            return c.json({ status: 'not_found' });
+        }
+
+        return c.json({ status: 'provisioning' });
+    } catch (err) {
+        console.warn(`[agents/status] Health check failed for agent ${agentId}:`, err);
+        return c.json({ status: 'provisioning' });
+    }
+});
+
 // GET /agents — list all agents for the current tenant
 agentsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;

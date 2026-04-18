@@ -49,8 +49,8 @@ export function ThinkingIndicator({
         }
         setStepIndex(0);
         const id = setInterval(() => {
-            setStepIndex(prev => Math.min(prev + 1, WARMUP_STEPS.length - 1));
-        }, WARMUP_STEP_INTERVAL_MS);
+            setStepIndex(prev => (prev + 1) % WARMUP_STEPS.length);
+        }, WARMUP_STEP_INTERVAL_MS / 2); // Cycle faster
         return () => clearInterval(id);
     }, [isRetrying]);
 
@@ -59,31 +59,22 @@ export function ThinkingIndicator({
     // Phase 1 — container warmup
     if (isRetrying) {
         return (
-            <div className="flex items-start gap-4 animate-in fade-in duration-300">
+            <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
                 <AgentOrb size={40} state="thinking" isLoading />
-                <div className="flex flex-col gap-1.5 pt-1">
-                    {WARMUP_STEPS.slice(0, stepIndex + 1).map((step, i) => {
-                        const isDone = i < stepIndex;
-                        const isCurrent = i === stepIndex;
-                        return (
-                            <div
-                                key={step}
-                                className={cn(
-                                    "flex items-center gap-2 text-sm font-mono animate-in fade-in duration-500",
-                                    isDone ? "text-[#3a3a3a]" : "text-[#c4b5fd]"
-                                )}
-                            >
-                                {isDone ? (
-                                    <span className="text-[#22c55e] text-xs w-4 shrink-0">✓</span>
-                                ) : isCurrent ? (
-                                    <span className="w-4 shrink-0 flex items-center">
-                                        <PulsingDots />
-                                    </span>
-                                ) : null}
-                                {step}
+                <div className="h-6 overflow-hidden">
+                    <div
+                        className="transition-transform duration-500 ease-in-out"
+                        style={{ transform: `translateY(-${stepIndex * 1.5}rem)` }}
+                    >
+                        {WARMUP_STEPS.map((step) => (
+                            <div key={step} className="flex items-center gap-2 h-6">
+                                <PulsingDots />
+                                <span className="text-sm text-[#c4b5fd] font-mono">
+                                    {step}
+                                </span>
                             </div>
-                        );
-                    })}
+                        ))}
+                    </div>
                 </div>
             </div>
         );
@@ -120,12 +111,39 @@ export function ThinkingIndicator({
 
     // Phase 2a — plain thinking
     if (isStreaming) {
+        const [messageIndex, setMessageIndex] = useState(0);
+        const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
+
+        const THINKING_MESSAGES = [
+            "Thinking...",
+            "Reading your question...",
+            "Forming a response...",
+            "Almost there...",
+        ];
+
+        const RAG_MESSAGES = [
+            "Searching your documents...",
+            "Finding relevant context...",
+            "Reviewing sources...",
+        ];
+
+        const messages = isRAG ? RAG_MESSAGES : THINKING_MESSAGES;
+
+        useEffect(() => {
+            const id = setInterval(() => {
+                setMessageIndex(prev => (prev + 1) % messages.length);
+            }, 2500);
+            return () => clearInterval(id);
+        }, [messages.length]);
+
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />
                 <div className="flex items-center gap-2 pt-1.5">
                     <PulsingDots />
-                    <span className="text-sm text-[#c4b5fd] font-mono">Thinking...</span>
+                    <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
+                        {messages[messageIndex]}
+                    </span>
                 </div>
             </div>
         );
