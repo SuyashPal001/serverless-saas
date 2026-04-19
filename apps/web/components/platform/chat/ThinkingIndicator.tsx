@@ -108,7 +108,7 @@ export function ThinkingIndicator({
 
     // Phase 2b — tool calls (active + completed)
     const loadingTools = activeToolCalls.filter(t => t.isLoading);
-    if (isStreaming && (loadingTools.length > 0 || completedToolCalls.length > 0)) {
+    if (loadingTools.length > 0 || completedToolCalls.length > 0) {
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="searching" isLoading />

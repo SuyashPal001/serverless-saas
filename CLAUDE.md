@@ -10,6 +10,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - If a prompt asks to grep /opt/ or ~/.openclaw/ — that is GCP VM work, not Mac work.
 - If a prompt asks to grep /opt/ or run sam build/deploy — that is Linux VM work, not Mac work.
 
+### Two Repo Copies — Canonical is Home
+- `/home/suyashresearchwork/serverless-saas/` — canonical repo AND live server (PM2 serves from here)
+- `/opt/serverless-saas/` — dead clone, not served by anything. Do not edit it.
+- Always commit and deploy from the home copy only.
+
+### Deploy (web frontend)
+Always use `./deploy.sh` from repo root — never manually run build + restart separately:
+```bash
+cd /home/suyashresearchwork/serverless-saas && ./deploy.sh
+```
+The script builds, copies static assets to the right standalone paths, and restarts PM2.
+
+**Why the copy step is required:** Next.js monorepo standalone puts `server.js` at
+`standalone/apps/web/server.js` but the build outputs static files to `.next/static/`.
+The server looks for them at `standalone/apps/web/.next/static/` — that path only exists
+after the manual copy. Skipping it causes ChunkLoadError on every page load.
+
+### ChunkLoadError after deploy
+If users see `ChunkLoadError: Failed to load chunk`, they need a hard refresh
+(`Ctrl+Shift+R` / `Cmd+Shift+R`). This happens when a browser has the old HTML cached.
+NGINX is configured with `Cache-Control: immutable` on `/_next/static/` to prevent recurrence.
+
 ## Project Overview
 
 Multi-tenant serverless SaaS foundation built on AWS Lambda, Next.js, and Hono. The architecture separates infrastructure (Terraform) from Lambda definitions (SAM), with a monorepo structure managed by pnpm workspaces.

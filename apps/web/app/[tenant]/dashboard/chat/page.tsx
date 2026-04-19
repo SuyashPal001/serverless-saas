@@ -138,17 +138,34 @@ function ChatPage() {
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
-    const completedToolCallsRef = useRef<CompletedToolCall[]>([]);
     const prevToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
 
     // -------------------------------------------------------------------------
     // SSE chat hook — replaces WebSocket-based useAgentEvents
     // -------------------------------------------------------------------------
+    const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+        const call = activeToolCalls.get(toolCallId);
+        if (call) {
+            setCompletedToolCalls(prev => [...prev, { ...call, results }]);
+            setActiveToolCalls(prev => {
+                const next = new Map(prev);
+                next.delete(toolCallId);
+                return next;
+            });
+        }
+    }, [activeToolCalls]);
+
     const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
 
         onDelta: useCallback((delta: string, messageId: string) => {
+            // On first delta, flush all pending tool calls to completed state
+            if (activeToolCalls.size > 0) {
+                activeToolCalls.forEach((_tool, toolCallId) => {
+                    handleToolDone(toolCallId, undefined);
+                });
+            }
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
                 const existingIndex = newData.findIndex(m => m.id === messageId);
@@ -176,7 +193,7 @@ function ChatPage() {
                     ),
                 };
             });
-        }, [queryClient]),
+        }, [queryClient, activeToolCalls, handleToolDone]),
 
         onDone: useCallback((fullText: string, messageId: string) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
@@ -198,7 +215,8 @@ function ChatPage() {
                             isStreaming: false,
                             content: fullText || newData[zombieIndex].content,
                         };
-                    } else {
+                    } else if (fullText) {
+                        // Only push a new bubble if there's actual content — never push empty messages
                         newData.push({
                             id: messageId,
                             conversationId: conversationIdRef.current!,
@@ -218,6 +236,7 @@ function ChatPage() {
             });
             setTimeout(() => {
                 setActiveToolCalls(new Map());
+                setCompletedToolCalls([]);
             }, 1500);
             // Delay sync so the relay's DB writes have time to land before we refetch.
             // The cache already has the correct optimistic state, so this is just a
@@ -257,17 +276,7 @@ function ChatPage() {
             });
         }, []),
 
-        onToolDone: useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
-            const call = activeToolCalls.get(toolCallId);
-            if (call) {
-                setCompletedToolCalls(prev => [...prev, { ...call, results }]);
-                setActiveToolCalls(prev => {
-                    const next = new Map(prev);
-                    next.delete(toolCallId);
-                    return next;
-                });
-            }
-        }, [activeToolCalls]),
+        onToolDone: handleToolDone,
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
