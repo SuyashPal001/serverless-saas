@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { integrations } from '@serverless-saas/database/schema/integrations';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { agents } from '@serverless-saas/database/schema/agents';
+import { agentSkills } from '@serverless-saas/database/schema/conversations';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -34,6 +36,63 @@ function encryptCredentials(data: object, tenantId: string): string {
 // ── UUID check helper ─────────────────────────────────────────────────────────
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ── Provider → tool names map ─────────────────────────────────────────────────
+// Used to merge/remove tools in agent_skills.tools on connect/disconnect.
+
+const PROVIDER_TOOLS_MAP: Record<string, string[]> = {
+    gmail:     ['GMAIL_SEND_EMAIL', 'GMAIL_SEARCH_EMAILS', 'GMAIL_READ_EMAIL'],
+    drive:     ['GDRIVE_SEARCH_FILES', 'GDRIVE_READ_FILE'],
+    calendar:  ['GCAL_LIST_EVENTS', 'GCAL_CREATE_EVENT'],
+    zoho_crm:  ['ZOHO_SEARCH_CONTACTS', 'ZOHO_GET_CONTACT', 'ZOHO_CREATE_CONTACT', 'ZOHO_SEARCH_DEALS', 'ZOHO_CREATE_DEAL'],
+    zoho_mail: ['ZOHO_MAIL_LIST_MESSAGES', 'ZOHO_MAIL_GET_MESSAGE', 'ZOHO_MAIL_SEND_MESSAGE'],
+    zoho_cliq: ['ZOHO_CLIQ_LIST_CHANNELS', 'ZOHO_CLIQ_GET_CHANNEL_MESSAGES', 'ZOHO_CLIQ_SEND_MESSAGE'],
+    jira:      ['JIRA_SEARCH_ISSUES', 'JIRA_GET_ISSUE', 'JIRA_CREATE_ISSUE', 'JIRA_UPDATE_ISSUE', 'JIRA_LIST_PROJECTS'],
+};
+
+// Merges provider tools into agent_skills.tools and fires relay /update.
+// Non-throwing — logs errors but does not block the calling handler.
+async function syncToolsAndNotifyRelay(tenantId: string, provider: string, action: 'add' | 'remove'): Promise<void> {
+    const providerTools = PROVIDER_TOOLS_MAP[provider];
+    if (!providerTools?.length) return;
+
+    try {
+        // Find the tenant's active agent + its active skill
+        const [agent] = await db
+            .select({ id: agents.id })
+            .from(agents)
+            .where(and(eq(agents.tenantId, tenantId), eq(agents.status, 'active')))
+            .limit(1);
+        if (!agent) return;
+
+        const [skill] = await db
+            .select({ id: agentSkills.id, tools: agentSkills.tools })
+            .from(agentSkills)
+            .where(and(eq(agentSkills.agentId, agent.id), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')))
+            .limit(1);
+        if (!skill) return;
+
+        const current = skill.tools ?? [];
+        const updated = action === 'add'
+            ? [...new Set([...current, ...providerTools])]
+            : current.filter(t => !providerTools.includes(t));
+
+        await db.update(agentSkills)
+            .set({ tools: updated, updatedAt: new Date() })
+            .where(eq(agentSkills.id, skill.id));
+
+        const relayUrl = process.env.RELAY_URL;
+        if (relayUrl) {
+            fetch(`${relayUrl}/update/${tenantId}/${agent.id}`, {
+                method: 'POST',
+                headers: { 'x-service-key': process.env.INTERNAL_SERVICE_KEY!, 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            }).catch((e: Error) => console.warn('[relay update failed]', e.message));
+        }
+    } catch (err) {
+        console.error(`[syncToolsAndNotifyRelay] provider=${provider} action=${action}:`, (err as Error).message);
+    }
+}
 
 // ── Auth-protected routes ─────────────────────────────────────────────────────
 // Mounted at /api/v1/integrations — runs through the full middleware chain.
@@ -577,6 +636,8 @@ integrationsRoutes.delete('/:idOrProvider', async (c) => {
             traceId:    c.get('traceId') ?? '',
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
+        void syncToolsAndNotifyRelay(tenantId, existing.provider, 'remove');
+
         return c.json({ ok: true });
     } catch (err: any) {
         console.error('Failed to disconnect integration:', err);
@@ -712,6 +773,8 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         return fail('db_error');
     }
 
+    void syncToolsAndNotifyRelay(tenantId, service, 'add');
+
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
 });
 
@@ -833,6 +896,8 @@ jiraOAuthCallbackRoute.get('/jira/callback', async (c) => {
         console.error('[jira/callback] DB upsert failed:', (err as Error).message);
         return fail('db_error');
     }
+
+    void syncToolsAndNotifyRelay(tenantId, 'jira', 'add');
 
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=jira`);
 });
@@ -966,6 +1031,8 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
         console.error('[zoho/callback] DB upsert failed:', (err as Error).message);
         return fail('db_error');
     }
+
+    void syncToolsAndNotifyRelay(tenantId, service, 'add');
 
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
 });
