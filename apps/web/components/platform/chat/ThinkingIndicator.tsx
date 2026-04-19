@@ -41,6 +41,24 @@ export function ThinkingIndicator({
     hasContent,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
+    const [messageIndex, setMessageIndex] = useState(0);
+
+    const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
+
+    const THINKING_MESSAGES = [
+        "Thinking...",
+        "Reading your question...",
+        "Forming a response...",
+        "Almost there...",
+    ];
+
+    const RAG_MESSAGES = [
+        "Searching your documents...",
+        "Finding relevant context...",
+        "Reviewing sources...",
+    ];
+
+    const thinkingMessages = isRAG ? RAG_MESSAGES : THINKING_MESSAGES;
 
     useEffect(() => {
         if (!isRetrying) {
@@ -53,6 +71,14 @@ export function ThinkingIndicator({
         }, WARMUP_STEP_INTERVAL_MS / 2); // Cycle faster
         return () => clearInterval(id);
     }, [isRetrying]);
+
+    useEffect(() => {
+        if (!isStreaming) return;
+        const id = setInterval(() => {
+            setMessageIndex(prev => (prev + 1) % thinkingMessages.length);
+        }, 2500);
+        return () => clearInterval(id);
+    }, [isStreaming, thinkingMessages.length]);
 
     if (hasContent) return null;
 
@@ -111,38 +137,13 @@ export function ThinkingIndicator({
 
     // Phase 2a — plain thinking
     if (isStreaming) {
-        const [messageIndex, setMessageIndex] = useState(0);
-        const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
-
-        const THINKING_MESSAGES = [
-            "Thinking...",
-            "Reading your question...",
-            "Forming a response...",
-            "Almost there...",
-        ];
-
-        const RAG_MESSAGES = [
-            "Searching your documents...",
-            "Finding relevant context...",
-            "Reviewing sources...",
-        ];
-
-        const messages = isRAG ? RAG_MESSAGES : THINKING_MESSAGES;
-
-        useEffect(() => {
-            const id = setInterval(() => {
-                setMessageIndex(prev => (prev + 1) % messages.length);
-            }, 2500);
-            return () => clearInterval(id);
-        }, [messages.length]);
-
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />
                 <div className="flex items-center gap-2 pt-1.5">
                     <PulsingDots />
                     <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
-                        {messages[messageIndex]}
+                        {thinkingMessages[messageIndex]}
                     </span>
                 </div>
             </div>

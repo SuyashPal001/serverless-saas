@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Suspense } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -44,7 +44,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export default function ChatPage() {
+function ChatPage() {
     const params = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -190,14 +190,24 @@ export default function ChatPage() {
                         isStreaming: false,
                     };
                 } else {
-                    newData.push({
-                        id: messageId,
-                        conversationId: conversationIdRef.current!,
-                        role: 'assistant',
-                        content: fullText,
-                        createdAt: new Date().toISOString(),
-                        isStreaming: false,
-                    });
+                    // Close any zombie streaming bubble before pushing the final message.
+                    const zombieIndex = newData.findIndex(m => m.isStreaming === true);
+                    if (zombieIndex >= 0) {
+                        newData[zombieIndex] = {
+                            ...newData[zombieIndex],
+                            isStreaming: false,
+                            content: fullText || newData[zombieIndex].content,
+                        };
+                    } else {
+                        newData.push({
+                            id: messageId,
+                            conversationId: conversationIdRef.current!,
+                            role: 'assistant',
+                            content: fullText,
+                            createdAt: new Date().toISOString(),
+                            isStreaming: false,
+                        });
+                    }
                 }
 
                 return {
@@ -214,6 +224,8 @@ export default function ChatPage() {
             // background reconciliation — not needed for correctness.
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ["messages", conversationIdRef.current] });
+                queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                queryClient.invalidateQueries({ queryKey: ["conversation", conversationIdRef.current] });
             }, 2000);
         }, [queryClient]),
 
@@ -456,10 +468,6 @@ export default function ChatPage() {
             const words = content.trim().split(/\s+/);
             const newTitle = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
             api.patch(`/api/v1/conversations/${conversationId}`, { title: newTitle })
-                .then(() => {
-                    queryClient.invalidateQueries({ queryKey: ["conversations"] });
-                    queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
-                })
                 .catch(console.error);
         }
 
@@ -846,5 +854,13 @@ export default function ChatPage() {
                 onTap={handleTap}
             />
         </div>
+    );
+}
+
+export default function ChatPageShell() {
+    return (
+        <Suspense>
+            <ChatPage />
+        </Suspense>
     );
 }

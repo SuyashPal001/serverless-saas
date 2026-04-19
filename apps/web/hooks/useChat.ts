@@ -428,7 +428,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           window.location.href = '/auth/login';
           return;
         }
-        sendMessageRef.current?.(text, attachments);
+        await sendMessageRef.current?.(text, attachments).catch(console.error);
         return;
       }
     } catch (err: unknown) {
@@ -460,8 +460,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
+        setIsStreaming(false);
       }
-      setIsStreaming(false);
     }
   }, [clearRetry]);
 
