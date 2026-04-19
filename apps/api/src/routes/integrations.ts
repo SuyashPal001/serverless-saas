@@ -75,7 +75,7 @@ async function syncToolsAndNotifyRelay(tenantId: string, provider: string, actio
         const current = skill.tools ?? [];
         const updated = action === 'add'
             ? [...new Set([...current, ...providerTools])]
-            : current.filter(t => !providerTools.includes(t));
+            : current.filter((t: string) => !providerTools.includes(t));
 
         await db.update(agentSkills)
             .set({ tools: updated, updatedAt: new Date() })
