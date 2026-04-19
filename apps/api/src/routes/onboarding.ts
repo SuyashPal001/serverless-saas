@@ -129,7 +129,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: saarthiAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are Saarthi, an AI assistant. You help users by answering questions from their organization uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].',
+        systemPrompt: `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`,
         status: 'active',
     });
 
