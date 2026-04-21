@@ -57,9 +57,8 @@ internalToolCallsRoute.post('/log', async (c) => {
 
   const d = result.data;
 
-  // Fire and forget — respond immediately, insert async
-  c.executionCtx?.waitUntil(
-    db.insert(toolCallLogs).values({
+  try {
+    await db.insert(toolCallLogs).values({
       tenantId:       d.tenantId,
       conversationId: d.conversationId ?? null,
       userId:         d.userId ?? null,
@@ -68,10 +67,10 @@ internalToolCallsRoute.post('/log', async (c) => {
       latencyMs:      d.latencyMs ?? null,
       errorMessage:   d.errorMessage ?? null,
       args:           d.args ?? null,
-    }).catch((err: unknown) => {
-      console.error('[internal/tool-calls/log] insert failed:', err);
-    })
-  );
+    });
+  } catch (err) {
+    console.error('[internal/tool-calls/log] insert failed:', err);
+  }
 
   return c.json({ success: true }, 200);
 });

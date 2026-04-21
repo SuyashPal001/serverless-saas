@@ -53,17 +53,16 @@ internalKnowledgeGapsRoute.post('/', async (c) => {
 
   const d = result.data;
 
-  // Fire and forget — respond immediately, insert async
-  c.executionCtx?.waitUntil(
-    db.insert(knowledgeGaps).values({
+  try {
+    await db.insert(knowledgeGaps).values({
       tenantId:       d.tenantId,
       conversationId: d.conversationId ?? null,
       query:          d.query,
       ragScore:       d.ragScore?.toString() ?? null,
-    }).catch((err: unknown) => {
-      console.error('[internal/knowledge-gaps] insert failed:', err);
-    })
-  );
+    });
+  } catch (err) {
+    console.error('[internal/knowledge-gaps] insert failed:', err);
+  }
 
   return c.json({ success: true }, 200);
 });
