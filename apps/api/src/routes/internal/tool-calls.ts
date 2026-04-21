@@ -58,6 +58,17 @@ internalToolCallsRoute.post('/log', async (c) => {
   const d = result.data;
 
   try {
+    const values = {
+      tenantId:       d.tenantId,
+      conversationId: d.conversationId ?? null,
+      userId:         d.userId ?? null,
+      toolName:       d.toolName,
+      success:        d.success,
+      latencyMs:      d.latencyMs ?? null,
+      errorMessage:   d.errorMessage ?? null,
+      args:           d.args ?? null,
+    };
+    console.log('[tool-calls] inserting:', JSON.stringify(values));
     await db.insert(toolCallLogs).values({
       tenantId:       d.tenantId,
       conversationId: d.conversationId ?? null,
