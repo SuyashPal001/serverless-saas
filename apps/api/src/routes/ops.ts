@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
-import { and, eq, ilike, desc } from 'drizzle-orm';
+import { and, eq, ilike, desc, count, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { tenantFeatureOverrides } from '@serverless-saas/database/schema/entitlements';
+import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../types';
 
@@ -37,6 +36,90 @@ opsRoutes.get('/tenants', async (c) => {
         .offset((page - 1) * pageSize);
 
     return c.json({ tenants: data, page, pageSize });
+});
+
+// GET /ops/tenants/:id — tenant detail with members, agents, conversation count, overrides
+opsRoutes.get('/tenants/:id', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const tenantId = c.req.param('id');
+
+    const tenant = (await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1))[0];
+    if (!tenant) {
+        return c.json({ error: 'Tenant not found' }, 404);
+    }
+
+    // Members with user info and role name
+    const memberRows = await db
+        .select({
+            membershipId: memberships.id,
+            memberType: memberships.memberType,
+            status: memberships.status,
+            joinedAt: memberships.joinedAt,
+            createdAt: memberships.createdAt,
+            userId: users.id,
+            userName: users.name,
+            userEmail: users.email,
+            roleName: roles.name,
+        })
+        .from(memberships)
+        .leftJoin(users, eq(memberships.userId, users.id))
+        .leftJoin(roles, eq(memberships.roleId, roles.id))
+        .where(eq(memberships.tenantId, tenantId))
+        .orderBy(desc(memberships.createdAt));
+
+    // Active agent count
+    const [agentCountRow] = await db
+        .select({ value: count() })
+        .from(agents)
+        .where(and(eq(agents.tenantId, tenantId), eq(agents.status, 'active')));
+
+    // Total conversation count
+    const [convCountRow] = await db
+        .select({ value: count() })
+        .from(conversations)
+        .where(eq(conversations.tenantId, tenantId));
+
+    // Feature overrides for this tenant
+    const overrideRows = await db
+        .select({
+            id: tenantFeatureOverrides.id,
+            featureKey: features.key,
+            featureName: features.name,
+            enabled: tenantFeatureOverrides.enabled,
+            valueLimit: tenantFeatureOverrides.valueLimit,
+            unlimited: tenantFeatureOverrides.unlimited,
+            reason: tenantFeatureOverrides.reason,
+            grantedBy: tenantFeatureOverrides.grantedBy,
+            expiresAt: tenantFeatureOverrides.expiresAt,
+            revokedAt: tenantFeatureOverrides.revokedAt,
+            createdAt: tenantFeatureOverrides.createdAt,
+        })
+        .from(tenantFeatureOverrides)
+        .innerJoin(features, eq(tenantFeatureOverrides.featureId, features.id))
+        .where(and(
+            eq(tenantFeatureOverrides.tenantId, tenantId),
+            isNull(tenantFeatureOverrides.deletedAt),
+        ))
+        .orderBy(desc(tenantFeatureOverrides.createdAt));
+
+    const overridesWithStatus = overrideRows.map((o: typeof overrideRows[number]) => ({
+        ...o,
+        status: o.revokedAt ? 'revoked' : o.expiresAt && new Date(o.expiresAt) < new Date() ? 'expired' : 'active',
+    }));
+
+    return c.json({
+        tenant,
+        members: memberRows,
+        stats: {
+            memberCount: memberRows.length,
+            activeAgents: agentCountRow?.value ?? 0,
+            totalConversations: convCountRow?.value ?? 0,
+        },
+        overrides: overridesWithStatus,
+    });
 });
 
 // PATCH /ops/tenants/:id — suspend or reactivate a tenant

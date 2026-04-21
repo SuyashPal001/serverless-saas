@@ -16,13 +16,13 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
+import { StatusBadge } from "@/components/platform/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-// Native checkbox fallback as @/components/ui/checkbox is missing
-// import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Form,
     FormControl,
@@ -154,18 +154,6 @@ export default function FeatureOverridesPage() {
         }).format(new Date(iso));
     };
 
-    const getStatusBadge = (status: OpsOverride["status"]) => {
-        switch (status) {
-            case "active":
-                return <Badge variant="secondary" className="bg-green-100 text-green-700">active</Badge>;
-            case "expired":
-                return <Badge variant="secondary" className="bg-gray-100 text-gray-700">expired</Badge>;
-            case "revoked":
-                return <Badge variant="secondary" className="bg-red-100 text-red-700">revoked</Badge>;
-            default:
-                return <Badge variant="outline">{status}</Badge>;
-        }
-    };
 
     const renderValue = (override: OpsOverride) => {
         if (override.unlimited) return "unlimited: true";
@@ -232,11 +220,9 @@ export default function FeatureOverridesPage() {
                                         render={({ field }) => (
                                             <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                                                 <FormControl>
-                                                    <input
-                                                        type="checkbox"
-                                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    <Checkbox
                                                         checked={field.value ?? false}
-                                                        onChange={(e) => field.onChange(e.target.checked)}
+                                                        onCheckedChange={field.onChange}
                                                     />
                                                 </FormControl>
                                                 <div className="space-y-1 leading-none">
@@ -251,11 +237,9 @@ export default function FeatureOverridesPage() {
                                         render={({ field }) => (
                                             <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                                                 <FormControl>
-                                                    <input
-                                                        type="checkbox"
-                                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    <Checkbox
                                                         checked={field.value ?? false}
-                                                        onChange={(e) => field.onChange(e.target.checked)}
+                                                        onCheckedChange={field.onChange}
                                                     />
                                                 </FormControl>
                                                 <div className="space-y-1 leading-none">
@@ -377,7 +361,7 @@ export default function FeatureOverridesPage() {
                                         <TableCell className="max-w-[200px] truncate">{override.reason}</TableCell>
                                         <TableCell className="font-mono text-xs">{override.grantedBy.substring(0, 8)}</TableCell>
                                         <TableCell>{formatDate(override.expiresAt)}</TableCell>
-                                        <TableCell>{getStatusBadge(override.status)}</TableCell>
+                                        <TableCell><StatusBadge status={override.status} /></TableCell>
                                         <TableCell>
                                             {override.status === "active" && (
                                                 <AlertDialog>

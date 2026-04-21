@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/platform/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -124,33 +124,6 @@ export default function TenantsListPage() {
         }).format(new Date(iso));
     };
 
-    const getTypeBadge = (type: OpsTenant["type"]) => {
-        switch (type) {
-            case "individual":
-                return <Badge variant="secondary" className="bg-gray-100 text-gray-700">individual</Badge>;
-            case "startup":
-                return <Badge variant="secondary" className="bg-blue-100 text-blue-700">startup</Badge>;
-            case "business":
-                return <Badge variant="secondary" className="bg-purple-100 text-purple-700">business</Badge>;
-            case "enterprise":
-                return <Badge variant="secondary" className="bg-amber-100 text-amber-700">enterprise</Badge>;
-            default:
-                return <Badge variant="outline">{type}</Badge>;
-        }
-    };
-
-    const getStatusBadge = (status: OpsTenant["status"]) => {
-        switch (status) {
-            case "active":
-                return <Badge variant="secondary" className="bg-green-100 text-green-700">active</Badge>;
-            case "suspended":
-                return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">suspended</Badge>;
-            case "deleted":
-                return <Badge variant="secondary" className="bg-red-100 text-red-700">deleted</Badge>;
-            default:
-                return <Badge variant="outline">{status}</Badge>;
-        }
-    };
 
     return (
         <div className="space-y-6">
@@ -225,11 +198,11 @@ export default function TenantsListPage() {
                                     </TableRow>
                                 ))
                                 : tenants.map((tenant) => (
-                                    <TableRow key={tenant.id}>
+                                    <TableRow key={tenant.id} className="cursor-pointer hover:bg-zinc-800/40" onClick={() => router.push(`/${tenantSlug}/dashboard/ops/tenants/${tenant.id}`)}>
                                         <TableCell className="font-medium">{tenant.name}</TableCell>
                                         <TableCell className="font-mono text-xs text-muted-foreground">{tenant.slug}</TableCell>
-                                        <TableCell>{getTypeBadge(tenant.type)}</TableCell>
-                                        <TableCell>{getStatusBadge(tenant.status)}</TableCell>
+                                        <TableCell><StatusBadge status={tenant.type} /></TableCell>
+                                        <TableCell><StatusBadge status={tenant.status} /></TableCell>
                                         <TableCell>{tenant.plan}</TableCell>
                                         <TableCell>{formatDate(tenant.createdAt)}</TableCell>
                                         <TableCell>
