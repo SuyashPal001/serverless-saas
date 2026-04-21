@@ -62,6 +62,42 @@ export interface OpsTenantOverride {
     status: 'active' | 'expired' | 'revoked'
 }
 
+export interface OpsAuditEntry {
+    id: string
+    tenantId: string
+    tenantName: string | null
+    actorId: string
+    actorType: 'human' | 'agent' | 'system'
+    action: string
+    resource: string
+    resourceId: string | null
+    metadata: Record<string, unknown> | null
+    createdAt: string
+}
+
+export interface OpsAuditResponse {
+    entries: OpsAuditEntry[]
+    total: number
+    page: number
+    totalPages: number
+}
+
+export interface OpsProvider {
+    id: string
+    provider: 'openai' | 'anthropic' | 'mistral' | 'openrouter' | 'kimi' | 'vertex'
+    model: string
+    displayName: string
+    openclawModelId: string | null
+    isDefault: boolean
+    status: 'live' | 'coming_soon'
+    createdAt: string
+    tenantsUsing: number
+}
+
+export interface OpsProvidersResponse {
+    providers: OpsProvider[]
+}
+
 export interface OpsTenantDetailResponse {
     tenant: OpsTenant
     members: OpsMember[]
@@ -71,4 +107,53 @@ export interface OpsTenantDetailResponse {
         totalConversations: number
     }
     overrides: OpsTenantOverride[]
+}
+
+export interface OpsKnowledgeGap {
+    id: string
+    tenantId: string
+    tenantName: string | null
+    question: string
+    timesAsked: number
+    lastSeenAt: string
+    status: 'open' | 'resolved'
+}
+
+export interface OpsKnowledgeGapsResponse {
+    gaps: OpsKnowledgeGap[]
+    total: number
+}
+
+export interface OpsEvalScore {
+    tenantId: string
+    tenantName: string | null
+    avgQualityScore: number | null
+    ragHitRate: number | null
+    thumbsUpPct: number | null
+    trend: 'up' | 'down' | 'stable'
+}
+
+export interface OpsEvalScoresResponse {
+    scores: OpsEvalScore[]
+}
+
+export interface OpsToolPerf {
+    toolName: string
+    tenantId: string
+    tenantName: string | null
+    callCount: number
+    successRate: number | null
+    avgLatencyMs: number | null
+    lastError: string | null
+}
+
+export interface OpsToolPerfResponse {
+    tools: OpsToolPerf[]
+}
+
+export interface OpsOverviewStats {
+    activeTenants: number
+    avgEvalScore: number | null
+    openKnowledgeGaps: number
+    totalCostThisMonth: number | null
 }

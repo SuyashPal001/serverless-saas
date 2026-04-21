@@ -173,18 +173,13 @@ export function getSidebarItems(
         });
     }
 
-    // 4. OPS PORTAL (Platform Admin Only)
+    // 4. OPS PORTAL (Platform Admin Only) — standalone route, no tenant slug
     if (isPlatformAdmin) {
-        items.push({ 
-            label: "All tenants", 
-            href: `${base}/ops/tenants`, 
+        items.push({
+            label: "Ops Portal",
+            href: "/ops/tenants",
             icon: Building2,
-            sectionLabel: "Ops portal"
-        });
-        items.push({ 
-            label: "Feature overrides", 
-            href: `${base}/ops/overrides`, 
-            icon: Sliders 
+            sectionLabel: "Admin"
         });
     }
 
