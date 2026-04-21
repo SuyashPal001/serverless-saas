@@ -51,9 +51,8 @@ internalToolCallsRoute.post('/log', async (c) => {
   });
 
   const result = schema.safeParse(await c.req.json());
-  if (!result.success) {
-    return c.json({ error: result.error.errors[0].message }, 400);
-  }
+  console.log('[tool-calls] zod result:', JSON.stringify({ success: result.success, error: result.error }));
+  if (!result.success) return c.json({ error: 'Invalid request' }, 400);
 
   const d = result.data;
 
