@@ -46,6 +46,8 @@ import documentsRoutes from './routes/documents';
 import internalRetrieveRoute from './routes/internal/retrieve';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import internalEvalsRoute from './routes/internal/evals';
+import internalToolCallsRoute from './routes/internal/tool-calls';
+import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
 import { randomUUID } from 'crypto';
 
 const app = new Hono<AppEnv>();
@@ -144,6 +146,8 @@ api.route('/documents', documentsRoutes);
 const internalApi = new Hono<AppEnv>();
 internalApi.route('/internal', internalRetrieveRoute);
 internalApi.route('/internal/evals', internalEvalsRoute);
+internalApi.route('/internal/tool-calls', internalToolCallsRoute);
+internalApi.route('/internal/knowledge-gaps', internalKnowledgeGapsRoute);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);
