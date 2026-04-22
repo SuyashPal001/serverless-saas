@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { db } from '@serverless-saas/database';
-import { conversationMetrics } from '@serverless-saas/database/schema/conversations';
+import { conversationMetrics, messages } from '@serverless-saas/database/schema/conversations';
+import { count, and, eq } from 'drizzle-orm';
 import { publishToQueue } from '../../lib/sqs';
 import type { AppEnv } from '../../types';
 
@@ -61,6 +62,13 @@ internalEvalsRoute.post('/metrics', async (c) => {
 
   const d = result.data;
 
+  const userMessageCountResult = await db
+    .select({ count: count() })
+    .from(messages)
+    .where(and(eq(messages.conversationId, d.conversationId), eq(messages.role, 'user')));
+
+  const actualUserMessageCount = userMessageCountResult[0]?.count ?? 0;
+
   await db
     .insert(conversationMetrics)
     .values({
@@ -72,7 +80,7 @@ internalEvalsRoute.post('/metrics', async (c) => {
       totalTokens: d.totalTokens,
       inputTokens: d.inputTokens,
       outputTokens: d.outputTokens,
-      userMessageCount: d.userMessageCount,
+      userMessageCount: actualUserMessageCount,
       totalCost: d.costUsd?.toString() ?? '0',
     })
     .onConflictDoUpdate({
@@ -84,7 +92,7 @@ internalEvalsRoute.post('/metrics', async (c) => {
         totalTokens: d.totalTokens,
         inputTokens: d.inputTokens,
         outputTokens: d.outputTokens,
-        userMessageCount: d.userMessageCount,
+        userMessageCount: actualUserMessageCount,
         totalCost: d.costUsd?.toString() ?? '0',
         updatedAt: new Date(),
       },
