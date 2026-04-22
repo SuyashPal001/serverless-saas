@@ -71,6 +71,13 @@
       "when": 1775591066246,
       "tag": "0009_fluffy_lila_cheney",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776889246155,
+      "tag": "0010_lovely_rocket_raccoon",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ export const RESOURCES: Record<string, Action[]> = {
     subscriptions: ['create', 'read', 'update', 'delete'],
     api_keys: ['create', 'read', 'update', 'delete'],
     agents: ['create', 'read', 'update', 'delete'],
+    agent_tasks: ['create', 'read', 'update', 'delete'],
     agent_workflows: ['create', 'read', 'update', 'delete'],
     agent_runs: ['read', 'delete'],
     notifications: ['create', 'read', 'update', 'delete'],
