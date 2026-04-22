@@ -210,5 +210,5 @@ CREATE INDEX IF NOT EXISTS "task_steps_tenant_status_idx" ON "task_steps" USING 
 ALTER TABLE "conversation_metrics" DROP COLUMN IF EXISTS "total_cost_cents";--> statement-breakpoint
 ALTER TABLE "conversation_metrics" DROP COLUMN IF EXISTS "updated_at";--> statement-breakpoint
 ALTER TABLE "eval_results" DROP COLUMN IF EXISTS "dimension";--> statement-breakpoint
-DROP TYPE "public"."eval_dimension";--> statement-breakpoint
-DROP TYPE "public"."feedback_rating";
+DROP TYPE IF EXISTS "public"."eval_dimension";--> statement-breakpoint
+DROP TYPE IF EXISTS "public"."feedback_rating";
