@@ -15,6 +15,7 @@ import {
     Plug,
     Palette,
     UserCircle,
+    KanbanSquare,
 } from "lucide-react";
 import React from 'react';
 
@@ -57,10 +58,15 @@ export function getSidebarItems(
     });
 
     if (isAdminOrOwner) {
-        items.push({ 
-            label: "Agents", 
-            href: `${base}/agents`, 
-            icon: Bot 
+        items.push({
+            label: "Agents",
+            href: `${base}/agents`,
+            icon: Bot
+        });
+        items.push({
+            label: "Board",
+            href: `${base}/board`,
+            icon: KanbanSquare,
         });
         items.push({
             label: "Files",
