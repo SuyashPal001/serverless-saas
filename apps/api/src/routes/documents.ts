@@ -99,7 +99,7 @@ documentsRoutes.post(
       }).returning();
 
       // Publish SQS message for ingestion
-      const queueUrl = process.env.WORKER_QUEUE_URL;
+      const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
       if (queueUrl) {
         await publishToQueue(queueUrl, {
           type: "document.ingest",
@@ -111,7 +111,7 @@ documentsRoutes.post(
           }
         });
       } else {
-        console.warn('WORKER_QUEUE_URL not set — document.ingest job not published');
+        console.warn('SQS_PROCESSING_QUEUE_URL not set — document.ingest job not published');
       }
 
       return c.json({ documentId: inserted.id, status: 'pending' }, 201);
