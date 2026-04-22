@@ -28,8 +28,11 @@ export default async function TenantLayout({
     }
 
     if (!claims) {
-        // Alternatively redirect to login if claims are malformed
         redirect("/auth/login");
+    }
+
+    if (claims.role === "platform_admin") {
+        redirect("/ops");
     }
 
     // Fetch permissions from API server-side
