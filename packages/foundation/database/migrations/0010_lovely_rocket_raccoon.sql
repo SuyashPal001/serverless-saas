@@ -110,18 +110,18 @@ ALTER TABLE "conversation_metrics" ALTER COLUMN "created_at" DROP NOT NULL;--> s
 ALTER TABLE "eval_results" ALTER COLUMN "score" SET DATA TYPE numeric(3, 2);--> statement-breakpoint
 ALTER TABLE "eval_results" ALTER COLUMN "score" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "eval_results" ALTER COLUMN "created_at" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "pending_tenant_id" uuid;--> statement-breakpoint
-ALTER TABLE "tenants" ADD COLUMN "brand_name" text;--> statement-breakpoint
-ALTER TABLE "tenants" ADD COLUMN "logo_url" text;--> statement-breakpoint
-ALTER TABLE "tenants" ADD COLUMN "brand_color" text;--> statement-breakpoint
-ALTER TABLE "tenants" ADD COLUMN "agent_display_name" text;--> statement-breakpoint
-ALTER TABLE "agents" ADD COLUMN "avatar_url" text;--> statement-breakpoint
-ALTER TABLE "agents" ADD COLUMN "description" text;--> statement-breakpoint
-ALTER TABLE "conversation_metrics" ADD COLUMN "input_tokens" integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE "conversation_metrics" ADD COLUMN "output_tokens" integer DEFAULT 0;--> statement-breakpoint
-ALTER TABLE "conversation_metrics" ADD COLUMN "total_cost" numeric(10, 6) DEFAULT '0';--> statement-breakpoint
-ALTER TABLE "eval_results" ADD COLUMN "eval_type" varchar(20) NOT NULL;--> statement-breakpoint
-ALTER TABLE "eval_results" ADD COLUMN "model" varchar(100);--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "pending_tenant_id" uuid;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "brand_name" text;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "logo_url" text;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "brand_color" text;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "agent_display_name" text;--> statement-breakpoint
+ALTER TABLE "agents" ADD COLUMN IF NOT EXISTS "avatar_url" text;--> statement-breakpoint
+ALTER TABLE "agents" ADD COLUMN IF NOT EXISTS "description" text;--> statement-breakpoint
+ALTER TABLE "conversation_metrics" ADD COLUMN IF NOT EXISTS "input_tokens" integer DEFAULT 0;--> statement-breakpoint
+ALTER TABLE "conversation_metrics" ADD COLUMN IF NOT EXISTS "output_tokens" integer DEFAULT 0;--> statement-breakpoint
+ALTER TABLE "conversation_metrics" ADD COLUMN IF NOT EXISTS "total_cost" numeric(10, 6) DEFAULT '0';--> statement-breakpoint
+ALTER TABLE "eval_results" ADD COLUMN IF NOT EXISTS "eval_type" varchar(20) NOT NULL;--> statement-breakpoint
+ALTER TABLE "eval_results" ADD COLUMN IF NOT EXISTS "model" varchar(100);--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "agent_tasks" ADD CONSTRAINT "agent_tasks_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
