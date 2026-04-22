@@ -151,6 +151,8 @@ export const conversationMetrics = pgTable('conversation_metrics', {
   ragChunksRetrieved: integer('rag_chunks_retrieved').default(0),
   responseTimeMs: integer('response_time_ms'),
   totalTokens: integer('total_tokens').default(0),
+  inputTokens: integer('input_tokens').default(0),
+  outputTokens: integer('output_tokens').default(0),
   totalCost: decimal('total_cost', { precision: 10, scale: 6 }).default('0'),
   userMessageCount: integer('user_message_count').default(0),
   createdAt: timestamp('created_at').defaultNow(),

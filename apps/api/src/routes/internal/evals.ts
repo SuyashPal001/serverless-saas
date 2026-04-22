@@ -48,6 +48,8 @@ internalEvalsRoute.post('/metrics', async (c) => {
     ragChunksRetrieved: z.number().int().min(0).default(0),
     responseTimeMs: z.number().int().min(0).optional(),
     totalTokens: z.number().int().min(0).default(0),
+    inputTokens: z.number().int().min(0).default(0),
+    outputTokens: z.number().int().min(0).default(0),
     userMessageCount: z.number().int().min(0).default(0),
     costUsd: z.number().min(0).optional(),
   });
@@ -68,6 +70,8 @@ internalEvalsRoute.post('/metrics', async (c) => {
       ragChunksRetrieved: d.ragChunksRetrieved,
       responseTimeMs: d.responseTimeMs ?? null,
       totalTokens: d.totalTokens,
+      inputTokens: d.inputTokens,
+      outputTokens: d.outputTokens,
       userMessageCount: d.userMessageCount,
       totalCost: d.costUsd?.toString() ?? '0',
     })
@@ -78,6 +82,8 @@ internalEvalsRoute.post('/metrics', async (c) => {
         ragChunksRetrieved: d.ragChunksRetrieved,
         responseTimeMs: d.responseTimeMs ?? null,
         totalTokens: d.totalTokens,
+        inputTokens: d.inputTokens,
+        outputTokens: d.outputTokens,
         userMessageCount: d.userMessageCount,
         totalCost: d.costUsd?.toString() ?? '0',
         updatedAt: new Date(),
