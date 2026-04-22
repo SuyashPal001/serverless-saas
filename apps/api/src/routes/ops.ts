@@ -7,6 +7,8 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { conversationMetrics, evalResults, conversationFeedback, messages } from '@serverless-saas/database/schema/conversations';
+import { subscriptions } from '@serverless-saas/database/schema/billing';
+import { createUser, setUserPassword } from '@serverless-saas/auth';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -769,4 +771,139 @@ opsRoutes.get('/overview', async (c) => {
         openKnowledgeGaps: gapCountRow?.value ?? 0,
         totalCostThisMonth: costRow?.value !== null ? parseFloat(String(costRow?.value ?? 0)).toFixed(4) : null,
     });
+});
+
+// ── OPS TEAM MANAGEMENT ───────────────────────────────────────────────────────
+
+// GET /ops/team — list all platform_admin users
+opsRoutes.get('/team', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const rows = await db
+        .select({
+            id:        users.id,
+            name:      users.name,
+            email:     users.email,
+            createdAt: users.createdAt,
+        })
+        .from(memberships)
+        .innerJoin(users, eq(memberships.userId, users.id))
+        .innerJoin(roles, eq(memberships.roleId, roles.id))
+        .where(
+            and(
+                eq(roles.name, 'platform_admin'),
+                eq(memberships.status, 'active'),
+                isNull(users.deletedAt),
+            )
+        )
+        .orderBy(desc(memberships.createdAt));
+
+    return c.json({ team: rows });
+});
+
+// POST /ops/team — create a new platform_admin user
+opsRoutes.post('/team', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({
+        email:    z.string().email(),
+        name:     z.string().min(1),
+        password: z.string().min(8),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const { email, name, password } = result.data;
+
+    // Reject if email already exists in our DB
+    const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+    if (existing) {
+        return c.json({ error: 'A user with this email already exists', code: 'EMAIL_TAKEN' }, 409);
+    }
+
+    // 1. Create Cognito user (SUPPRESS welcome email) and set permanent password
+    let cognitoId: string;
+    try {
+        cognitoId = await createUser({ email, name });
+        await setUserPassword(email, password);
+    } catch (err: any) {
+        console.error('[ops/team] Cognito create failed:', err);
+        if (err?.name === 'UsernameExistsException') {
+            return c.json({ error: 'A Cognito user with this email already exists', code: 'EMAIL_TAKEN' }, 409);
+        }
+        return c.json({ error: 'Failed to create user in Cognito', code: 'COGNITO_ERROR' }, 500);
+    }
+
+    // 2. Insert user into DB
+    const [newUser] = await db.insert(users).values({
+        cognitoId,
+        email,
+        name,
+    }).returning();
+
+    // 3. Find or create the platform tenant
+    let platformTenant = (await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.slug, 'platform'))
+        .limit(1))[0];
+
+    if (!platformTenant) {
+        [platformTenant] = await db.insert(tenants).values({
+            name: 'Platform',
+            slug: 'platform',
+            type: 'enterprise',
+            status: 'active',
+        }).returning();
+    }
+
+    // 4. Ensure the platform tenant has an enterprise subscription (required by pretoken lambda)
+    const [existingSub] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(eq(subscriptions.tenantId, platformTenant.id))
+        .limit(1);
+
+    if (!existingSub) {
+        await db.insert(subscriptions).values({
+            tenantId: platformTenant.id,
+            plan:     'enterprise',
+            status:   'active',
+        });
+    }
+
+    // 5. Find the platform_admin system role (tenantId IS NULL)
+    const [platformAdminRole] = await db
+        .select()
+        .from(roles)
+        .where(and(eq(roles.name, 'platform_admin'), isNull(roles.tenantId)))
+        .limit(1);
+
+    if (!platformAdminRole) {
+        return c.json({ error: 'platform_admin role not found — run db:seed', code: 'SEED_MISSING' }, 500);
+    }
+
+    // 6. Create active membership in the platform tenant
+    await db.insert(memberships).values({
+        userId:     newUser.id,
+        tenantId:   platformTenant.id,
+        roleId:     platformAdminRole.id,
+        memberType: 'human',
+        status:     'active',
+        joinedAt:   new Date(),
+    });
+
+    return c.json({ data: { id: newUser.id, name: newUser.name, email: newUser.email, createdAt: newUser.createdAt } }, 201);
 });

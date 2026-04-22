@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
     LayoutDashboard, Building2, Sliders, FileText, Cpu,
     Shield, LogOut, MessageCircleQuestion,
-    Star, Wrench, ChevronRight, DollarSign, List,
+    Star, Wrench, ChevronRight, DollarSign, List, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
@@ -28,6 +28,7 @@ const NAV: NavItem[] = [
     { kind: "sub",     label: "Audit Log",           href: "/ops/platform/audit",                          icon: FileText },
     { kind: "sub",     label: "Providers",           href: "/ops/platform/providers",                      icon: Cpu },
     { kind: "sub",     label: "Feature Overrides",   href: "/ops/platform/overrides",                      icon: Sliders },
+    { kind: "sub",     label: "Team",                href: "/ops/team",                                    icon: Users },
 ];
 
 export function OpsShell({ children }: { children: React.ReactNode }) {

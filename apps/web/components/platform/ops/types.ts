@@ -206,3 +206,14 @@ export interface OpsOverviewStats {
     openKnowledgeGaps: number
     totalCostThisMonth: number | null
 }
+
+export interface OpsTeamMember {
+    id: string
+    name: string
+    email: string
+    createdAt: string
+}
+
+export interface OpsTeamResponse {
+    team: OpsTeamMember[]
+}
