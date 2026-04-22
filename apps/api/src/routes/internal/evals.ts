@@ -49,6 +49,7 @@ internalEvalsRoute.post('/metrics', async (c) => {
     responseTimeMs: z.number().int().min(0).optional(),
     totalTokens: z.number().int().min(0).default(0),
     userMessageCount: z.number().int().min(0).default(0),
+    costUsd: z.number().min(0).optional(),
   });
 
   const result = schema.safeParse(await c.req.json());
@@ -68,6 +69,7 @@ internalEvalsRoute.post('/metrics', async (c) => {
       responseTimeMs: d.responseTimeMs ?? null,
       totalTokens: d.totalTokens,
       userMessageCount: d.userMessageCount,
+      totalCost: d.costUsd?.toString() ?? '0',
     })
     .onConflictDoUpdate({
       target: conversationMetrics.conversationId,
@@ -77,6 +79,7 @@ internalEvalsRoute.post('/metrics', async (c) => {
         responseTimeMs: d.responseTimeMs ?? null,
         totalTokens: d.totalTokens,
         userMessageCount: d.userMessageCount,
+        totalCost: d.costUsd?.toString() ?? '0',
         updatedAt: new Date(),
       },
     });
