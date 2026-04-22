@@ -139,6 +139,7 @@ authPublicRoutes.get('/check-email', async (c) => {
 authRoutes.get('/me', (c) => {
     const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId');
+    const jwtPayload = c.get('jwtPayload') as any;
 
     // permissionsMiddleware stores {resource, action} objects — normalise to
     // "resource:action" strings so the frontend can() helper can use includes()
@@ -152,6 +153,7 @@ authRoutes.get('/me', (c) => {
         tenantId: requestContext?.tenant?.id,
         slug: requestContext?.tenant?.slug,
         status: requestContext?.tenant?.status,
+        role: jwtPayload?.['custom:role'] ?? null,
         permissions: permissionStrings,
         needsOnboarding: requestContext?.needsOnboarding ?? false,
     });
