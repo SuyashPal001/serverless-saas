@@ -8,7 +8,7 @@ import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { conversationMetrics, evalResults, conversationFeedback, messages } from '@serverless-saas/database/schema/conversations';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
-import { createUser, setUserPassword } from '@serverless-saas/auth';
+import { createUser, setUserPassword, disableUser } from '@serverless-saas/auth';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -906,4 +906,53 @@ opsRoutes.post('/team', async (c) => {
     });
 
     return c.json({ data: { id: newUser.id, name: newUser.name, email: newUser.email, createdAt: newUser.createdAt } }, 201);
+});
+
+// DELETE /ops/team/:userId — remove a platform_admin (disable Cognito, delete membership)
+opsRoutes.delete('/team/:userId', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const targetUserId = c.req.param('userId');
+    const requestingUserId = c.get('userId') as string;
+
+    if (targetUserId === requestingUserId) {
+        return c.json({ error: 'You cannot remove yourself', code: 'SELF_REMOVE' }, 400);
+    }
+
+    // Verify target has an active platform_admin membership
+    const [membership] = await db
+        .select({
+            membershipId: memberships.id,
+            userEmail:    users.email,
+        })
+        .from(memberships)
+        .innerJoin(users, eq(memberships.userId, users.id))
+        .innerJoin(roles, eq(memberships.roleId, roles.id))
+        .where(
+            and(
+                eq(memberships.userId, targetUserId),
+                eq(roles.name, 'platform_admin'),
+                eq(memberships.status, 'active'),
+            )
+        )
+        .limit(1);
+
+    if (!membership) {
+        return c.json({ error: 'User is not an active platform admin', code: 'NOT_FOUND' }, 404);
+    }
+
+    // Remove the membership
+    await db.delete(memberships).where(eq(memberships.id, membership.membershipId));
+
+    // Disable in Cognito — safer than hard-delete (can re-enable if needed)
+    try {
+        await disableUser(membership.userEmail);
+    } catch (err: any) {
+        // Log but don't fail — DB is already updated, user is effectively locked out
+        console.error('[ops/team] Cognito disable failed (non-fatal):', err);
+    }
+
+    return c.json({ success: true });
 });

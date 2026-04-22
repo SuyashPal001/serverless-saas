@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, AlertCircle, Users } from "lucide-react";
+import { Plus, AlertCircle, Users, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import type { OpsTeamResponse } from "@/components/platform/ops/types";
@@ -39,6 +40,11 @@ export default function OpsTeamPage() {
         queryFn: () => api.get<OpsTeamResponse>("/api/v1/ops/team"),
     });
 
+    const { data: me } = useQuery<{ userId: string }>({
+        queryKey: ["ops-me"],
+        queryFn: () => api.get<{ userId: string }>("/api/v1/auth/me"),
+    });
+
     const form = useForm<AddMemberFormValues>({
         resolver: zodResolver(addMemberSchema),
         defaultValues: { name: "", email: "", password: "" },
@@ -53,12 +59,23 @@ export default function OpsTeamPage() {
             form.reset();
         },
         onError: (err: any) => {
-            const msg = err?.message || "Failed to add team member";
-            toast.error(msg);
+            toast.error(err?.message || "Failed to add team member");
+        },
+    });
+
+    const removeMutation = useMutation({
+        mutationFn: (userId: string) => api.del(`/api/v1/ops/team/${userId}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+            toast.success("Team member removed");
+        },
+        onError: (err: any) => {
+            toast.error(err?.message || "Failed to remove team member");
         },
     });
 
     const team = data?.team ?? [];
+    const currentUserId = me?.userId;
 
     return (
         <div className="space-y-6">
@@ -149,7 +166,7 @@ export default function OpsTeamPage() {
                     <Table>
                         <TableHeader>
                             <TableRow className="border-zinc-800 hover:bg-transparent">
-                                {["Name", "Email", "Added"].map((h, i) => (
+                                {["Name", "Email", "Added", ""].map((h, i) => (
                                     <TableHead key={i} className="text-zinc-500 text-xs">{h}</TableHead>
                                 ))}
                             </TableRow>
@@ -158,7 +175,7 @@ export default function OpsTeamPage() {
                             {isLoading
                                 ? Array.from({ length: 4 }).map((_, i) => (
                                     <TableRow key={i} className="border-zinc-800">
-                                        {Array.from({ length: 3 }).map((_, j) => (
+                                        {Array.from({ length: 4 }).map((_, j) => (
                                             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                         ))}
                                     </TableRow>
@@ -168,6 +185,39 @@ export default function OpsTeamPage() {
                                         <TableCell className="text-zinc-200 text-sm font-medium">{member.name}</TableCell>
                                         <TableCell className="text-zinc-400 text-sm font-mono">{member.email}</TableCell>
                                         <TableCell className="text-zinc-500 text-sm">{fmtDate(member.createdAt)}</TableCell>
+                                        <TableCell>
+                                            {member.id !== currentUserId && (
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-zinc-600 hover:text-destructive"
+                                                            disabled={removeMutation.isPending}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Remove {member.name}?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                Remove {member.name} from Mission Control? They will lose ops portal access immediately.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                onClick={() => removeMutation.mutate(member.id)}
+                                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                            >
+                                                                Remove
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            )}
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                         </TableBody>
