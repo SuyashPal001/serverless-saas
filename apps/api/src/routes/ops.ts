@@ -4,8 +4,9 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
-import { conversationMetrics, evalResults, conversationFeedback } from '@serverless-saas/database/schema/conversations';
+import { conversationMetrics, evalResults, conversationFeedback, messages } from '@serverless-saas/database/schema/conversations';
 import type { AppEnv } from '../types';
 
 export const opsRoutes = new Hono<AppEnv>();
@@ -548,7 +549,7 @@ opsRoutes.get('/agent-intelligence/eval-scores', async (c) => {
 });
 
 // GET /ops/agent-intelligence/tool-performance
-// Tool call stats derived from audit_log entries with resource='tool_call'.
+// Tool call stats read from tool_call_logs — written by relay via POST /internal/tool-calls/log.
 opsRoutes.get('/agent-intelligence/tool-performance', async (c) => {
     if (!isPlatformAdmin(c)) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -557,18 +558,18 @@ opsRoutes.get('/agent-intelligence/tool-performance', async (c) => {
     try {
         const rows = await db
             .select({
-                toolName:    auditLog.action,
-                tenantId:    auditLog.tenantId,
-                tenantName:  tenants.name,
-                callCount:   count(),
-                successCount: sql<number>`SUM(CASE WHEN (${auditLog.metadata}->>'success')::boolean = true THEN 1 ELSE 0 END)`,
-                avgLatencyMs: sql<number>`AVG((${auditLog.metadata}->>'latencyMs')::numeric)`,
-                lastError:   sql<string>`MAX(CASE WHEN (${auditLog.metadata}->>'success')::boolean = false THEN ${auditLog.metadata}->>'error' END)`,
+                toolName:     toolCallLogs.toolName,
+                tenantId:     toolCallLogs.tenantId,
+                tenantName:   tenants.name,
+                callCount:    count(),
+                successCount: sql<number>`SUM(CASE WHEN ${toolCallLogs.success} = true THEN 1 ELSE 0 END)`,
+                avgLatencyMs: sql<number>`AVG(${toolCallLogs.latencyMs})`,
+                lastError:    sql<string>`MAX(CASE WHEN ${toolCallLogs.success} = false THEN ${toolCallLogs.errorMessage} END)`,
+                lastSeen:     sql<string>`MAX(${toolCallLogs.createdAt})`,
             })
-            .from(auditLog)
-            .leftJoin(tenants, eq(auditLog.tenantId, tenants.id))
-            .where(eq(auditLog.resource, 'tool_call'))
-            .groupBy(auditLog.action, auditLog.tenantId, tenants.name)
+            .from(toolCallLogs)
+            .leftJoin(tenants, eq(toolCallLogs.tenantId, tenants.id))
+            .groupBy(toolCallLogs.toolName, toolCallLogs.tenantId, tenants.name)
             .orderBy(desc(count()));
 
         return c.json({
@@ -580,12 +581,164 @@ opsRoutes.get('/agent-intelligence/tool-performance', async (c) => {
                 successRate:  r.callCount > 0 ? Math.round((Number(r.successCount) / r.callCount) * 100) : null,
                 avgLatencyMs: r.avgLatencyMs !== null ? Math.round(Number(r.avgLatencyMs)) : null,
                 lastError:    r.lastError ?? null,
+                lastSeen:     r.lastSeen ?? null,
             })),
         });
     } catch (err) {
         console.error('[ops/tool-performance]', err);
         return c.json({ tools: [] });
     }
+});
+
+// GET /ops/evals/results — row-level eval_results browser with filters
+opsRoutes.get('/evals/results', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const page           = parseInt(c.req.query('page')      ?? '1');
+    const pageSize       = 50;
+    const filterTenantId  = c.req.query('tenantId');
+    const filterDimension = c.req.query('dimension');
+    const maxScoreParam   = c.req.query('maxScore');
+    const maxScore        = maxScoreParam ? parseFloat(maxScoreParam) : null;
+
+    const conditions: any[] = [];
+    if (filterTenantId)  conditions.push(eq(evalResults.tenantId, filterTenantId));
+    if (filterDimension) conditions.push(eq(evalResults.evalType, filterDimension));
+    if (maxScore !== null) conditions.push(sql`${evalResults.score} <= ${maxScore}`);
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await db
+        .select({
+            id:             evalResults.id,
+            tenantId:       evalResults.tenantId,
+            tenantName:     tenants.name,
+            messageContent: messages.content,
+            dimension:      evalResults.evalType,
+            score:          evalResults.score,
+            reasoning:      evalResults.reasoning,
+            model:          evalResults.model,
+            createdAt:      evalResults.createdAt,
+        })
+        .from(evalResults)
+        .leftJoin(tenants,   eq(evalResults.tenantId,  tenants.id))
+        .leftJoin(messages,  eq(evalResults.messageId, messages.id))
+        .where(where)
+        .orderBy(desc(evalResults.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+    const [totalRow] = await db
+        .select({ value: count() })
+        .from(evalResults)
+        .where(where);
+
+    return c.json({
+        results: rows.map((r: typeof rows[number]) => ({
+            id:             r.id,
+            tenantId:       r.tenantId,
+            tenantName:     r.tenantName ?? null,
+            messagePreview: r.messageContent ? r.messageContent.slice(0, 80) : null,
+            dimension:      r.dimension,
+            score:          r.score !== null ? parseFloat(String(r.score)) : null,
+            reasoning:      r.reasoning ?? null,
+            model:          r.model ?? null,
+            createdAt:      r.createdAt?.toISOString() ?? null,
+        })),
+        total:      totalRow?.value ?? 0,
+        page,
+        totalPages: Math.ceil((totalRow?.value ?? 0) / pageSize),
+    });
+});
+
+// GET /ops/finops — platform-wide cost and token breakdown
+opsRoutes.get('/finops', async (c) => {
+    if (!isPlatformAdmin(c)) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const periodParam = c.req.query('period') ?? '30d';
+    const now = new Date();
+    let start: Date;
+    if (periodParam === 'today') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (periodParam === '7d') {
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else {
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    const [summary] = await db
+        .select({
+            totalCost:           sum(conversationMetrics.totalCost),
+            totalInputTokens:    sum(conversationMetrics.inputTokens),
+            totalOutputTokens:   sum(conversationMetrics.outputTokens),
+            conversationCount:   count(),
+            tenantsWithSpend:    countDistinct(conversationMetrics.tenantId),
+        })
+        .from(conversationMetrics)
+        .where(gte(conversationMetrics.createdAt, start));
+
+    const byTenant = await db
+        .select({
+            tenantId:          conversationMetrics.tenantId,
+            tenantName:        tenants.name,
+            cost:              sum(conversationMetrics.totalCost),
+            inputTokens:       sum(conversationMetrics.inputTokens),
+            outputTokens:      sum(conversationMetrics.outputTokens),
+            conversationCount: count(),
+        })
+        .from(conversationMetrics)
+        .leftJoin(tenants, eq(conversationMetrics.tenantId, tenants.id))
+        .where(gte(conversationMetrics.createdAt, start))
+        .groupBy(conversationMetrics.tenantId, tenants.name)
+        .orderBy(desc(sum(conversationMetrics.totalCost)));
+
+    const topConversations = await db
+        .select({
+            conversationId: conversationMetrics.conversationId,
+            tenantId:       conversationMetrics.tenantId,
+            tenantName:     tenants.name,
+            cost:           conversationMetrics.totalCost,
+            inputTokens:    conversationMetrics.inputTokens,
+            outputTokens:   conversationMetrics.outputTokens,
+            createdAt:      conversationMetrics.createdAt,
+        })
+        .from(conversationMetrics)
+        .leftJoin(tenants, eq(conversationMetrics.tenantId, tenants.id))
+        .where(gte(conversationMetrics.createdAt, start))
+        .orderBy(desc(conversationMetrics.totalCost))
+        .limit(20);
+
+    const totalCost = parseFloat(String(summary?.totalCost ?? '0'));
+    const conversationCount = Number(summary?.conversationCount ?? 0);
+
+    return c.json({
+        totalCost,
+        totalInputTokens:        parseInt(String(summary?.totalInputTokens  ?? '0'), 10),
+        totalOutputTokens:       parseInt(String(summary?.totalOutputTokens ?? '0'), 10),
+        avgCostPerConversation:  conversationCount > 0 ? totalCost / conversationCount : 0,
+        activeTenantsWithSpend:  Number(summary?.tenantsWithSpend ?? 0),
+        byTenant: byTenant.map((r: typeof byTenant[number]) => ({
+            tenantId:          r.tenantId,
+            tenantName:        r.tenantName ?? null,
+            cost:              parseFloat(String(r.cost ?? '0')),
+            inputTokens:       parseInt(String(r.inputTokens  ?? '0'), 10),
+            outputTokens:      parseInt(String(r.outputTokens ?? '0'), 10),
+            conversationCount: Number(r.conversationCount),
+        })),
+        topConversations: topConversations.map((r: typeof topConversations[number]) => ({
+            conversationId: r.conversationId,
+            tenantId:       r.tenantId,
+            tenantName:     r.tenantName ?? null,
+            cost:           parseFloat(String(r.cost ?? '0')),
+            inputTokens:    r.inputTokens ?? 0,
+            outputTokens:   r.outputTokens ?? 0,
+            createdAt:      r.createdAt?.toISOString() ?? null,
+        })),
+    });
 });
 
 // GET /ops/overview — aggregated stats for the morning dashboard

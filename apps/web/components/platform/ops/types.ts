@@ -145,10 +145,59 @@ export interface OpsToolPerf {
     successRate: number | null
     avgLatencyMs: number | null
     lastError: string | null
+    lastSeen: string | null
 }
 
 export interface OpsToolPerfResponse {
     tools: OpsToolPerf[]
+}
+
+export interface OpsEvalResult {
+    id: string
+    tenantId: string
+    tenantName: string | null
+    messagePreview: string | null
+    dimension: string
+    score: number | null
+    reasoning: string | null
+    model: string | null
+    createdAt: string | null
+}
+
+export interface OpsEvalResultsResponse {
+    results: OpsEvalResult[]
+    total: number
+    page: number
+    totalPages: number
+}
+
+export interface OpsFinopsTenantRow {
+    tenantId: string
+    tenantName: string | null
+    cost: number
+    inputTokens: number
+    outputTokens: number
+    conversationCount: number
+}
+
+export interface OpsFinopsConversationRow {
+    conversationId: string
+    tenantId: string
+    tenantName: string | null
+    cost: number
+    inputTokens: number | null
+    outputTokens: number | null
+    createdAt: string | null
+}
+
+export interface OpsFinopsResponse {
+    totalCost: number
+    totalInputTokens: number
+    totalOutputTokens: number
+    avgCostPerConversation: number
+    activeTenantsWithSpend: number
+    byTenant: OpsFinopsTenantRow[]
+    topConversations: OpsFinopsConversationRow[]
 }
 
 export interface OpsOverviewStats {

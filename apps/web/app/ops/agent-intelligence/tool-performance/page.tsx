@@ -66,13 +66,14 @@ export default function ToolPerformancePage() {
                                 <TableHead className="text-zinc-500 text-xs w-40">Success Rate</TableHead>
                                 <TableHead className="text-zinc-500 text-xs w-32">Avg Latency</TableHead>
                                 <TableHead className="text-zinc-500 text-xs">Last Error</TableHead>
+                                <TableHead className="text-zinc-500 text-xs w-36">Last Seen</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 8 }).map((_, i) => (
                                     <TableRow key={i} className="border-zinc-800">
-                                        {Array.from({ length: 6 }).map((_, j) => (
+                                        {Array.from({ length: 7 }).map((_, j) => (
                                             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                         ))}
                                     </TableRow>
@@ -105,6 +106,11 @@ export default function ToolPerformancePage() {
                                             {t.lastError
                                                 ? <p className="text-red-400/80 text-xs font-mono line-clamp-1 max-w-xs">{t.lastError}</p>
                                                 : <span className="text-zinc-700 text-xs">none</span>}
+                                        </TableCell>
+                                        <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                                            {t.lastSeen
+                                                ? new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(new Date(t.lastSeen))
+                                                : "—"}
                                         </TableCell>
                                     </TableRow>
                                 ))}

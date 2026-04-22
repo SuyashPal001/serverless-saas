@@ -10,7 +10,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
     if (!token) redirect("/auth/login");
 
     const claims = decodeTenantClaims(token);
-    if (!claims || claims.role !== "platform_admin") redirect("/auth/login");
+    if (!claims || claims.role !== "platform_admin") redirect("/ops-unauthorized");
 
     return <OpsShell>{children}</OpsShell>;
 }
