@@ -49,6 +49,13 @@ import internalEvalsRoute from './routes/internal/evals';
 import internalToolCallsRoute from './routes/internal/tool-calls';
 import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
 import { randomUUID } from 'crypto';
+import { initCognito } from '@serverless-saas/auth';
+
+initCognito({
+    region:     process.env.AWS_REGION ?? 'ap-south-1',
+    userPoolId: process.env.COGNITO_USER_POOL_ID!,
+    clientId:   process.env.COGNITO_CLIENT_ID!,
+});
 
 const app = new Hono<AppEnv>();
 
