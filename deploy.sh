@@ -1,8 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "→ Building web frontend..."
+echo "→ Clearing Next.js cache..."
 cd /home/suyashresearchwork/serverless-saas
+rm -rf apps/web/.next
+
+echo "→ Building web frontend..."
 pnpm --filter @serverless-saas/web build
 
 echo "→ Copying static assets..."

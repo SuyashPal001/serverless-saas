@@ -53,8 +53,11 @@ function actionColor(action: string) {
     return "text-zinc-400";
 }
 
-function fmtTs(iso: string) {
-    return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+function fmtTs(iso: string | null | undefined) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(d);
 }
 
 export default function OpsOverviewPage() {
@@ -93,7 +96,7 @@ export default function OpsOverviewPage() {
                 />
                 <StatCard
                     label="Avg Eval Score"
-                    value={stats?.avgEvalScore != null ? `${(stats.avgEvalScore * 100).toFixed(0)}%` : null}
+                    value={stats?.avgEvalScore != null ? `${(parseFloat(String(stats.avgEvalScore)) * 100).toFixed(0)}%` : null}
                     icon={TrendingUp}
                     loading={statsLoading}
                 />
@@ -106,7 +109,7 @@ export default function OpsOverviewPage() {
                 <StatCard
                     label="Cost This Month"
                     value={stats?.totalCostThisMonth != null
-                        ? `$${stats.totalCostThisMonth.toFixed(2)}`
+                        ? `$${parseFloat(String(stats.totalCostThisMonth)).toFixed(2)}`
                         : null}
                     icon={DollarSign}
                     loading={statsLoading}

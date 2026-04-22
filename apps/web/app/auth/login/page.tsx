@@ -99,6 +99,12 @@ function LoginPageContent() {
                 return;
             }
 
+            if (me.role === 'platform_admin') {
+                router.push('/ops');
+                router.refresh();
+                return;
+            }
+
             // 4. Fetch all workspaces this user belongs to
             const tenantsRes = await fetch('/api/proxy/api/v1/auth/tenants', {
                 headers: { Authorization: `Bearer ${idToken}` },

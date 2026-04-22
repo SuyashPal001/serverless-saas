@@ -20,18 +20,21 @@ const PERIODS: { value: Period; label: string }[] = [
     { value: "30d",   label: "30d" },
 ];
 
-function fmtCost(n: number): string {
-    if (n === 0) return "$0.00";
-    if (n < 0.001) return `$${n.toFixed(6)}`;
-    if (n < 0.01)  return `$${n.toFixed(4)}`;
-    return `$${n.toFixed(4)}`;
+function fmtCost(n: number | string | null | undefined): string {
+    const v = parseFloat(String(n ?? '0'));
+    if (isNaN(v) || v === 0) return "$0.00";
+    if (v < 0.001) return `$${v.toFixed(6)}`;
+    if (v < 0.01)  return `$${v.toFixed(4)}`;
+    return `$${v.toFixed(4)}`;
 }
 
-function fmtTokens(n: number | null | undefined): string {
-    if (n == null) return "—";
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
-    return String(n);
+function fmtTokens(n: number | string | null | undefined): string {
+    if (n == null || n === '') return "—";
+    const v = parseFloat(String(n));
+    if (isNaN(v)) return "—";
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000)     return `${(v / 1_000).toFixed(1)}K`;
+    return String(Math.round(v));
 }
 
 function fmtTs(iso: string | null): string {
@@ -117,7 +120,7 @@ export default function FinOpsPage() {
                 />
                 <StatCard
                     label="Total Tokens"
-                    value={data ? fmtTokens((data.totalInputTokens ?? 0) + (data.totalOutputTokens ?? 0)) : null}
+                    value={data ? fmtTokens(parseFloat(String(data.totalInputTokens ?? '0')) + parseFloat(String(data.totalOutputTokens ?? '0'))) : null}
                     icon={Zap}
                     sub={data ? `${fmtTokens(data.totalInputTokens)} in · ${fmtTokens(data.totalOutputTokens)} out` : undefined}
                     loading={isLoading}

@@ -109,9 +109,12 @@ function CallbackContent() {
         if (!profileRes.ok) throw new Error("Failed to fetch user profile");
         const profile = await profileRes.json();
 
-        // 5. Route based on onboarding status.
+        // 5. Route based on role and onboarding status.
         // Hyperspace only fires for returning users — new users go to onboarding silently.
-        if (profile.slug && !profile.needsOnboarding) {
+        if (profile.role === 'platform_admin') {
+          router.push('/ops');
+          router.refresh();
+        } else if (profile.slug && !profile.needsOnboarding) {
           startHyperspace('signin');
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
