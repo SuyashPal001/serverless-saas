@@ -27,6 +27,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1011.0
         version: 3.1014.0
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.1011.0
+        version: 3.1029.0
       '@aws-sdk/client-ses':
         specifier: ^3.0.0
         version: 3.1009.0
