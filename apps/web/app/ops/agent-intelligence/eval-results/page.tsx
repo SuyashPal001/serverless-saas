@@ -44,9 +44,11 @@ function ScoreBadge({ score }: { score: number | null }) {
     );
 }
 
-function fmtTs(iso: string | null): string {
+function fmtTs(iso: string | null | undefined): string {
     if (!iso) return "—";
-    return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(d);
 }
 
 export default function EvalResultsPage() {

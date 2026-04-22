@@ -108,9 +108,12 @@ export default function ToolPerformancePage() {
                                                 : <span className="text-zinc-700 text-xs">none</span>}
                                         </TableCell>
                                         <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">
-                                            {t.lastSeen
-                                                ? new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(new Date(t.lastSeen))
-                                                : "—"}
+                                            {(() => {
+                                                if (!t.lastSeen) return "—";
+                                                const d = new Date(t.lastSeen);
+                                                if (isNaN(d.getTime())) return "—";
+                                                return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" }).format(d);
+                                            })()}
                                         </TableCell>
                                     </TableRow>
                                 ))}
