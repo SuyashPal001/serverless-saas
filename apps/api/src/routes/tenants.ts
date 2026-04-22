@@ -26,7 +26,7 @@ const tenantsRoutes = new Hono<AppEnv>();
 
 tenantsRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
-    const userId = requestContext?.userId || c.get('userId');
+    const userId = c.get('userId');
     const entitlements = requestContext?.entitlements ?? {};
 
     if (!userId) {

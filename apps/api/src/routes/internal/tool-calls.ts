@@ -1,9 +1,20 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { db } from '@serverless-saas/database';
 import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
+import { users } from '@serverless-saas/database/schema/auth';
 import type { AppEnv } from '../../types';
+
+async function resolveUserId(cognitoSubOrId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.cognitoId, cognitoSubOrId))
+    .limit(1);
+  return row?.id ?? null;
+}
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 let cachedServiceKey: string | null = null;
@@ -57,11 +68,17 @@ internalToolCallsRoute.post('/log', async (c) => {
 
   const d = result.data;
 
+  // Resolve Cognito sub → internal users.id before inserting.
+  // The GCP relay sends payload.sub (Cognito UUID); tool_call_logs.user_id
+  // is a FK to users.id (internal Postgres UUID). Mismatched UUIDs cause a
+  // silent FK violation. If the lookup fails, store null rather than failing.
+  const resolvedUserId = d.userId ? await resolveUserId(d.userId) : null;
+
   try {
     await db.insert(toolCallLogs).values({
       tenantId:       d.tenantId,
       conversationId: d.conversationId ?? null,
-      userId:         d.userId ?? null,
+      userId:         resolvedUserId,
       toolName:       d.toolName,
       success:        d.success,
       latencyMs:      d.latencyMs ?? null,

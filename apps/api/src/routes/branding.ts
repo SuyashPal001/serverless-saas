@@ -54,7 +54,7 @@ brandingRoutes.get('/', async (c) => {
 brandingRoutes.patch('/', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
-  const userId = requestContext?.userId;
+  const userId = c.get('userId') as string;
   const permissions = requestContext?.permissions ?? [];
 
   if (!hasPermission(permissions, 'billing', 'update')) {

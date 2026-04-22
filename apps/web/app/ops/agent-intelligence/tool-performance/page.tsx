@@ -12,7 +12,7 @@ import type { OpsToolPerfResponse } from "@/components/platform/ops/types";
 
 function SuccessBar({ value }: { value: number | null }) {
     if (value == null) return <span className="text-zinc-600 text-xs">—</span>;
-    const pct = Math.round(value * 100);
+    const pct = Math.round(value);
     const color = pct >= 90 ? "bg-green-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500";
     return (
         <div className="flex items-center gap-2">

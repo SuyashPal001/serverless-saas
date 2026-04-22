@@ -52,7 +52,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId;
+    const userId = c.get('userId') as string;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'create')) {
