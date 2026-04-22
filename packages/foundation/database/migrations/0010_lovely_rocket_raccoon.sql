@@ -80,24 +80,24 @@ CREATE TABLE IF NOT EXISTS "tool_call_logs" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "conversation_feedback" DROP CONSTRAINT "conversation_feedback_message_id_user_id_unique";--> statement-breakpoint
-ALTER TABLE "conversation_feedback" DROP CONSTRAINT "conversation_feedback_message_id_messages_id_fk";
+ALTER TABLE "conversation_feedback" DROP CONSTRAINT IF EXISTS "conversation_feedback_message_id_user_id_unique";--> statement-breakpoint
+ALTER TABLE "conversation_feedback" DROP CONSTRAINT IF EXISTS "conversation_feedback_message_id_messages_id_fk";
 --> statement-breakpoint
-ALTER TABLE "conversation_feedback" DROP CONSTRAINT "conversation_feedback_conversation_id_conversations_id_fk";
+ALTER TABLE "conversation_feedback" DROP CONSTRAINT IF EXISTS "conversation_feedback_conversation_id_conversations_id_fk";
 --> statement-breakpoint
-ALTER TABLE "conversation_feedback" DROP CONSTRAINT "conversation_feedback_tenant_id_tenants_id_fk";
+ALTER TABLE "conversation_feedback" DROP CONSTRAINT IF EXISTS "conversation_feedback_tenant_id_tenants_id_fk";
 --> statement-breakpoint
-ALTER TABLE "conversation_feedback" DROP CONSTRAINT "conversation_feedback_user_id_users_id_fk";
+ALTER TABLE "conversation_feedback" DROP CONSTRAINT IF EXISTS "conversation_feedback_user_id_users_id_fk";
 --> statement-breakpoint
-ALTER TABLE "conversation_metrics" DROP CONSTRAINT "conversation_metrics_conversation_id_conversations_id_fk";
+ALTER TABLE "conversation_metrics" DROP CONSTRAINT IF EXISTS "conversation_metrics_conversation_id_conversations_id_fk";
 --> statement-breakpoint
-ALTER TABLE "conversation_metrics" DROP CONSTRAINT "conversation_metrics_tenant_id_tenants_id_fk";
+ALTER TABLE "conversation_metrics" DROP CONSTRAINT IF EXISTS "conversation_metrics_tenant_id_tenants_id_fk";
 --> statement-breakpoint
-ALTER TABLE "eval_results" DROP CONSTRAINT "eval_results_conversation_id_conversations_id_fk";
+ALTER TABLE "eval_results" DROP CONSTRAINT IF EXISTS "eval_results_conversation_id_conversations_id_fk";
 --> statement-breakpoint
-ALTER TABLE "eval_results" DROP CONSTRAINT "eval_results_message_id_messages_id_fk";
+ALTER TABLE "eval_results" DROP CONSTRAINT IF EXISTS "eval_results_message_id_messages_id_fk";
 --> statement-breakpoint
-ALTER TABLE "eval_results" DROP CONSTRAINT "eval_results_tenant_id_tenants_id_fk";
+ALTER TABLE "eval_results" DROP CONSTRAINT IF EXISTS "eval_results_tenant_id_tenants_id_fk";
 --> statement-breakpoint
 ALTER TABLE "conversation_feedback" ALTER COLUMN "user_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "conversation_feedback" ALTER COLUMN "rating" SET DATA TYPE varchar(4);--> statement-breakpoint
