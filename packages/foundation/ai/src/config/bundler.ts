@@ -11,7 +11,7 @@
  */
 
 import { db } from '@serverless-saas/database';
-import { eq, and, desc, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import { agents } from '@serverless-saas/database/schema/agents';
 import {
   agentSkills,
@@ -276,7 +276,6 @@ async function checkHasMcpIntegrations(tenantId: string): Promise<boolean> {
       and(
         eq(integrations.tenantId, tenantId),
         eq(integrations.status, 'active'),
-        isNotNull(integrations.mcpServerUrl),
       ),
     )
     .limit(1);

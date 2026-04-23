@@ -102,12 +102,11 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
     c.set('actorType', 'agent');
 
     // Non-blocking usage tracking — failure here must never block the request
-    await db.transaction(async (tx: typeof db) => {
-        tx.update(apiKeys)
-            .set({ lastUsedAt: new Date() })
-            .where(eq(apiKeys.id, apiKey.id))
-            .catch(() => { });
-    });
+    db.update(apiKeys)
+        .set({ lastUsedAt: new Date() })
+        .where(eq(apiKeys.id, apiKey.id))
+        .execute()
+        .catch((err) => console.error('Failed to update API key lastUsedAt:', err));
 
     return next();
 });

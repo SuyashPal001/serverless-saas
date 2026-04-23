@@ -11,7 +11,7 @@ export const integrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   provider: text('provider').notNull(),
-  mcpServerUrl: text('mcp_server_url').notNull(),
+  mcpServerUrl: text('mcp_server_url'),
   credentialsEnc: text('credentials_enc').notNull(),
   status: integrationStatusEnum('status').notNull().default('active'),
   permissions: text('permissions').array().notNull().default([]),

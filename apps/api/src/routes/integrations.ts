@@ -758,10 +758,10 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
     try {
         await db.execute(sql`
             INSERT INTO integrations
-                (tenant_id, provider, mcp_server_url, credentials_enc,
+                (tenant_id, provider, credentials_enc,
                  status, permissions, created_by)
             VALUES
-                (${tenantId}, ${service}, '', ${credentialsEnc},
+                (${tenantId}, ${service}, ${credentialsEnc},
                  'active', ARRAY[${service}]::text[], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
@@ -884,10 +884,10 @@ jiraOAuthCallbackRoute.get('/jira/callback', async (c) => {
     try {
         await db.execute(sql`
             INSERT INTO integrations
-                (tenant_id, provider, mcp_server_url, credentials_enc,
+                (tenant_id, provider, credentials_enc,
                  status, permissions, created_by)
             VALUES
-                (${tenantId}, 'jira', '', ${credentialsEnc},
+                (${tenantId}, 'jira', ${credentialsEnc},
                  'active', ARRAY['jira']::text[], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
@@ -1021,10 +1021,10 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
     try {
         await db.execute(sql`
             INSERT INTO integrations
-                (tenant_id, provider, mcp_server_url, credentials_enc,
+                (tenant_id, provider, credentials_enc,
                  status, permissions, created_by)
             VALUES
-                (${tenantId}, ${service}, '', ${credentialsEnc},
+                (${tenantId}, ${service}, ${credentialsEnc},
                  'active', ARRAY[${permission}]::text[], ${userId})
             ON CONFLICT (tenant_id, provider)
             DO UPDATE SET
