@@ -15,6 +15,15 @@ const vector = customType<{ data: number[]; driverData: string }>({
   },
 });
 
+// Opaque type so Drizzle knows the column exists but never tries to set or default it.
+// The actual column is GENERATED ALWAYS AS (to_tsvector('english', content)) STORED —
+// managed directly in SQL, not by Drizzle migrations.
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
+
 export const documents = pgTable('documents', {
   id:         uuid('id').primaryKey().defaultRandom(),
   tenantId:   uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -39,6 +48,7 @@ export const documentChunks = pgTable('document_chunks', {
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
   content:    text('content').notNull(),
   embedding:  vector('embedding'),
+  tsv:        tsvector('tsv'),
   chunkIndex: integer('chunk_index').notNull(),
   metadata:   jsonb('metadata'),
   createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
