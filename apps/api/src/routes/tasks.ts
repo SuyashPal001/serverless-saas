@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
+import { publishToQueue } from '../lib/sqs';
 import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -244,7 +245,7 @@ tasksRoutes.post('/', async (c) => {
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         links: links ?? [],
-        status: 'backlog',
+        status: 'planning',
     }).returning();
 
     await db.insert(taskEvents).values({
@@ -253,126 +254,27 @@ tasksRoutes.post('/', async (c) => {
         actorType: 'system',
         actorId: 'system',
         eventType: 'status_changed',
-        payload: { from: null, to: 'backlog' },
+        payload: { from: null, to: 'planning' },
     });
 
+    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId: task.id });
+
     try {
-        const planResult = await generateTaskPlan(task, tenantId, agentId);
-
-        if (planResult.clarificationNeeded) {
-            await db.insert(taskEvents).values({
-                taskId: task.id,
-                tenantId,
-                actorType: 'agent',
-                actorId: agentId,
-                eventType: 'clarification_requested',
-                payload: { questions: planResult.questions },
-            });
-
-            const [updatedTask] = await db.update(agentTasks)
-                .set({ status: 'blocked', blockedReason: 'Clarification needed before planning', updatedAt: new Date() })
-                .where(and(eq(agentTasks.id, task.id), eq(agentTasks.tenantId, tenantId)))
-                .returning();
-
-            try {
-                await db.insert(auditLog).values({
-                    tenantId,
-                    actorId: userId ?? 'system',
-                    actorType: 'human',
-                    action: 'task_created',
-                    resource: 'agent_task',
-                    resourceId: task.id,
-                    metadata: { agentId, status: 'blocked', clarificationNeeded: true },
-                    traceId: c.get('traceId') ?? '',
-                });
-            } catch (auditErr) {
-                console.error('Audit log write failed:', auditErr);
-            }
-
-            return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: [], clarificationQuestions: planResult.questions } }, 201);
-        }
-
-        const steps = planResult.steps ?? [];
-        const stepValues = buildStepValues(steps, task.id, tenantId);
-        const insertedSteps = stepValues.length > 0
-            ? await db.insert(taskSteps).values(stepValues).returning()
-            : [];
-
-        const { totalEstimatedHours, overallConfidence } = computePlanMetrics(steps);
-
-        const [updatedTask] = await db.update(agentTasks)
-            .set({
-                ...(overallConfidence !== null ? { confidenceScore: String(overallConfidence) } : {}),
-                status: 'backlog',
-                updatedAt: new Date(),
-            })
-            .where(and(eq(agentTasks.id, task.id), eq(agentTasks.tenantId, tenantId)))
-            .returning();
-
-        await db.insert(taskEvents).values({
-            taskId: task.id,
+        await db.insert(auditLog).values({
             tenantId,
-            actorType: 'agent',
-            actorId: agentId,
-            eventType: 'plan_proposed',
-            payload: { stepCount: insertedSteps.length, totalEstimatedHours },
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'task_created',
+            resource: 'agent_task',
+            resourceId: task.id,
+            metadata: { agentId },
+            traceId: c.get('traceId') ?? '',
         });
-
-        try {
-            await db.insert(auditLog).values({
-                tenantId,
-                actorId: userId ?? 'system',
-                actorType: 'human',
-                action: 'task_created',
-                resource: 'agent_task',
-                resourceId: task.id,
-                metadata: { agentId, stepCount: insertedSteps.length },
-                traceId: c.get('traceId') ?? '',
-            });
-        } catch (auditErr) {
-            console.error('Audit log write failed:', auditErr);
-        }
-
-        return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: insertedSteps } }, 201);
-
-    } catch (err: any) {
-        await db.insert(taskEvents).values({
-            taskId: task.id,
-            tenantId,
-            actorType: 'system',
-            actorId: 'system',
-            eventType: 'status_changed',
-            payload: { error: err.message, note: 'planning failed' },
-        });
-
-        const [updatedTask] = await db.update(agentTasks)
-            .set({ status: 'blocked', blockedReason: 'Planning failed: ' + err.message, updatedAt: new Date() })
-            .where(and(eq(agentTasks.id, task.id), eq(agentTasks.tenantId, tenantId)))
-            .returning();
-
-        try {
-            await db.insert(auditLog).values({
-                tenantId,
-                actorId: userId ?? 'system',
-                actorType: 'human',
-                action: 'task_created',
-                resource: 'agent_task',
-                resourceId: task.id,
-                metadata: { agentId, planningFailed: true, error: err.message },
-                traceId: c.get('traceId') ?? '',
-            });
-        } catch (auditErr) {
-            console.error('Audit log write failed:', auditErr);
-        }
-
-        return c.json({
-            data: {
-                task: updatedTask,
-                steps: [],
-                warning: 'Task created but planning failed: ' + err.message,
-            },
-        }, 201);
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
     }
+
+    return c.json({ data: { task: { ...task, sortOrder: task.sortOrder ?? 0 }, steps: [] } }, 201);
 });
 
 // GET /tasks — list tasks for tenant with optional status/agentId filters
@@ -525,68 +427,14 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             eq(taskSteps.status, 'pending'),
         ));
 
-        const extraContext = stepFeedback && stepFeedback.length > 0
-            ? 'The previous plan was rejected. Feedback: ' + JSON.stringify(stepFeedback)
-            : 'The previous plan was rejected.';
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'replan_task', taskId });
 
-        const agentId = task.agentId;
-        let newSteps: (typeof taskSteps.$inferSelect)[] = [];
+        const [updatedTask] = await db.update(agentTasks)
+            .set({ status: 'planning', updatedAt: new Date() })
+            .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+            .returning();
 
-        try {
-            const planResult = await generateTaskPlan(task, tenantId, agentId, extraContext);
-
-            if (planResult.clarificationNeeded) {
-                await db.insert(taskEvents).values({
-                    taskId,
-                    tenantId,
-                    actorType: 'agent',
-                    actorId: agentId,
-                    eventType: 'clarification_requested',
-                    payload: { questions: planResult.questions },
-                });
-
-                const [updatedTask] = await db.update(agentTasks)
-                    .set({ status: 'blocked', blockedReason: 'Clarification needed before planning', updatedAt: new Date() })
-                    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
-                    .returning();
-
-                return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: [], clarificationQuestions: planResult.questions } });
-            }
-
-            const steps = planResult.steps ?? [];
-            const stepValues = buildStepValues(steps, taskId, tenantId);
-            newSteps = stepValues.length > 0
-                ? await db.insert(taskSteps).values(stepValues).returning()
-                : [];
-
-            const { totalEstimatedHours, overallConfidence } = computePlanMetrics(steps);
-
-            await db.update(agentTasks)
-                .set({
-                    ...(overallConfidence !== null ? { confidenceScore: String(overallConfidence) } : {}),
-                    status: 'backlog',
-                    updatedAt: new Date(),
-                })
-                .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
-
-            await db.insert(taskEvents).values({
-                taskId,
-                tenantId,
-                actorType: 'agent',
-                actorId: agentId,
-                eventType: 'plan_proposed',
-                payload: { stepCount: newSteps.length, totalEstimatedHours },
-            });
-        } catch (err: any) {
-            console.error('[tasks] Re-planning failed after rejection:', err);
-        }
-
-        const [refreshedTask] = await db.select().from(agentTasks).where(and(
-            eq(agentTasks.id, taskId),
-            eq(agentTasks.tenantId, tenantId),
-        )).limit(1);
-
-        return c.json({ data: { task: refreshedTask, steps: newSteps } });
+        return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: [] } });
     }
 
     // approved === true

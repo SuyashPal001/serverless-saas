@@ -22,3 +22,8 @@ build-FoundationWebSocketFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/api/src/websocket.ts \
 	  --outfile=$(ARTIFACTS_DIR)/websocket.js \
 	  $(ESBUILD_FLAGS)
+
+build-TaskWorkerFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/api/src/workers/taskWorker.ts \
+	  --outfile=$(ARTIFACTS_DIR)/taskWorker.js \
+	  $(ESBUILD_FLAGS)

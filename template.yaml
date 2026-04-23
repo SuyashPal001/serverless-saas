@@ -86,6 +86,7 @@ Resources:
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
           RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
           INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
+          AGENT_TASK_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/agent-task-queue-url}}"
     Metadata:
       BuildMethod: makefile
 
@@ -159,6 +160,30 @@ Resources:
     Metadata:
       BuildMethod: makefile
 
+  # ─────────────────────────────────────────────
+  # Task Worker Lambda — async planning/execution
+  # ─────────────────────────────────────────────
+  TaskWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-task-worker-${EnvironmentName}"
+      Description: Task Worker — async agent task planning via SQS
+      CodeUri: apps/api/
+      Handler: taskWorker.handler
+      Timeout: 300
+      MemorySize: 512
+      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/task-worker-role-arn}}"
+      Environment:
+        Variables:
+          LAMBDA_TYPE: task-worker
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
+          INTERNAL_SERVICE_KEY: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/internal-service-key}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+    Metadata:
+      BuildMethod: makefile
+
 Outputs:
   FoundationApiLambdaArn:
     Value: !GetAtt FoundationApiFunction.Arn
@@ -179,3 +204,8 @@ Outputs:
     Value: !GetAtt FoundationWebSocketFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationWebSocketLambdaArn"
+
+  TaskWorkerLambdaArn:
+    Value: !GetAtt TaskWorkerFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-TaskWorkerLambdaArn"
