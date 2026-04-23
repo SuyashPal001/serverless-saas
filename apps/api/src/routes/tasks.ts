@@ -129,6 +129,8 @@ No explanation outside the JSON. Each step must have:
                 } else if (eventType === 'error') {
                     const parsed = JSON.parse(dataStr) as { message?: string };
                     throw new Error(parsed.message ?? 'Planning error from relay');
+                } else if (eventType === 'auth_expired') {
+                    throw new Error('Internal service auth expired — check INTERNAL_SERVICE_KEY')
                 }
             }
 
