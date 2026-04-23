@@ -61,6 +61,9 @@ type Task = {
     planApprovedAt?: string | null
     blockedReason?: string | null
     dueDate?: string | null
+    upvotes: number
+    downvotes: number
+    links: string[]
 }
 
 type TasksResponse = { data: Task[] }

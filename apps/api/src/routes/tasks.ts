@@ -873,7 +873,12 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
 tasksRoutes.post('/:taskId/vote', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
 
     const taskId = c.req.param('taskId');
     const schema = z.object({
