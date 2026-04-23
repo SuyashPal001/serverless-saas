@@ -289,7 +289,7 @@ tasksRoutes.post('/', async (c) => {
                 console.error('Audit log write failed:', auditErr);
             }
 
-            return c.json({ data: { task: updatedTask, steps: [], clarificationQuestions: planResult.questions } }, 201);
+            return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: [], clarificationQuestions: planResult.questions } }, 201);
         }
 
         const steps = planResult.steps ?? [];
@@ -333,7 +333,7 @@ tasksRoutes.post('/', async (c) => {
             console.error('Audit log write failed:', auditErr);
         }
 
-        return c.json({ data: { task: updatedTask, steps: insertedSteps } }, 201);
+        return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: insertedSteps } }, 201);
 
     } catch (err: any) {
         await db.insert(taskEvents).values({
@@ -395,7 +395,7 @@ tasksRoutes.get('/', async (c) => {
             statusFilter ? eq(agentTasks.status, statusFilter as any) : undefined,
             agentIdFilter ? eq(agentTasks.agentId, agentIdFilter) : undefined,
         ))
-        .orderBy(desc(agentTasks.createdAt));
+        .orderBy(asc(agentTasks.sortOrder), desc(agentTasks.createdAt));
 
     const tasksWithCounts = await Promise.all(taskList.map(async (task: typeof agentTasks.$inferSelect) => {
         const [{ value: totalSteps }] = await db
@@ -411,7 +411,12 @@ tasksRoutes.get('/', async (c) => {
                 eq(taskSteps.status, 'done'),
             ));
 
-        return { ...task, totalSteps: Number(totalSteps), completedSteps: Number(completedSteps) };
+        return { 
+            ...task, 
+            sortOrder: task.sortOrder ?? 0,
+            totalSteps: Number(totalSteps), 
+            completedSteps: Number(completedSteps) 
+        };
     }));
 
     return c.json({ data: tasksWithCounts });
@@ -438,6 +443,11 @@ tasksRoutes.get('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
+    const taskWithDefaults = {
+        ...task,
+        sortOrder: task.sortOrder ?? 0
+    };
+
     const steps = await db.select()
         .from(taskSteps)
         .where(eq(taskSteps.taskId, taskId))
@@ -448,7 +458,7 @@ tasksRoutes.get('/:taskId', async (c) => {
         .where(eq(taskEvents.taskId, taskId))
         .orderBy(asc(taskEvents.createdAt));
 
-    return c.json({ data: { task, steps, events } });
+    return c.json({ data: { task: taskWithDefaults, steps, events } });
 });
 
 // PUT /tasks/:taskId/plan/approve — approve or reject a proposed plan
@@ -540,7 +550,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
                     .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
                     .returning();
 
-                return c.json({ data: { task: updatedTask, steps: [], clarificationQuestions: planResult.questions } });
+                return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: [], clarificationQuestions: planResult.questions } });
             }
 
             const steps = planResult.steps ?? [];
@@ -666,7 +676,7 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
             .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
             .returning();
 
-        return c.json({ data: { task: updatedTask, clarificationQuestions: planResult.questions } });
+        return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, clarificationQuestions: planResult.questions } });
     }
 
     await db.delete(taskSteps).where(and(
@@ -696,7 +706,7 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
         payload: { stepCount: insertedSteps.length, totalEstimatedHours },
     });
 
-    return c.json({ data: { task: updatedTask, steps: insertedSteps } });
+    return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: insertedSteps } });
 });
 
 // DELETE /tasks/:taskId — soft-cancel a task
