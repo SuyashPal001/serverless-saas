@@ -772,6 +772,12 @@ tasksRoutes.patch('/:taskId', async (c) => {
         status: z.enum(['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
         startedAt: z.string().datetime().nullable().optional(),
         links: z.array(z.string().url()).optional(),
+        attachmentFileIds: z.array(z.object({
+            fileId: z.string(),
+            name: z.string(),
+            size: z.number(),
+            type: z.string(),
+        })).optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -788,7 +794,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds } = result.data;
 
     const updateValues: Partial<typeof agentTasks.$inferInsert> = {
         updatedAt: new Date(),
@@ -802,6 +808,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (status !== undefined) updateValues.status = status;
     if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
     if (links !== undefined) updateValues.links = links;
+    if (attachmentFileIds !== undefined) updateValues.attachmentFileIds = attachmentFileIds;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)

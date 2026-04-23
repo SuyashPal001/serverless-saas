@@ -86,6 +86,7 @@ export const agentTasks = pgTable('agent_tasks', {
   upvotes: integer('upvotes').notNull().default(0),
   downvotes: integer('downvotes').notNull().default(0),
   links: jsonb('links').$type<string[]>().default([]),
+  attachmentFileIds: jsonb('attachment_file_ids').$type<{ fileId: string; name: string; size: number; type: string }[]>().notNull().default([]),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

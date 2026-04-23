@@ -653,8 +653,11 @@ export const googleOAuthCallbackRoute = new Hono<AppEnv>();
 
 googleOAuthCallbackRoute.get('/google/callback', async (c) => {
     const frontendUrl = process.env.FRONTEND_URL ?? '';
+    let slug = '';
     const fail = (reason: string) =>
-        c.redirect(`${frontendUrl}/dashboard/integrations?error=${reason}`);
+        c.redirect(slug
+            ? `${frontendUrl}/${slug}/dashboard/integrations?error=${reason}`
+            : `${frontendUrl}?error=${reason}`);
 
     const code    = c.req.query('code');
     const stateB64 = c.req.query('state');
@@ -668,7 +671,6 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
     // Decode and validate state
     let tenantId: string;
     let userId: string;
-    let slug: string;
     let service: 'gmail' | 'drive' | 'calendar';
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
@@ -786,8 +788,11 @@ export const jiraOAuthCallbackRoute = new Hono<AppEnv>();
 
 jiraOAuthCallbackRoute.get('/jira/callback', async (c) => {
     const frontendUrl = process.env.FRONTEND_URL ?? '';
+    let slug = '';
     const fail = (reason: string) =>
-        c.redirect(`${frontendUrl}/dashboard/integrations?error=${reason}`);
+        c.redirect(slug
+            ? `${frontendUrl}/${slug}/dashboard/integrations?error=${reason}`
+            : `${frontendUrl}?error=${reason}`);
 
     const code     = c.req.query('code');
     const stateB64 = c.req.query('state');
@@ -800,7 +805,6 @@ jiraOAuthCallbackRoute.get('/jira/callback', async (c) => {
     // Decode and validate state
     let tenantId: string;
     let userId: string;
-    let slug: string;
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
             tenantId: string;
@@ -910,8 +914,11 @@ export const zohoOAuthCallbackRoute = new Hono<AppEnv>();
 
 zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
     const frontendUrl = process.env.FRONTEND_URL ?? '';
+    let slug = '';
     const fail = (reason: string) =>
-        c.redirect(`${frontendUrl}/dashboard/integrations?error=${reason}`);
+        c.redirect(slug
+            ? `${frontendUrl}/${slug}/dashboard/integrations?error=${reason}`
+            : `${frontendUrl}?error=${reason}`);
 
     const code     = c.req.query('code');
     const stateB64 = c.req.query('state');
@@ -924,7 +931,6 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
     // Decode and validate state
     let tenantId: string;
     let userId: string;
-    let slug: string;
     let service: string;
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {

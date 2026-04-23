@@ -48,3 +48,14 @@ log_retention_days = 30
 # -------------------------------------------------------
 foundation_api_lambda_arn    = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:serverless-saas-foundation-api-staging"
 foundation_worker_lambda_arn = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:serverless-saas-foundation-worker-staging"
+
+# -------------------------------------------------------
+# OAuth redirect URIs
+# -------------------------------------------------------
+jira_redirect_uri   = "https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/jira/callback"
+google_redirect_uri = "https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/google/callback"
+
+# -------------------------------------------------------
+# Frontend
+# -------------------------------------------------------
+frontend_url = "https://staging.yourapp.com"

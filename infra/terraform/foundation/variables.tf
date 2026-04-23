@@ -160,6 +160,18 @@ variable "jira_redirect_uri" {
   type        = string
 }
 
+# Google OAuth
+variable "google_redirect_uri" {
+  description = "Redirect URI registered in the Google Cloud Console for OAuth (e.g. https://api.example.com/api/v1/integrations/google/callback)"
+  type        = string
+}
+
+# Frontend
+variable "frontend_url" {
+  description = "Public frontend base URL used for OAuth callback redirects (e.g. https://app.example.com)"
+  type        = string
+}
+
 # -------------------------------------------------------
 # SES
 # -------------------------------------------------------

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { RichTextEditor } from './RichTextEditor'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -36,6 +37,7 @@ import {
 
 // --- TYPES ---
 type AcceptanceCriterion = { text: string; checked: boolean }
+type Attachment = { fileId: string; name: string; size: number; type: string }
 
 type Task = {
     id: string
@@ -55,6 +57,7 @@ type Task = {
     upvotes: number
     downvotes: number
     links: string[]
+    attachmentFileIds: Attachment[]
 }
 
 type Step = {
@@ -547,10 +550,15 @@ export function TaskDetailView() {
     const [isEditingDescription, setIsEditingDescription] = useState(false)
     const [descriptionValue, setDescriptionValue] = useState('')
     const [comment, setComment] = useState('')
+    const [commentResetKey, setCommentResetKey] = useState(0)
     const [localCriteria, setLocalCriteria] = useState<AcceptanceCriterion[]>([])
-    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
-    const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false)
+    const [isEditingHours, setIsEditingHours] = useState(false)
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
     const [newLink, setNewLink] = useState('')
+    const startDateRef = useRef<HTMLInputElement>(null)
+    const dueDateRef = useRef<HTMLInputElement>(null)
+    const attachFileInputRef = useRef<HTMLInputElement>(null)
+    const newLinkInputRef = useRef<HTMLInputElement>(null)
 
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
@@ -579,6 +587,7 @@ export function TaskDetailView() {
             dueDate: string | null
             startedAt: string | null
             links: string[]
+            attachmentFileIds: Attachment[]
         }>) => api.patch(`/api/v1/tasks/${taskId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
         onError: (err: any) => toast.error(err.message || 'Failed to save change'),
@@ -590,40 +599,44 @@ export function TaskDetailView() {
         onError: (err: any) => toast.error(err.message || 'Failed to vote'),
     })
 
-    const handleFormat = (type: 'bold' | 'italic' | 'list' | 'ordered-list' | 'code' | 'quote', target: 'description' | 'comment') => {
-        const textarea = document.querySelector(target === 'description' ? 'textarea[placeholder="Add description..."]' : 'textarea[placeholder="Add a comment..."]') as HTMLTextAreaElement
-        if (!textarea) return
-
-        const start = textarea.selectionStart
-        const end = textarea.selectionEnd
-        const text = textarea.value
-        const selection = text.substring(start, end)
-
-        let formatted = ''
-        switch (type) {
-            case 'bold': formatted = `**${selection || 'text'}**`; break
-            case 'italic': formatted = `*${selection || 'text'}*`; break
-            case 'list': formatted = `\n- ${selection || 'item'}`; break
-            case 'ordered-list': formatted = `\n1. ${selection || 'item'}`; break
-            case 'code': formatted = `\`${selection || 'code'}\``; break
-            case 'quote': formatted = `\n> ${selection || 'quote'}`; break
+    const handleAttachmentUpload = async (file: File) => {
+        setIsUploadingAttachment(true)
+        try {
+            const { data } = await api.post<{ data: { fileId: string; uploadUrl: string } }>(
+                '/api/v1/files/upload',
+                { filename: file.name, contentType: file.type || 'application/octet-stream' }
+            )
+            await fetch(data.uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            })
+            await api.post(`/api/v1/files/${data.fileId}/confirm`, { size: file.size })
+            patchTask.mutate({
+                attachmentFileIds: [
+                    ...(task?.attachmentFileIds ?? []),
+                    { fileId: data.fileId, name: file.name, size: file.size, type: file.type || 'application/octet-stream' },
+                ],
+            })
+            toast.success('File attached')
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to upload attachment')
+        } finally {
+            setIsUploadingAttachment(false)
+            if (attachFileInputRef.current) attachFileInputRef.current.value = ''
         }
+    }
 
-        const newValue = text.substring(0, start) + formatted + text.substring(end)
-        if (target === 'description') setDescriptionValue(newValue)
-        else setComment(newValue)
-
-        // Reset focus
-        setTimeout(() => {
-            textarea.focus()
-            textarea.setSelectionRange(start + formatted.length, start + formatted.length)
-        }, 0)
+    const focusLinkInput = () => {
+        document.getElementById('links-section')?.scrollIntoView({ behavior: 'smooth' })
+        setTimeout(() => newLinkInputRef.current?.focus(), 300)
     }
 
     const commentMutation = useMutation({
         mutationFn: (text: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { comment: text }),
         onSuccess: () => {
             setComment('')
+            setCommentResetKey(k => k + 1)  // triggers TipTap editor reset
             queryClient.invalidateQueries({ queryKey: ['task', taskId] })
             toast.success('Comment posted')
         },
@@ -763,169 +776,188 @@ export function TaskDetailView() {
                     <div className="flex flex-wrap items-center gap-2 mb-6 mt-2">
                       
                       {/* Status pill */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                        <StatusIcon status={task.status} />
-                        <span className={`${STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text ?? 'text-muted-foreground'}`}>
-                          {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? task.status}
-                        </span>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                            <StatusIcon status={task.status} />
+                            <span className={STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text ?? 'text-muted-foreground'}>
+                              {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? task.status}
+                            </span>
+                          </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="bg-[#141414] border-[#2a2a2a]">
+                          {(Object.entries(STATUS_CONFIG) as [Task['status'], typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([s, cfg]) => (
+                            <DropdownMenuItem
+                              key={s}
+                              onClick={() => patchTask.mutate({ status: s })}
+                              className="cursor-pointer gap-2 text-xs"
+                            >
+                              <StatusIcon status={s} />
+                              <span className={cfg.text}>{cfg.label}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-                      {/* Agent pill */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                      {/* Agent pill — informational, shows real agent name */}
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
                         <Bot className="w-3.5 h-3.5" />
-                        <span>Agent</span>
+                        <span>{agent?.name ?? 'Agent'}</span>
                       </div>
 
                       {/* Est. Hours pill */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>
-                          {task.estimatedHours ? `${task.estimatedHours}h` : 'Est. hours'}
-                        </span>
+                      <div className="relative">
+                        {isEditingHours ? (
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            defaultValue={task.estimatedHours ? Number(task.estimatedHours) : undefined}
+                            placeholder="hours"
+                            className="w-24 px-2.5 py-1 text-xs bg-[#1a1a1a] border border-primary/50 rounded-md outline-none text-foreground"
+                            autoFocus
+                            onBlur={(e) => {
+                              const val = parseFloat(e.target.value)
+                              if (!isNaN(val) && val > 0) {
+                                patchTask.mutate({ estimatedHours: val })
+                              } else if (e.target.value === '') {
+                                patchTask.mutate({ estimatedHours: null })
+                              }
+                              setIsEditingHours(false)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.currentTarget.blur()
+                              if (e.key === 'Escape') setIsEditingHours(false)
+                            }}
+                          />
+                        ) : (
+                          <div
+                            onClick={() => setIsEditingHours(true)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>{task.estimatedHours ? `${task.estimatedHours}h` : 'Est. hours'}</span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Start date pill */}
-                      <div className="relative">
-                        <div 
-                            onClick={() => setIsStartDatePickerOpen(true)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
-                        >
-                            <Calendar className="w-3.5 h-3.5" />
-                            <span>
-                                {task.startedAt ? new Date(task.startedAt).toLocaleDateString() : 'Start date'}
-                            </span>
-                        </div>
-                        {isStartDatePickerOpen && (
-                            <input
-                                type="date"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        patchTask.mutate({ startedAt: new Date(e.target.value).toISOString() })
-                                    } else {
-                                        patchTask.mutate({ startedAt: null })
-                                    }
-                                    setIsStartDatePickerOpen(false)
-                                }}
-                                onBlur={() => setIsStartDatePickerOpen(false)}
-                                autoFocus
-                            />
-                        )}
+                      {/* Start date pill — transparent date input overlays the pill; browser opens picker on click natively */}
+                      <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <Calendar className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">
+                            {task.startedAt ? new Date(task.startedAt).toLocaleDateString() : 'Start date'}
+                        </span>
+                        <input
+                            ref={startDateRef}
+                            type="date"
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                            value={task.startedAt ? new Date(task.startedAt).toISOString().split('T')[0] : ''}
+                            onChange={(e) => {
+                                if (e.target.value) patchTask.mutate({ startedAt: new Date(e.target.value).toISOString() })
+                                else patchTask.mutate({ startedAt: null })
+                            }}
+                        />
                       </div>
 
                       {/* Due date pill */}
-                      <div className="relative">
-                        <div 
-                            onClick={() => setIsDatePickerOpen(true)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
-                        >
-                            <CalendarClock className="w-3.5 h-3.5" />
-                            <span>
-                                {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'Due date'}
-                            </span>
-                        </div>
-                        {isDatePickerOpen && (
-                            <input
-                                type="date"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        patchTask.mutate({ dueDate: new Date(e.target.value).toISOString() })
-                                    } else {
-                                        patchTask.mutate({ dueDate: null })
-                                    }
-                                    setIsDatePickerOpen(false)
-                                }}
-                                onBlur={() => setIsDatePickerOpen(false)}
-                                autoFocus
-                            />
-                        )}
+                      <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <CalendarClock className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">
+                            {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'Due date'}
+                        </span>
+                        <input
+                            ref={dueDateRef}
+                            type="date"
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                            value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
+                            onChange={(e) => {
+                                if (e.target.value) patchTask.mutate({ dueDate: new Date(e.target.value).toISOString() })
+                                else patchTask.mutate({ dueDate: null })
+                            }}
+                        />
                       </div>
 
                     </div>
                     
                     {isEditingDescription ? (
                         <div className="mb-6">
-                            <div className="border border-[#1e1e1e] rounded-lg overflow-hidden focus-within:border-primary/50 transition-colors bg-[#0f0f0f]">
-                                <textarea
-                                    value={descriptionValue}
-                                    onChange={(e) => setDescriptionValue(e.target.value)}
-                                    className="w-full bg-transparent p-3 text-sm text-foreground outline-none min-h-[160px] resize-none placeholder:text-muted-foreground/30"
-                                    autoFocus
-                                    placeholder="Add description..."
-                                />
-                                <div className="flex items-center justify-between px-2 py-1.5 bg-[#161616] border-t border-[#1e1e1e]">
-                                    <div className="flex items-center gap-0.5">
-                                        <Button onClick={() => handleFormat('bold', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <Bold className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button onClick={() => handleFormat('italic', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <Italic className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                        <Button onClick={() => handleFormat('list', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <List className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button onClick={() => handleFormat('ordered-list', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <ListOrdered className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                        <Button onClick={() => handleFormat('code', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <Code className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button onClick={() => handleFormat('quote', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <Quote className="w-3.5 h-3.5" />
-                                        </Button>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button 
-                                            variant="ghost" 
-                                            size="sm" 
-                                            className="text-xs h-7"
-                                            onClick={() => {
-                                                setDescriptionValue(task?.description || '')
-                                                setIsEditingDescription(false)
-                                            }}
-                                        >
-                                            Cancel
-                                        </Button>
-                                        <Button 
-                                            size="sm" 
-                                            className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
-                                            disabled={patchTask.isPending}
-                                            onClick={() => {
-                                                patchTask.mutate({ description: descriptionValue })
-                                                setIsEditingDescription(false)
-                                            }}
-                                        >
-                                            {patchTask.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
-                                        </Button>
-                                    </div>
-                                </div>
+                            <RichTextEditor 
+                                value={descriptionValue}
+                                onChange={setDescriptionValue}
+                                placeholder="Add description..."
+                                minHeight="160px"
+                            />
+                            <div className="flex items-center justify-end gap-2 mt-2">
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-xs h-7"
+                                    onClick={() => {
+                                        setDescriptionValue(task?.description || '')
+                                        setIsEditingDescription(false)
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
+                                    disabled={patchTask.isPending}
+                                    onClick={() => {
+                                        patchTask.mutate({ description: descriptionValue })
+                                        setIsEditingDescription(false)
+                                    }}
+                                >
+                                    {patchTask.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                </Button>
                             </div>
                         </div>
                     ) : (
                         <div 
                             onClick={() => setIsEditingDescription(true)}
-                            className="text-sm text-foreground/80 leading-relaxed mb-6 cursor-pointer hover:bg-[#1a1a1a] rounded p-2 -ml-2 transition-colors min-h-[40px] whitespace-pre-wrap"
+                            className="text-sm text-foreground/80 leading-relaxed mb-6 cursor-pointer hover:bg-[#1a1a1a] rounded p-2 -ml-2 transition-colors min-h-[40px]"
                         >
-                            {task?.description || <span className="text-muted-foreground/40 italic">Add description...</span>}
+                            {task?.description ? (
+                                <RichTextEditor value={task.description} isReadOnly />
+                            ) : (
+                                <span className="text-muted-foreground/40 italic">Add description...</span>
+                            )}
                         </div>
                     )}
 
                     <div className="flex items-center gap-2 flex-wrap py-3 border-y border-[#1e1e1e] mb-6">
-                        <button onClick={() => document.getElementById('links-section')?.scrollIntoView({ behavior: 'smooth' })} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <button
+                            onClick={focusLinkInput}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                        >
                             <Link2 className="w-3.5 h-3.5" />
                             <span>Link</span>
                         </button>
-                        <button disabled className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-30 cursor-not-allowed border border-[#1e1e1e]">
-                            <Paperclip className="w-3.5 h-3.5" />
-                            <span>Attach</span>
+                        <button
+                            onClick={() => attachFileInputRef.current?.click()}
+                            disabled={isUploadingAttachment}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isUploadingAttachment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+                            <span>{isUploadingAttachment ? 'Uploading…' : 'Attach'}</span>
                         </button>
-                        <button disabled className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-30 cursor-not-allowed border border-[#1e1e1e]">
+                        <button
+                            onClick={focusLinkInput}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                        >
                             <FileText className="w-3.5 h-3.5" />
                             <span>Reference</span>
                         </button>
+                        {/* Hidden file input for attachment uploads */}
+                        <input
+                            ref={attachFileInputRef}
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleAttachmentUpload(file)
+                            }}
+                        />
                     </div>
 
                     {/* ── DEFINITION OF DONE (Guardrails) ── */}
@@ -1075,7 +1107,7 @@ export function TaskDetailView() {
                                             </p>
                                             {event.eventType === 'comment' && event.payload?.comment && (
                                                 <div className="mt-2 bg-[#161616] border border-[#1e1e1e] p-3 rounded-lg text-sm text-foreground/80 leading-relaxed">
-                                                    {event.payload.comment}
+                                                    <RichTextEditor value={event.payload.comment} isReadOnly />
                                                 </div>
                                             )}
                                             <p className="text-xs text-muted-foreground/50 mt-1">{formatRelativeTime(event.createdAt)} ago</p>
@@ -1090,40 +1122,22 @@ export function TaskDetailView() {
                                <span className="text-[10px] text-muted-foreground/60 font-medium">You</span>
                            </div>
                            <div className="flex-1">
-                               <div className="border border-[#1e1e1e] rounded-lg overflow-hidden focus-within:border-primary/50 transition-colors bg-[#0f0f0f]">
-                                   <textarea 
-                                       value={comment}
-                                       onChange={(e) => setComment(e.target.value)}
-                                       placeholder="Add a comment..." 
-                                       className="w-full bg-transparent p-3 text-sm text-foreground outline-none min-h-[100px] resize-none placeholder:text-muted-foreground/30 focus:ring-0" 
-                                   />
-                                   <div className="flex items-center justify-between px-2 py-1.5 bg-[#161616] border-t border-[#1e1e1e]">
-                                       <div className="flex items-center gap-0.5">
-                                           <Button onClick={() => handleFormat('bold', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                               <Bold className="w-3.5 h-3.5" />
-                                           </Button>
-                                           <Button onClick={() => handleFormat('italic', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                               <Italic className="w-3.5 h-3.5" />
-                                           </Button>
-                                           <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                           <Button onClick={() => handleFormat('list', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                               <List className="w-3.5 h-3.5" />
-                                           </Button>
-                                           <Button onClick={() => handleFormat('ordered-list', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                               <ListOrdered className="w-3.5 h-3.5" />
-                                           </Button>
-                                       </div>
-                                       <div className="flex items-center gap-2">
-                                           <Button 
-                                               size="sm" 
-                                               disabled={!comment.trim() || commentMutation.isPending}
-                                               className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
-                                               onClick={() => commentMutation.mutate(comment)}
-                                           >
-                                               {commentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Comment'}
-                                           </Button>
-                                       </div>
-                                   </div>
+                               <RichTextEditor 
+                                   value={comment}
+                                   onChange={setComment}
+                                   placeholder="Add a comment..."
+                                   minHeight="80px"
+                                   resetKey={commentResetKey}
+                               />
+                               <div className="flex justify-end mt-2">
+                                   <Button 
+                                       size="sm" 
+                                       disabled={!comment.trim() || commentMutation.isPending}
+                                       className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
+                                       onClick={() => commentMutation.mutate(comment)}
+                                   >
+                                       {commentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Comment'}
+                                   </Button>
                                </div>
                            </div>
                         </div>
@@ -1233,7 +1247,8 @@ export function TaskDetailView() {
                             {(!task.links || task.links.length === 0) && <span className="text-[11px] text-muted-foreground/40 italic">No links added</span>}
                         </div>
                         <div className="flex items-center gap-1 mt-1">
-                            <input 
+                            <input
+                                ref={newLinkInputRef}
                                 value={newLink}
                                 onChange={(e) => setNewLink(e.target.value)}
                                 onKeyDown={(e) => {
@@ -1242,26 +1257,53 @@ export function TaskDetailView() {
                                         setNewLink('')
                                     }
                                 }}
-                                placeholder="Add URL..."
+                                placeholder="Paste URL and press Enter…"
                                 className="text-[10px] bg-[#1a1a1a] border border-[#2a2a2a] rounded px-1.5 py-1 flex-1 outline-none focus:border-primary/50 transition-colors"
                             />
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
-                        <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <Paperclip className="w-3.5 h-3.5 opacity-50" /> 
-                            <span className="text-xs">Attachments</span>
+                    <div className="flex flex-col py-2.5 border-b border-[#1a1a1a]">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Paperclip className="w-3.5 h-3.5 opacity-50" />
+                                <span className="text-xs">Attachments</span>
+                            </div>
+                            <button
+                                onClick={() => attachFileInputRef.current?.click()}
+                                disabled={isUploadingAttachment}
+                                className="text-[10px] text-muted-foreground opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity bg-[#1a1a1a] px-1.5 py-0.5 rounded hover:text-foreground border border-[#2a2a2a] disabled:cursor-not-allowed"
+                            >
+                                {isUploadingAttachment ? '…' : '+ Add'}
+                            </button>
                         </div>
-                        <div className="text-xs text-foreground flex items-center gap-1.5">—</div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 py-2.5">
-                        <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <FileText className="w-3.5 h-3.5 opacity-50" /> 
-                            <span className="text-xs">References</span>
-                        </div>
-                        <div className="text-xs text-foreground flex items-center gap-1.5">—</div>
+                        {task.attachmentFileIds?.length > 0 ? (
+                            <div className="space-y-1">
+                                {task.attachmentFileIds.map((att) => (
+                                    <div key={att.fileId} className="flex items-center justify-between group/att">
+                                        <a
+                                            href={`/api/proxy/api/v1/files/${att.fileId}/presigned-url`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] text-primary hover:underline truncate flex-1"
+                                            title={att.name}
+                                        >
+                                            {att.name}
+                                        </a>
+                                        <button
+                                            onClick={() => patchTask.mutate({
+                                                attachmentFileIds: task.attachmentFileIds.filter(a => a.fileId !== att.fileId)
+                                            })}
+                                            className="opacity-0 group-hover/att:opacity-100 p-0.5 hover:bg-red-500/10 rounded transition-all ml-1"
+                                        >
+                                            <X className="w-3 h-3 text-red-400" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="text-[11px] text-muted-foreground/40 italic">No attachments</span>
+                        )}
                     </div>
                 </div>
                 
