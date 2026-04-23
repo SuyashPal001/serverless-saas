@@ -25,6 +25,8 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {
+        if (!c.get('requestContext')) c.set('requestContext', {} as any);
+        const requestContext = c.get('requestContext') as any;
         requestContext.permissions = typeof cached === 'string' ? JSON.parse(cached) : cached;
         return next();
     }
@@ -58,7 +60,9 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
     // Cache and attach to context for route handlers to read
     await getCacheClient().set(cacheKey, JSON.stringify(resolvedPermissions), { ex: PERMISSIONS_CACHE_TTL_SECONDS });
 
-    requestContext.permissions = resolvedPermissions;
+    if (!c.get('requestContext')) c.set('requestContext', {} as any);
+    const updatedRequestContext = c.get('requestContext') as any;
+    updatedRequestContext.permissions = resolvedPermissions;
     return next();
 });
 

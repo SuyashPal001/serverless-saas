@@ -106,7 +106,7 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         .set({ lastUsedAt: new Date() })
         .where(eq(apiKeys.id, apiKey.id))
         .execute()
-        .catch((err) => console.error('Failed to update API key lastUsedAt:', err));
+        .catch((err: any) => console.error('Failed to update API key lastUsedAt:', err));
 
     return next();
 });

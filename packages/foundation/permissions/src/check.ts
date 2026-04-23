@@ -5,13 +5,14 @@ import type { PermissionSet, PermissionAction, PermissionString } from '@serverl
  * Handles both structured PermissionSet objects and legacy "resource:action" strings.
  */
 export const hasPermission = (
-  permissions: PermissionSet | string[],
+  permissions: PermissionSet | string[] | undefined | null,
   resource: string,
   action: PermissionAction,
 ): boolean => {
-  if (!permissions) return false;
+  if (!permissions || !Array.isArray(permissions)) return false;
   
   return permissions.some((p) => {
+    if (!p) return false;
     if (typeof p === 'string') {
       return p === `${resource}:${action}`;
     }

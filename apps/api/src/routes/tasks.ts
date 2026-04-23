@@ -6,7 +6,7 @@ import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/data
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'crypto';
 
 export const tasksRoutes = new Hono<AppEnv>();
 
@@ -232,7 +232,7 @@ tasksRoutes.post('/', async (c) => {
     )).limit(1))[0];
 
     if (!agent) {
-        return c.json({ error: 'Agent not found' }, 404);
+        return c.json({ error: 'Agent not found in tenant' }, 404);
     }
 
     const [task] = await db.insert(agentTasks).values({

@@ -23,6 +23,8 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {
+        if (!c.get('requestContext')) c.set('requestContext', {} as any);
+        const requestContext = c.get('requestContext') as any;
         requestContext.entitlements = typeof cached === 'string' ? JSON.parse(cached) : cached;
         return next();
     }
@@ -77,6 +79,8 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
     // Cache for subsequent requests and attach to context
     await getCacheClient().set(cacheKey, JSON.stringify(resolved), { ex: ENTITLEMENTS_CACHE_TTL_SECONDS });
 
-    requestContext.entitlements = resolved;
+    if (!c.get('requestContext')) c.set('requestContext', {} as any);
+    const updatedRequestContext = c.get('requestContext') as any;
+    updatedRequestContext.entitlements = resolved;
     return next();
 });
