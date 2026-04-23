@@ -52,8 +52,8 @@ foundation_worker_lambda_arn = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:se
 # -------------------------------------------------------
 # OAuth redirect URIs
 # -------------------------------------------------------
-jira_redirect_uri   = "https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/jira/callback"
-google_redirect_uri = "https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/google/callback"
+jira_redirect_uri   = "https://STAGING_API_GATEWAY_ID.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/jira/callback"
+google_redirect_uri = "https://STAGING_API_GATEWAY_ID.execute-api.ap-south-1.amazonaws.com/api/v1/integrations/google/callback"
 
 # -------------------------------------------------------
 # Frontend

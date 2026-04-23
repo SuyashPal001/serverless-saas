@@ -698,12 +698,20 @@ resource "aws_ssm_parameter" "google_redirect_uri" {
   name  = "${local.ssm_prefix}/google-redirect-uri"
   type  = "String"
   value = var.google_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 resource "aws_ssm_parameter" "frontend_url" {
   name  = "${local.ssm_prefix}/frontend-url"
   type  = "String"
   value = var.frontend_url
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 resource "aws_secretsmanager_secret" "database" {
