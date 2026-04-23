@@ -564,35 +564,19 @@ export function TaskDetailView() {
     }, [task?.id, task?.title, task?.description, task?.acceptanceCriteria])
 
     const patchTask = useMutation({
-        mutationFn: async (updates: Partial<{
+        mutationFn: (updates: Partial<{
             title: string
             description: string | null
             estimatedHours: number | null
             acceptanceCriteria: { text: string; checked: boolean }[]
             dueDate: string | null
-        }>) => {
-            const res = await fetch(`/api/v1/tasks/${taskId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updates),
-            })
-            if (!res.ok) throw new Error('Failed to update task')
-            return res.json()
-        },
+        }>) => api.patch(`/api/v1/tasks/${taskId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
         onError: (err: any) => toast.error(err.message || 'Failed to save change'),
     })
 
     const commentMutation = useMutation({
-        mutationFn: async (text: string) => {
-            const res = await fetch(`/api/v1/tasks/${taskId}/comments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ comment: text }),
-            })
-            if (!res.ok) throw new Error('Failed to post comment')
-            return res.json()
-        },
+        mutationFn: (text: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { comment: text }),
         onSuccess: () => {
             setComment('')
             queryClient.invalidateQueries({ queryKey: ['task', taskId] })
