@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, decimal, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, decimal, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
 
@@ -18,7 +18,9 @@ export const integrations = pgTable('integrations', {
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex('integrations_tenant_provider_unique').on(table.tenantId, table.provider),
+]);
 
 export const llmProviders = pgTable('llm_providers', {
   id: uuid('id').primaryKey().defaultRandom(),
