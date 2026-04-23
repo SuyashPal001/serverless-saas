@@ -123,8 +123,8 @@ export async function bundleAgentConfig(
   // 6. Load prior messages for context
   const history = await loadConversationHistory(conversationId, historyLimit);
 
-  // 7. Resolve MCP servers for this tenant
-  const mcpServers = await loadMcpServers(tenantId);
+  // 7. Check whether this tenant has active MCP integrations
+  const hasMcpIntegrations = await checkHasMcpIntegrations(tenantId);
 
   // 8. Assemble config
   const config: AgentSessionConfig = {
@@ -140,7 +140,7 @@ export async function bundleAgentConfig(
 
     conversationHistory: history,
 
-    ...(mcpServers.length > 0 && { mcpServers }),
+    hasMcpIntegrations,
 
     callbacks: {
       usageReportUrl: buildUsageReportUrl(tenantId, conversationId),
@@ -268,17 +268,7 @@ async function loadConversationHistory(
   }));
 }
 
-/**
- * Returns the single platform MCP server entry if the tenant has any active
- * integrations that use it. The MCP server at MCP_SERVER_URL handles all
- * provider routing internally — we just tell OpenClaw which tenant it's for.
- */
-async function loadMcpServers(
-  tenantId: string,
-): Promise<Array<{ url: string; headers?: Record<string, string> }>> {
-  const mcpUrl = process.env.MCP_SERVER_URL;
-  if (!mcpUrl) return [];
-
+async function checkHasMcpIntegrations(tenantId: string): Promise<boolean> {
   const rows = await db
     .select({ id: integrations.id })
     .from(integrations)
@@ -291,9 +281,7 @@ async function loadMcpServers(
     )
     .limit(1);
 
-  if (rows.length === 0) return [];
-
-  return [{ url: mcpUrl, headers: { 'x-tenant-id': tenantId } }];
+  return rows.length > 0;
 }
 
 // =============================================================================
