@@ -137,8 +137,19 @@ function TaskCard({ task, tenantSlug, taskNumber }: { task: Task; tenantSlug: st
     const statusLabel = STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? 'Unknown';
 
     const card = (
-        <Link href={`/${tenantSlug}/dashboard/board/${task.id}`} className="block">
-            <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-pointer hover:border-border transition-colors">
+        <Link 
+            href={`/${tenantSlug}/dashboard/board/${task.id}`} 
+            className="block"
+            draggable={true}
+            onDragStart={(e) => {
+                e.dataTransfer.setData('taskId', task.id)
+                e.currentTarget.style.opacity = '0.4'
+            }}
+            onDragEnd={(e) => {
+                e.currentTarget.style.opacity = '1'
+            }}
+        >
+            <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border transition-colors">
                 {/* Row 1 */}
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground/60 font-medium">TASK-{taskNumber}</span>
@@ -255,6 +266,7 @@ function CreateTaskDialog({
             description?: string
             estimatedHours?: number
             acceptanceCriteria: { text: string; checked: boolean }[]
+            links?: string[]
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -282,6 +294,7 @@ function CreateTaskDialog({
             acceptanceCriteria: data.acceptanceCriteria
                 .filter(c => c.text.trim())
                 .map(c => ({ text: c.text.trim(), checked: false })),
+            links: links.map(l => l.url),
         })
     }
     
@@ -356,24 +369,15 @@ function CreateTaskDialog({
 
                         {/* Attachment pill */}
                         <div
-                            className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
-                            onClick={() => fileInputRef.current?.click()}
+                            className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-50 cursor-not-allowed border border-[#1e1e1e]"
                         >
                             <Paperclip className="w-3.5 h-3.5" />
                             <span>{attachments.length > 0 ? `${attachments.length} file${attachments.length > 1 ? 's' : ''}` : 'Attach'}</span>
-                             <input
-                                type="file"
-                                multiple
-                                ref={fileInputRef}
-                                className="hidden"
-                                onChange={handleFileChange}
-                            />
                         </div>
 
                         {/* Reference pill */}
                         <div
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
-                            onClick={() => setRefDialogOpen(true)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-50 cursor-not-allowed border border-[#1e1e1e]"
                         >
                             <FileText className="w-3.5 h-3.5" />
                             <span>{references.length > 0 ? `${references.length} ref${references.length > 1 ? 's' : ''}`: 'Add reference'}</span>
@@ -576,17 +580,36 @@ function KanbanColumn({
     tenantSlug,
     taskNumberMap,
     onAddTask,
+    onDropTask,
 }: {
     status: Task['status']
     tasks: Task[]
     tenantSlug: string
     taskNumberMap: Map<string, number>
     onAddTask: () => void
+    onDropTask: (taskId: string, status: Task['status']) => void
 }) {
     const cfg = STATUS_CONFIG[status]
+    const [isOver, setIsOver] = useState(false)
 
     return (
-        <div className="w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-[#111111] border border-[#222222]">
+        <div 
+            className={cn(
+                "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-[#111111] border transition-colors",
+                isOver ? "border-primary/50 bg-[#161616]" : "border-[#222222]"
+            )}
+            onDragOver={(e) => {
+                e.preventDefault()
+                setIsOver(true)
+            }}
+            onDragLeave={() => setIsOver(false)}
+            onDrop={(e) => {
+                e.preventDefault()
+                setIsOver(false)
+                const taskId = e.dataTransfer.getData('taskId')
+                if (taskId) onDropTask(taskId, status)
+            }}
+        >
             {/* Column header */}
             <div className="flex items-center gap-2 px-2 py-3 mb-2">
                 <StatusIcon status={status} />
@@ -623,6 +646,7 @@ function KanbanColumn({
 export function BoardView() {
     const params = useParams()
     const tenantSlug = params.tenant as string
+    const queryClient = useQueryClient()
     const [createOpen, setCreateOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState<Task['status'] | 'all'>('all')
@@ -631,6 +655,31 @@ export function BoardView() {
     const { data, isLoading, isError, error } = useQuery<TasksResponse>({
         queryKey: ['tasks'],
         queryFn: () => api.get<TasksResponse>('/api/v1/tasks'),
+    })
+
+    const updateTaskStatus = useMutation({
+        mutationFn: ({ taskId, status }: { taskId: string, status: Task['status'] }) => 
+            api.patch(`/api/v1/tasks/${taskId}`, { status }),
+        onMutate: async ({ taskId, status }) => {
+            await queryClient.cancelQueries({ queryKey: ['tasks'] })
+            const previousTasks = queryClient.getQueryData<TasksResponse>(['tasks'])
+            if (previousTasks) {
+                queryClient.setQueryData<TasksResponse>(['tasks'], {
+                    ...previousTasks,
+                    data: previousTasks.data.map((t: Task) => t.id === taskId ? { ...t, status } : t)
+                })
+            }
+            return { previousTasks }
+        },
+        onError: (err, __, context) => {
+            if (context?.previousTasks) {
+                queryClient.setQueryData(['tasks'], context.previousTasks)
+            }
+            toast.error('Failed to move task')
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        }
     })
 
     const { data: agentsData } = useQuery<AgentsResponse>({
@@ -771,6 +820,7 @@ export function BoardView() {
                             tenantSlug={tenantSlug}
                             taskNumberMap={taskNumberMap}
                             onAddTask={() => setCreateOpen(true)}
+                            onDropTask={(taskId, newStatus) => updateTaskStatus.mutate({ taskId, status: newStatus })}
                         />
                     ))}
                 </div>

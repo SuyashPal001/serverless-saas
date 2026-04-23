@@ -216,6 +216,7 @@ tasksRoutes.post('/', async (c) => {
             checked: z.boolean().default(false),
         })).default([]),
         estimatedHours: z.number().positive().optional(),
+        links: z.array(z.string().url()).optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -223,7 +224,7 @@ tasksRoutes.post('/', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const { agentId, title, description, acceptanceCriteria, estimatedHours } = result.data;
+    const { agentId, title, description, acceptanceCriteria, estimatedHours, links } = result.data;
 
     const agent = (await db.select().from(agents).where(and(
         eq(agents.id, agentId),
@@ -242,6 +243,7 @@ tasksRoutes.post('/', async (c) => {
         description,
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
+        links: links ?? [],
         status: 'backlog',
     }).returning();
 
