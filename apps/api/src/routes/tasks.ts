@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and, desc, asc, count } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
@@ -767,6 +767,9 @@ tasksRoutes.patch('/:taskId', async (c) => {
             checked: z.boolean()
         })).optional(),
         dueDate: z.string().datetime().nullable().optional(),
+        status: z.enum(['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
+        startedAt: z.string().datetime().nullable().optional(),
+        links: z.array(z.string().url()).optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -783,7 +786,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links } = result.data;
 
     const updateValues: Partial<typeof agentTasks.$inferInsert> = {
         updatedAt: new Date(),
@@ -794,6 +797,9 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (estimatedHours !== undefined) updateValues.estimatedHours = estimatedHours !== null ? String(estimatedHours) : null;
     if (acceptanceCriteria !== undefined) updateValues.acceptanceCriteria = acceptanceCriteria;
     if (dueDate !== undefined) updateValues.dueDate = dueDate !== null ? new Date(dueDate) : null;
+    if (status !== undefined) updateValues.status = status;
+    if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
+    if (links !== undefined) updateValues.links = links;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)
@@ -859,4 +865,49 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
     }).returning();
 
     return c.json({ data: event }, 201);
+});
+
+// POST /tasks/:taskId/vote — upvote or downvote a task
+tasksRoutes.post('/:taskId/vote', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const userId = c.get('userId') as string;
+
+    const taskId = c.req.param('taskId');
+    const schema = z.object({
+        type: z.enum(['up', 'down']),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: 'Invalid vote type' }, 400);
+    }
+
+    const column = result.data.type === 'up' ? agentTasks.upvotes : agentTasks.downvotes;
+
+    const [updated] = await db.update(agentTasks)
+        .set({ [result.data.type === 'up' ? 'upvotes' : 'downvotes']: sql`${column} + 1` })
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+        .returning();
+
+    if (!updated) {
+        return c.json({ error: 'Task not found' }, 404);
+    }
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'task_voted',
+            resource: 'agent_task',
+            resourceId: taskId,
+            metadata: { type: result.data.type },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
+    return c.json({ data: updated });
 });

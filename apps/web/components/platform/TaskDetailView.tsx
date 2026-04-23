@@ -51,6 +51,10 @@ type Task = {
     createdAt: string
     updatedAt: string
     dueDate?: string | null
+    startedAt?: string | null
+    upvotes: number
+    downvotes: number
+    links: string[]
 }
 
 type Step = {
@@ -545,6 +549,8 @@ export function TaskDetailView() {
     const [comment, setComment] = useState('')
     const [localCriteria, setLocalCriteria] = useState<AcceptanceCriterion[]>([])
     const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+    const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false)
+    const [newLink, setNewLink] = useState('')
 
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
@@ -567,13 +573,52 @@ export function TaskDetailView() {
         mutationFn: (updates: Partial<{
             title: string
             description: string | null
+            status: string
             estimatedHours: number | null
             acceptanceCriteria: { text: string; checked: boolean }[]
             dueDate: string | null
+            startedAt: string | null
+            links: string[]
         }>) => api.patch(`/api/v1/tasks/${taskId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
         onError: (err: any) => toast.error(err.message || 'Failed to save change'),
     })
+
+    const voteMutation = useMutation({
+        mutationFn: (type: 'up' | 'down') => api.post(`/api/v1/tasks/${taskId}/vote`, { type }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+        onError: (err: any) => toast.error(err.message || 'Failed to vote'),
+    })
+
+    const handleFormat = (type: 'bold' | 'italic' | 'list' | 'ordered-list' | 'code' | 'quote', target: 'description' | 'comment') => {
+        const textarea = document.querySelector(target === 'description' ? 'textarea[placeholder="Add description..."]' : 'textarea[placeholder="Add a comment..."]') as HTMLTextAreaElement
+        if (!textarea) return
+
+        const start = textarea.selectionStart
+        const end = textarea.selectionEnd
+        const text = textarea.value
+        const selection = text.substring(start, end)
+
+        let formatted = ''
+        switch (type) {
+            case 'bold': formatted = `**${selection || 'text'}**`; break
+            case 'italic': formatted = `*${selection || 'text'}*`; break
+            case 'list': formatted = `\n- ${selection || 'item'}`; break
+            case 'ordered-list': formatted = `\n1. ${selection || 'item'}`; break
+            case 'code': formatted = `\`${selection || 'code'}\``; break
+            case 'quote': formatted = `\n> ${selection || 'quote'}`; break
+        }
+
+        const newValue = text.substring(0, start) + formatted + text.substring(end)
+        if (target === 'description') setDescriptionValue(newValue)
+        else setComment(newValue)
+
+        // Reset focus
+        setTimeout(() => {
+            textarea.focus()
+            textarea.setSelectionRange(start + formatted.length, start + formatted.length)
+        }, 0)
+    }
 
     const commentMutation = useMutation({
         mutationFn: (text: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { comment: text }),
@@ -655,11 +700,19 @@ export function TaskDetailView() {
                         <span className="text-foreground">TASK-{task.id.slice(0,6).toUpperCase()}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors">
-                            <ArrowUp className="w-3 h-3" /> 0
+                        <button 
+                            onClick={() => voteMutation.mutate('up')}
+                            disabled={voteMutation.isPending}
+                            className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors disabled:opacity-50"
+                        >
+                            <ArrowUp className={cn("w-3 h-3", voteMutation.isPending && "animate-pulse")} /> {task.upvotes || 0}
                         </button>
-                        <button className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors">
-                            <ArrowDown className="w-3 h-3"/> 0
+                        <button 
+                            onClick={() => voteMutation.mutate('down')}
+                            disabled={voteMutation.isPending}
+                            className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors disabled:opacity-50"
+                        >
+                            <ArrowDown className={cn("w-3 h-3", voteMutation.isPending && "animate-pulse")} /> {task.downvotes || 0}
                         </button>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -732,9 +785,32 @@ export function TaskDetailView() {
                       </div>
 
                       {/* Start date pill */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>Start date</span>
+                      <div className="relative">
+                        <div 
+                            onClick={() => setIsStartDatePickerOpen(true)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                        >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>
+                                {task.startedAt ? new Date(task.startedAt).toLocaleDateString() : 'Start date'}
+                            </span>
+                        </div>
+                        {isStartDatePickerOpen && (
+                            <input
+                                type="date"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        patchTask.mutate({ startedAt: new Date(e.target.value).toISOString() })
+                                    } else {
+                                        patchTask.mutate({ startedAt: null })
+                                    }
+                                    setIsStartDatePickerOpen(false)
+                                }}
+                                onBlur={() => setIsStartDatePickerOpen(false)}
+                                autoFocus
+                            />
+                        )}
                       </div>
 
                       {/* Due date pill */}
@@ -780,28 +856,24 @@ export function TaskDetailView() {
                                 />
                                 <div className="flex items-center justify-between px-2 py-1.5 bg-[#161616] border-t border-[#1e1e1e]">
                                     <div className="flex items-center gap-0.5">
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                            <Type className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('bold', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <Bold className="w-3.5 h-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('italic', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <Italic className="w-3.5 h-3.5" />
                                         </Button>
                                         <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('list', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <List className="w-3.5 h-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('ordered-list', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <ListOrdered className="w-3.5 h-3.5" />
                                         </Button>
                                         <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('code', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <Code className="w-3.5 h-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                        <Button onClick={() => handleFormat('quote', 'description')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                             <Quote className="w-3.5 h-3.5" />
                                         </Button>
                                     </div>
@@ -842,15 +914,15 @@ export function TaskDetailView() {
                     )}
 
                     <div className="flex items-center gap-2 flex-wrap py-3 border-y border-[#1e1e1e] mb-6">
-                        <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <button onClick={() => document.getElementById('links-section')?.scrollIntoView({ behavior: 'smooth' })} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
                             <Link2 className="w-3.5 h-3.5" />
                             <span>Link</span>
                         </button>
-                        <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <button disabled className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-30 cursor-not-allowed border border-[#1e1e1e]">
                             <Paperclip className="w-3.5 h-3.5" />
                             <span>Attach</span>
                         </button>
-                        <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                        <button disabled className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-30 cursor-not-allowed border border-[#1e1e1e]">
                             <FileText className="w-3.5 h-3.5" />
                             <span>Reference</span>
                         </button>
@@ -1027,21 +1099,17 @@ export function TaskDetailView() {
                                    />
                                    <div className="flex items-center justify-between px-2 py-1.5 bg-[#161616] border-t border-[#1e1e1e]">
                                        <div className="flex items-center gap-0.5">
-                                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
-                                               <Type className="w-3.5 h-3.5" />
-                                           </Button>
-                                           <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                           <Button onClick={() => handleFormat('bold', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                                <Bold className="w-3.5 h-3.5" />
                                            </Button>
-                                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                           <Button onClick={() => handleFormat('italic', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                                <Italic className="w-3.5 h-3.5" />
                                            </Button>
                                            <div className="w-[1px] h-4 bg-[#1e1e1e] mx-1" />
-                                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                           <Button onClick={() => handleFormat('list', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                                <List className="w-3.5 h-3.5" />
                                            </Button>
-                                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
+                                           <Button onClick={() => handleFormat('ordered-list', 'comment')} variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:bg-[#222]">
                                                <ListOrdered className="w-3.5 h-3.5" />
                                            </Button>
                                        </div>
@@ -1141,14 +1209,42 @@ export function TaskDetailView() {
                         <div className="text-xs text-foreground flex items-center gap-1.5">{formatRelativeTime(task.updatedAt)} ago</div>
                     </div>
                     
-                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
-                        <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <Link2 className="w-3.5 h-3.5 opacity-50" /> 
-                            <span className="text-xs">Links</span>
+                    <div id="links-section" className="flex flex-col py-2.5 border-b border-[#1a1a1a]">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Link2 className="w-3.5 h-3.5 opacity-50" /> 
+                                <span className="text-xs">Links</span>
+                            </div>
                         </div>
-                        <div className="text-xs text-foreground flex items-center gap-1.5 group cursor-pointer w-full justify-between">
-                            <span>—</span>
-                            <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-1 bg-[#1a1a1a] px-1.5 py-0.5 rounded hover:text-foreground border border-[#2a2a2a]">+ Add</span>
+                        <div className="space-y-1.5 mb-2">
+                            {task.links?.map((link, i) => (
+                                <div key={i} className="flex items-center justify-between group">
+                                    <a href={link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline truncate flex-1">
+                                        {link}
+                                    </a>
+                                    <button 
+                                        onClick={() => patchTask.mutate({ links: task.links.filter((_, idx) => idx !== i) })}
+                                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500/10 rounded transition-all"
+                                    >
+                                        <X className="w-3 h-3 text-red-400" />
+                                    </button>
+                                </div>
+                            ))}
+                            {(!task.links || task.links.length === 0) && <span className="text-[11px] text-muted-foreground/40 italic">No links added</span>}
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                            <input 
+                                value={newLink}
+                                onChange={(e) => setNewLink(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && newLink.trim()) {
+                                        patchTask.mutate({ links: [...(task.links || []), newLink.trim()] })
+                                        setNewLink('')
+                                    }
+                                }}
+                                placeholder="Add URL..."
+                                className="text-[10px] bg-[#1a1a1a] border border-[#2a2a2a] rounded px-1.5 py-1 flex-1 outline-none focus:border-primary/50 transition-colors"
+                            />
                         </div>
                     </div>
                     
@@ -1182,8 +1278,12 @@ export function TaskDetailView() {
                         </button>
                     )}
                     {task.status === 'ready' && (
-                        <button className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left">
-                            <Play className="w-4 h-4 text-primary" /> <span className="text-primary/90 font-medium">Start Task</span>
+                        <button 
+                            onClick={() => patchTask.mutate({ status: 'in_progress', startedAt: new Date().toISOString() })}
+                            disabled={patchTask.isPending}
+                            className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left disabled:opacity-50"
+                        >
+                            <Play className={cn("w-4 h-4 text-primary", patchTask.isPending && "animate-spin")} /> <span className="text-primary/90 font-medium">Start Task</span>
                         </button>
                     )}
                     {task.status !== 'done' && task.status !== 'cancelled' && (
