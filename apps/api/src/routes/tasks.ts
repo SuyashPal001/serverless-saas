@@ -744,3 +744,119 @@ tasksRoutes.delete('/:taskId', async (c) => {
 
     return c.json({ success: true });
 });
+
+// PATCH /tasks/:taskId — update task details
+tasksRoutes.patch('/:taskId', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const taskId = c.req.param('taskId');
+
+    const schema = z.object({
+        title: z.string().min(1).max(200).optional(),
+        description: z.string().nullable().optional(),
+        estimatedHours: z.number().positive().nullable().optional(),
+        acceptanceCriteria: z.array(z.object({
+            text: z.string(),
+            checked: z.boolean()
+        })).optional(),
+        dueDate: z.string().datetime().nullable().optional(),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const task = (await db.select().from(agentTasks).where(and(
+        eq(agentTasks.id, taskId),
+        eq(agentTasks.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!task) {
+        return c.json({ error: 'Task not found' }, 404);
+    }
+
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate } = result.data;
+
+    const updateValues: Partial<typeof agentTasks.$inferInsert> = {
+        updatedAt: new Date(),
+    };
+
+    if (title !== undefined) updateValues.title = title;
+    if (description !== undefined) updateValues.description = description;
+    if (estimatedHours !== undefined) updateValues.estimatedHours = estimatedHours !== null ? String(estimatedHours) : null;
+    if (acceptanceCriteria !== undefined) updateValues.acceptanceCriteria = acceptanceCriteria;
+    if (dueDate !== undefined) updateValues.dueDate = dueDate !== null ? new Date(dueDate) : null;
+
+    const [updatedTask] = await db.update(agentTasks)
+        .set(updateValues)
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+        .returning();
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'task_updated',
+            resource: 'agent_task',
+            resourceId: taskId,
+            metadata: { fields: Object.keys(result.data) },
+            traceId: c.get('traceId') ?? '',
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
+    return c.json({ data: updatedTask });
+});
+
+// POST /tasks/:taskId/comments — add a comment event to the task
+tasksRoutes.post('/:taskId/comments', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const taskId = c.req.param('taskId');
+
+    const schema = z.object({
+        comment: z.string().min(1),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const task = (await db.select().from(agentTasks).where(and(
+        eq(agentTasks.id, taskId),
+        eq(agentTasks.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!task) {
+        return c.json({ error: 'Task not found' }, 404);
+    }
+
+    const [event] = await db.insert(taskEvents).values({
+        taskId,
+        tenantId,
+        actorType: 'human',
+        actorId: userId,
+        eventType: 'comment',
+        payload: { comment: result.data.comment },
+    }).returning();
+
+    return c.json({ data: event }, 201);
+});

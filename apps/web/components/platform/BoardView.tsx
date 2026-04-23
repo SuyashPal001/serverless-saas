@@ -60,6 +60,7 @@ type Task = {
     createdAt: string
     planApprovedAt?: string | null
     blockedReason?: string | null
+    dueDate?: string | null
 }
 
 type TasksResponse = { data: Task[] }
@@ -272,7 +273,7 @@ function CreateTaskDialog({
 
     const onSubmit = (data: CreateTaskForm) => {
         const hours = data.estimatedHours ? parseFloat(data.estimatedHours) : undefined
-        // TODO: wire links, attachments, references to API
+        
         mutate({
             agentId: data.agentId,
             title: data.title,

@@ -82,6 +82,7 @@ export const agentTasks = pgTable('agent_tasks', {
   planApprovedBy: uuid('plan_approved_by').references(() => users.id),
   blockedReason: text('blocked_reason'),
   cancelReason: text('cancel_reason'),
+  dueDate: timestamp('due_date'),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
