@@ -137,6 +137,9 @@ export interface AgentSessionConfig {
   // Prior context
   conversationHistory?: ConversationMessage[];
 
+  // MCP servers the VM should connect to before starting the session
+  mcpServers?: Array<{ url: string; headers?: Record<string, string> }>;
+
   // Platform callback URLs the VM should POST to
   callbacks: {
     usageReportUrl: string;

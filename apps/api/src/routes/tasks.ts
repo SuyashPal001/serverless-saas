@@ -778,6 +778,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
             size: z.number(),
             type: z.string(),
         })).optional(),
+        sortOrder: z.number().int().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -794,7 +795,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder } = result.data;
 
     const updateValues: Partial<typeof agentTasks.$inferInsert> = {
         updatedAt: new Date(),
@@ -809,6 +810,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
     if (links !== undefined) updateValues.links = links;
     if (attachmentFileIds !== undefined) updateValues.attachmentFileIds = attachmentFileIds;
+    if (sortOrder !== undefined) updateValues.sortOrder = sortOrder;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)

@@ -11,7 +11,7 @@
  */
 
 import { db } from '@serverless-saas/database';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, isNotNull } from 'drizzle-orm';
 import { agents } from '@serverless-saas/database/schema/agents';
 import {
   agentSkills,
@@ -19,7 +19,7 @@ import {
   conversations,
   messages,
 } from '@serverless-saas/database/schema/conversations';
-import { llmProviders } from '@serverless-saas/database/schema/integrations';
+import { llmProviders, integrations } from '@serverless-saas/database/schema/integrations';
 import type {
   AgentSessionConfig,
   LLMProviderConfig,
@@ -123,7 +123,10 @@ export async function bundleAgentConfig(
   // 6. Load prior messages for context
   const history = await loadConversationHistory(conversationId, historyLimit);
 
-  // 7. Assemble config
+  // 7. Resolve MCP servers for this tenant
+  const mcpServers = await loadMcpServers(tenantId);
+
+  // 8. Assemble config
   const config: AgentSessionConfig = {
     sessionId: crypto.randomUUID(),
     tenantId,
@@ -136,6 +139,8 @@ export async function bundleAgentConfig(
     policy: formatPolicy(policy),
 
     conversationHistory: history,
+
+    ...(mcpServers.length > 0 && { mcpServers }),
 
     callbacks: {
       usageReportUrl: buildUsageReportUrl(tenantId, conversationId),
@@ -261,6 +266,34 @@ async function loadConversationHistory(
     toolResults: (m.toolResults as ConversationMessage['toolResults']) ?? undefined,
     createdAt: m.createdAt.toISOString(),
   }));
+}
+
+/**
+ * Returns the single platform MCP server entry if the tenant has any active
+ * integrations that use it. The MCP server at MCP_SERVER_URL handles all
+ * provider routing internally — we just tell OpenClaw which tenant it's for.
+ */
+async function loadMcpServers(
+  tenantId: string,
+): Promise<Array<{ url: string; headers?: Record<string, string> }>> {
+  const mcpUrl = process.env.MCP_SERVER_URL;
+  if (!mcpUrl) return [];
+
+  const rows = await db
+    .select({ id: integrations.id })
+    .from(integrations)
+    .where(
+      and(
+        eq(integrations.tenantId, tenantId),
+        eq(integrations.status, 'active'),
+        isNotNull(integrations.mcpServerUrl),
+      ),
+    )
+    .limit(1);
+
+  if (rows.length === 0) return [];
+
+  return [{ url: mcpUrl, headers: { 'x-tenant-id': tenantId } }];
 }
 
 // =============================================================================

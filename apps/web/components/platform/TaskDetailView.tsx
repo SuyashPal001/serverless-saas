@@ -356,9 +356,11 @@ function StepCard({ step, index }: { step: Step; index: number }) {
 function AgentActivityStream({ status, steps }: { status: string; steps: Step[] }) {
     const runningStep = steps.find(s => s.status === 'running')
     const pendingSteps = steps.filter(s => s.status === 'pending')
-    const isActive = status === 'in_progress' || status === 'backlog'
+    const isPlanning = status === 'backlog' && steps.length === 0
+    const isReady = status === 'ready'
+    const isWorking = status === 'in_progress'
 
-    if (!isActive || steps.length === 0) return null
+    if (!isWorking && !isPlanning) return null
 
     return (
         <div className="mb-6 p-3 rounded-xl border border-[#1e1e1e] bg-[#0d0d0d] flex items-start gap-3">
@@ -366,21 +368,20 @@ function AgentActivityStream({ status, steps }: { status: string; steps: Step[] 
                 <Loader2 className="w-3 h-3 text-primary animate-spin" />
             </div>
             <div className="flex-1 min-w-0">
-                {runningStep ? (
+                {isWorking && runningStep ? (
                     <>
                         <p className="text-xs font-medium text-foreground">Agent is working on Step {runningStep.stepNumber}</p>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{runningStep.title}</p>
-                        {runningStep.toolName && (
-                            <div className="mt-1.5 flex items-center gap-1.5">
-                                <Zap className="w-3 h-3 text-primary/60" />
-                                <span className="text-[11px] font-mono text-primary/80">Using: {runningStep.toolName}</span>
-                            </div>
-                        )}
+                    </>
+                ) : isWorking ? (
+                    <>
+                        <p className="text-xs font-medium text-foreground">Agent is starting execution</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Initializing environment...</p>
                     </>
                 ) : (
                     <>
                         <p className="text-xs font-medium text-foreground">Agent is planning your task</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{pendingSteps.length} steps identified — awaiting your approval</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Identifying optimal strategy...</p>
                     </>
                 )}
             </div>
@@ -1073,7 +1074,9 @@ export function TaskDetailView() {
                                 {task.planApprovedAt && (
                                     <div className="mt-3 flex items-center gap-2 text-[11px] text-emerald-500/70">
                                         <CheckCircle className="w-3.5 h-3.5" />
-                                        Plan approved · Agent is executing
+                                        {task.status === 'ready' ? 'Plan approved · Awaiting execution' : 
+                                         task.status === 'in_progress' ? 'Agent is executing' : 
+                                         'Plan approved'}
                                     </div>
                                 )}
                             </div>

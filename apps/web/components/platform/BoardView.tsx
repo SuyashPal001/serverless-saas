@@ -64,6 +64,7 @@ type Task = {
     upvotes: number
     downvotes: number
     links: string[]
+    sortOrder: number
 }
 
 type TasksResponse = { data: Task[] }
@@ -590,10 +591,37 @@ function KanbanColumn({
     tenantSlug: string
     taskNumberMap: Map<string, number>
     onAddTask: () => void
-    onDropTask: (taskId: string, status: Task['status']) => void
+    onDropTask: (taskId: string, status: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => void
 }) {
     const cfg = STATUS_CONFIG[status]
     const [isOver, setIsOver] = useState(false)
+    const [dropIndicator, setDropIndicator] = useState<{ taskId: string; position: 'before' | 'after' } | null>(null)
+
+    const handleDragOver = (e: React.DragEvent, targetTaskId?: string) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsOver(true)
+
+        if (targetTaskId) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            const mid = rect.top + rect.height / 2
+            const pos = e.clientY < mid ? 'before' : 'after'
+            setDropIndicator({ taskId: targetTaskId, position: pos })
+        } else {
+            setDropIndicator(null)
+        }
+    }
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsOver(false)
+        const taskId = e.dataTransfer.getData('taskId')
+        if (taskId) {
+            onDropTask(taskId, status, dropIndicator?.taskId, dropIndicator?.position)
+        }
+        setDropIndicator(null)
+    }
 
     return (
         <div 
@@ -601,17 +629,12 @@ function KanbanColumn({
                 "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-[#111111] border transition-colors",
                 isOver ? "border-primary/50 bg-[#161616]" : "border-[#222222]"
             )}
-            onDragOver={(e) => {
-                e.preventDefault()
-                setIsOver(true)
-            }}
-            onDragLeave={() => setIsOver(false)}
-            onDrop={(e) => {
-                e.preventDefault()
+            onDragOver={(e) => handleDragOver(e)}
+            onDragLeave={() => {
                 setIsOver(false)
-                const taskId = e.dataTransfer.getData('taskId')
-                if (taskId) onDropTask(taskId, status)
+                setDropIndicator(null)
             }}
+            onDrop={handleDrop}
         >
             {/* Column header */}
             <div className="flex items-center gap-2 px-2 py-3 mb-2">
@@ -624,8 +647,25 @@ function KanbanColumn({
             {/* Cards */}
             <div className="flex-1 overflow-y-auto bg-transparent">
                 <div className="flex flex-col gap-2">
+                    {tasks.length === 0 && (
+                        <div className="h-24 border-2 border-dashed border-[#222] rounded-lg flex items-center justify-center text-xs text-muted-foreground/30">
+                            Empty
+                        </div>
+                    )}
                     {tasks.map(task => (
-                        <TaskCard key={task.id} task={task} tenantSlug={tenantSlug} taskNumber={taskNumberMap.get(task.id) || 1} />
+                        <div 
+                            key={task.id}
+                            onDragOver={(e) => handleDragOver(e, task.id)}
+                            className="relative"
+                        >
+                            {dropIndicator?.taskId === task.id && dropIndicator.position === 'before' && (
+                                <div className="h-1 bg-primary/60 rounded-full mb-1 animate-pulse" />
+                            )}
+                            <TaskCard task={task} tenantSlug={tenantSlug} taskNumber={taskNumberMap.get(task.id) || 1} />
+                            {dropIndicator?.taskId === task.id && dropIndicator.position === 'after' && (
+                                <div className="h-1 bg-primary/60 rounded-full mt-1 animate-pulse" />
+                            )}
+                        </div>
                     ))}
                     {status === 'backlog' && (
                         <Button
@@ -661,15 +701,17 @@ export function BoardView() {
     })
 
     const updateTaskStatus = useMutation({
-        mutationFn: ({ taskId, status }: { taskId: string, status: Task['status'] }) => 
-            api.patch(`/api/v1/tasks/${taskId}`, { status }),
-        onMutate: async ({ taskId, status }) => {
+        mutationFn: ({ taskId, status, sortOrder }: { taskId: string, status: Task['status'], sortOrder?: number }) => 
+            api.patch(`/api/v1/tasks/${taskId}`, { status, sortOrder }),
+        onMutate: async ({ taskId, status, sortOrder }) => {
             await queryClient.cancelQueries({ queryKey: ['tasks'] })
             const previousTasks = queryClient.getQueryData<TasksResponse>(['tasks'])
             if (previousTasks) {
                 queryClient.setQueryData<TasksResponse>(['tasks'], {
                     ...previousTasks,
-                    data: previousTasks.data.map((t: Task) => t.id === taskId ? { ...t, status } : t)
+                    data: previousTasks.data.map((t: Task) => 
+                        t.id === taskId ? { ...t, status, sortOrder: sortOrder ?? t.sortOrder } : t
+                    )
                 })
             }
             return { previousTasks }
@@ -685,6 +727,46 @@ export function BoardView() {
         }
     })
 
+    const onDropTask = (taskId: string, newStatus: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => {
+        const tasks = data?.data ?? []
+        const taskToMove = tasks.find(t => t.id === taskId)
+        if (!taskToMove) return
+
+        // Filter tasks in target column
+        const targetColumnTasks = tasks
+            .filter(t => t.status === newStatus && t.id !== taskId)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+
+        let newSortOrder = 0
+
+        if (targetTaskId) {
+            const targetIdx = targetColumnTasks.findIndex(t => t.id === targetTaskId)
+            if (position === 'before') {
+                const prevTask = targetColumnTasks[targetIdx - 1]
+                const targetTask = targetColumnTasks[targetIdx]
+                if (prevTask) {
+                    newSortOrder = (prevTask.sortOrder + targetTask.sortOrder) / 2
+                } else {
+                    newSortOrder = targetTask.sortOrder - 1000
+                }
+            } else {
+                const targetTask = targetColumnTasks[targetIdx]
+                const nextTask = targetColumnTasks[targetIdx + 1]
+                if (nextTask) {
+                    newSortOrder = (targetTask.sortOrder + nextTask.sortOrder) / 2
+                } else {
+                    newSortOrder = targetTask.sortOrder + 1000
+                }
+            }
+        } else {
+            // Drop in empty column or at the end
+            const lastTask = targetColumnTasks[targetColumnTasks.length - 1]
+            newSortOrder = lastTask ? lastTask.sortOrder + 1000 : 0
+        }
+
+        updateTaskStatus.mutate({ taskId, status: newStatus, sortOrder: newSortOrder })
+    }
+
     const { data: agentsData } = useQuery<AgentsResponse>({
         queryKey: ['agents'],
         queryFn: () => api.get<AgentsResponse>('/api/v1/agents'),
@@ -696,12 +778,14 @@ export function BoardView() {
     const tasksByCreatedAt = [...tasks].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     const taskNumberMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
 
-    const filteredTasks = tasks.filter(task => {
-        if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
-        if (statusFilter !== 'all' && task.status !== statusFilter) return false
-        if (agentFilter !== 'all' && task.agentId !== agentFilter) return false
-        return true
-    })
+    const filteredTasks = tasks
+        .filter(task => {
+            if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+            if (statusFilter !== 'all' && task.status !== statusFilter) return false
+            if (agentFilter !== 'all' && task.agentId !== agentFilter) return false
+            return true
+        })
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 
     // ── Error state ──
     if (isError) {
@@ -823,7 +907,7 @@ export function BoardView() {
                             tenantSlug={tenantSlug}
                             taskNumberMap={taskNumberMap}
                             onAddTask={() => setCreateOpen(true)}
-                            onDropTask={(taskId, newStatus) => updateTaskStatus.mutate({ taskId, status: newStatus })}
+                            onDropTask={onDropTask}
                         />
                     ))}
                 </div>
