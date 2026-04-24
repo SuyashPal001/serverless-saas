@@ -46,10 +46,11 @@ async function handlePlanning(taskId: string) {
     throw new Error(`Relay planning failed: ${response.status}`);
   }
 
-  const { steps } = await response.json();
+  const body = await response.json() as { steps: Array<{ title: string; description: string; toolName?: string }> };
+  const { steps } = body;
 
   await db.insert(taskSteps).values(
-    steps.map((step: any, index: number) => ({
+    steps.map((step, index) => ({
       taskId: task.id,
       tenantId: task.tenantId,
       stepNumber: index + 1,
