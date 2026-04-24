@@ -457,6 +457,8 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         payload: {},
     });
 
+    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId });
+
     return c.json({ data: { task: updatedTask } });
 });
 

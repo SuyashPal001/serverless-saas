@@ -1,7 +1,7 @@
 import type { SQSHandler } from 'aws-lambda';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema';
-import { eq } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { initRuntimeSecrets } from '../lib/secrets';
 
@@ -89,5 +89,56 @@ async function handlePlanning(taskId: string) {
 }
 
 async function handleExecution(taskId: string) {
-  console.log(`execute_task received for ${taskId} — not yet implemented`);
+  const task = await db.query.agentTasks.findFirst({
+    where: eq(agentTasks.id, taskId),
+  });
+  if (!task) throw new Error(`Task not found: ${taskId}`);
+
+  const steps = await db.select()
+    .from(taskSteps)
+    .where(eq(taskSteps.taskId, taskId))
+    .orderBy(asc(taskSteps.stepNumber));
+
+  const response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-service-key': INTERNAL_SERVICE_KEY(),
+    },
+    body: JSON.stringify({
+      taskId: task.id,
+      agentId: task.agentId,
+      tenantId: task.tenantId,
+      steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
+        id: s.id,
+        stepNumber: s.stepNumber,
+        title: s.title,
+        description: s.description,
+        toolName: s.toolName,
+      })),
+    }),
+  });
+
+  if (!response.ok) {
+    // Relay rejected the execution — mark task blocked directly without HTTP round-trip
+    const reason = `Relay rejected execution: HTTP ${response.status}`;
+    await db.update(agentTasks)
+      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+      .where(eq(agentTasks.id, taskId));
+
+    await db.insert(taskEvents).values({
+      taskId: task.id,
+      tenantId: task.tenantId,
+      actorType: 'agent',
+      actorId: 'system',
+      eventType: 'status_changed',
+      payload: { from: task.status, to: 'blocked', reason },
+    });
+
+    await pushWebSocketEvent(task.tenantId, {
+      type: 'task.status.changed',
+      taskId: task.id,
+      status: 'blocked',
+    });
+  }
 }
