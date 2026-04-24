@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useTaskStream } from '@/hooks/useTaskStream'
 import { toast } from 'sonner'
 import {
     ArrowUp, ArrowDown, ChevronRight, CheckCircle, Play, XCircle, Target, LayoutList,
@@ -274,14 +275,18 @@ function StepCard({ step, index }: { step: Step; index: number }) {
                     <div className={cn(
                         "w-6 h-6 rounded-full text-xs flex items-center justify-center flex-shrink-0 mt-0.5 border font-medium",
                         step.status === 'done' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400' :
-                        isRunning ? 'bg-primary/10 border-primary/40 text-primary animate-pulse' :
+                        isRunning ? 'bg-primary/10 border-primary/40 text-primary' :
                         step.status === 'failed' ? 'bg-red-500/10 border-red-500/40 text-red-400' :
+                        step.status === 'skipped' ? 'bg-[#1e1e1e] border-[#2a2a2a] text-muted-foreground/30' :
                         'bg-[#1e1e1e] border-[#2a2a2a] text-muted-foreground'
                     )}>
-                        {step.status === 'done' ? <Check className="w-3 h-3" /> : index + 1}
+                        {step.status === 'done' ? <Check className="w-3 h-3" /> :
+                         isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> :
+                         step.status === 'failed' ? <XCircle className="w-3 h-3" /> :
+                         index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground leading-snug">{step.title}</p>
+                        <p className={cn("text-sm font-medium leading-snug", step.status === 'skipped' ? 'line-through text-muted-foreground/40' : 'text-foreground')}>{step.title}</p>
                         {step.description && <p className="mt-1 text-xs text-muted-foreground/60 leading-relaxed">{step.description}</p>}
                         
                         {/* Tool & time badges */}
@@ -315,6 +320,7 @@ function StepCard({ step, index }: { step: Step; index: number }) {
                         step.status === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
                         isRunning ? 'bg-primary/10 text-primary border-primary/20' :
                         step.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                        step.status === 'skipped' ? 'bg-muted/10 text-muted-foreground/30 border-transparent line-through' :
                         'bg-muted/10 text-muted-foreground/50 border-transparent'
                     )}>
                         {isRunning ? 'running' : step.status}
@@ -348,6 +354,63 @@ function StepCard({ step, index }: { step: Step; index: number }) {
             )}
 
             <StepInsightsModal open={insightsOpen} onOpenChange={setInsightsOpen} step={step} />
+        </div>
+    )
+}
+
+function TaskStatusBanner({ task, needsClarification }: { task: Task; needsClarification: boolean }) {
+    const status = task.status as string
+
+    let content: React.ReactNode = null
+
+    if (status === 'in_progress') {
+        content = (
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/20">
+                <Loader2 className="w-3.5 h-3.5 text-primary animate-spin flex-shrink-0" />
+                <p className="text-sm text-primary/90 font-medium">Agent is working...</p>
+            </div>
+        )
+    } else if (status === 'awaiting_clarification' || needsClarification) {
+        content = (
+            <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div>
+                    <p className="text-sm text-amber-400/90 font-medium">Agent needs clarification</p>
+                    {task.blockedReason && <p className="text-xs text-amber-400/60 mt-0.5">{task.blockedReason}</p>}
+                </div>
+            </div>
+        )
+    } else if (status === 'review') {
+        content = (
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                <p className="text-sm text-emerald-400/90 font-medium">Ready for your review</p>
+            </div>
+        )
+    } else if (status === 'blocked' && !needsClarification) {
+        content = (
+            <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-red-500/5 border border-red-500/20">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                    <p className="text-sm text-red-400/90 font-medium">Execution failed</p>
+                    {task.blockedReason && <p className="text-xs text-red-400/60 mt-0.5">{task.blockedReason}</p>}
+                </div>
+            </div>
+        )
+    } else if (status === 'done') {
+        content = (
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                <p className="text-sm text-emerald-400/90 font-medium">Complete</p>
+            </div>
+        )
+    }
+
+    if (!content) return null
+
+    return (
+        <div className="px-8 pt-4 pb-1 flex-shrink-0">
+            {content}
         </div>
     )
 }
@@ -541,6 +604,8 @@ export function TaskDetailView() {
     const taskId = params.taskId as string
     const tenantSlug = params.tenant as string
 
+    useTaskStream(taskId)
+
     const [activeTab, setActiveTab] = useState<'All' | 'Activity' | 'Events'>('All')
     const [feedbackOpen, setFeedbackOpen] = useState(false)
     const [clarificationAnswer, setClarificationAnswer] = useState('')
@@ -564,7 +629,7 @@ export function TaskDetailView() {
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
-        refetchInterval: 5000,
+        refetchInterval: 30000,
     })
 
     const { task, steps, events, agent } = data?.data ?? {}
@@ -744,6 +809,9 @@ export function TaskDetailView() {
                     </div>
                 </div>
                 
+                {/* STATUS BANNER */}
+                <TaskStatusBanner task={task} needsClarification={!!needsClarification} />
+
                 {/* MAIN CONTENT AREA */}
                 <div className="px-8 py-6 flex-1 overflow-y-auto">
                     {isEditingTitle ? (
@@ -1000,7 +1068,7 @@ export function TaskDetailView() {
                                         className="w-full bg-transparent p-3 text-sm text-foreground outline-none min-h-[80px] resize-none placeholder:text-muted-foreground/30"
                                     />
                                     <div className="flex justify-end px-2 py-1.5 bg-[#161616] border-t border-[#1e1e1e]">
-                                        <Button size="sm" onClick={() => clarify(clarificationAnswer)} disabled={isClarifying || !clarificationAnswer.trim()}
+                                        <Button size="sm" onClick={() => clarify(clarificationAnswer)} disabled={task.status === 'in_progress' || isClarifying || !clarificationAnswer.trim()}
                                             className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7 px-3">
                                             {isClarifying ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Sending...</> : 'Send Answer'}
                                         </Button>
@@ -1057,7 +1125,7 @@ export function TaskDetailView() {
                             <div>
                                 {steps.map((step, i) => <StepCard key={step.id} step={step} index={i} />)}
 
-                                {/* Approve / Reject bar — only show when plan not yet approved */}
+                                {/* Approve / Reject bar — only show when plan not yet approved and agent not executing */}
                                 {(!task.planApprovedAt) && (task.status === 'backlog') && (
                                     <div className="mt-4 p-3 rounded-xl border border-[#1e1e1e] bg-[#0f0f0f] flex items-center justify-between gap-3">
                                         <p className="text-xs text-muted-foreground">Review the {steps.length}-step plan above and approve or request changes.</p>
