@@ -49,7 +49,8 @@ import {
 
 type Task = {
     id: string
-    agentId: string
+    agentId: string | null
+    assigneeId: string | null
     title: string
     description?: string | null
     status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
@@ -137,10 +138,40 @@ const StatusIcon = ({ status }: { status: string }) => {
   )
 }
 
-function TaskCard({ task, tenantSlug, taskNumber }: { task: Task; tenantSlug: string; taskNumber: number }) {
+function TaskCard({ 
+    task, 
+    tenantSlug, 
+    taskNumber,
+    members,
+    agents
+}: { 
+    task: Task; 
+    tenantSlug: string; 
+    taskNumber: number;
+    members: MembersResponse['data'];
+    agents: AgentsResponse['data'];
+}) {
     const score = task.confidenceScore != null ? Number(task.confidenceScore) : null
     const dotColor = score === null ? '' : score >= 0.8 ? 'bg-green-500' : score >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
     const statusLabel = STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? 'Unknown';
+
+    // Resolve assignee
+    let assigneeInfo: { name: string; type: 'member' | 'agent' } | null = null
+    if (task.assigneeId) {
+        const member = members.find(m => m.userId === task.assigneeId)
+        if (member) {
+            assigneeInfo = { name: member.userName || member.userEmail, type: 'member' }
+        }
+    } else if (task.agentId) {
+        const agent = agents.find(a => a.id === task.agentId)
+        if (agent) {
+            assigneeInfo = { name: agent.name, type: 'agent' }
+        }
+    }
+
+    const getInitials = (name: string) => {
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    }
 
     const card = (
         <Link 
@@ -155,7 +186,7 @@ function TaskCard({ task, tenantSlug, taskNumber }: { task: Task; tenantSlug: st
                 e.currentTarget.style.opacity = '1'
             }}
         >
-            <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border transition-colors">
+            <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border transition-colors relative">
                 {/* Row 1 */}
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground/60 font-medium">TASK-{taskNumber}</span>
@@ -195,11 +226,32 @@ function TaskCard({ task, tenantSlug, taskNumber }: { task: Task; tenantSlug: st
                             <span>{task.completedSteps}/{task.totalSteps} steps</span>
                         </div>
                     )}
-                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-muted/50 text-muted-foreground">
-                        <Bot className="w-3.5 h-3.5" />
-                        <span>Agent</span>
-                    </div>
                 </div>
+
+                {/* Assignee Avatar - Absolute Position Bottom Right */}
+                {assigneeInfo && (
+                    <div className="absolute bottom-3 right-3">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className={cn(
+                                    "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium border border-[#2a2a2a] overflow-hidden",
+                                    assigneeInfo.type === 'agent' 
+                                        ? "bg-indigo-500/20 text-indigo-400" 
+                                        : "bg-[#2a2a2a] text-muted-foreground"
+                                )}>
+                                    {assigneeInfo.type === 'agent' ? (
+                                        <Bot className="w-3 h-3" />
+                                    ) : (
+                                        <span>{getInitials(assigneeInfo.name)}</span>
+                                    )}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                                <p className="text-[11px] font-medium">{assigneeInfo.name}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </div>
+                )}
             </div>
         </Link>
     )
@@ -326,9 +378,9 @@ function CreateTaskDialog({
                     <div className="flex items-center gap-2 px-6 py-3 border-y border-[#1e1e1e] flex-wrap">
                         {/* Assignee picker — members + agents combined */}
                         <Select
-                            value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : ''}
+                            value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'}
                             onValueChange={(val) => {
-                                if (!val) { setSelectedAssignee(null); return }
+                                if (!val || val === 'unassigned') { setSelectedAssignee(null); return }
                                 const colonIdx = val.indexOf(':')
                                 const type = val.slice(0, colonIdx) as 'agent' | 'member'
                                 const id = val.slice(colonIdx + 1)
@@ -343,7 +395,7 @@ function CreateTaskDialog({
                                 <span className="text-muted-foreground">{selectedAssignee?.name ?? 'No Assignee'}</span>
                             </SelectTrigger>
                             <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
-                                <SelectItem value="">
+                                <SelectItem value="unassigned">
                                     <div className="flex items-center gap-1.5 text-muted-foreground">
                                         <User className="w-3.5 h-3.5" />
                                         No Assignee
@@ -632,6 +684,8 @@ function KanbanColumn({
     tasks,
     tenantSlug,
     taskNumberMap,
+    members,
+    agents,
     onAddTask,
     onDropTask,
 }: {
@@ -639,6 +693,8 @@ function KanbanColumn({
     tasks: Task[]
     tenantSlug: string
     taskNumberMap: Map<string, number>
+    members: MembersResponse['data']
+    agents: AgentsResponse['data']
     onAddTask: () => void
     onDropTask: (taskId: string, status: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => void
 }) {
@@ -710,7 +766,13 @@ function KanbanColumn({
                             {dropIndicator?.taskId === task.id && dropIndicator.position === 'before' && (
                                 <div className="h-1 bg-primary/60 rounded-full mb-1 animate-pulse" />
                             )}
-                            <TaskCard task={task} tenantSlug={tenantSlug} taskNumber={taskNumberMap.get(task.id) || 1} />
+                            <TaskCard 
+                                task={task} 
+                                tenantSlug={tenantSlug} 
+                                taskNumber={taskNumberMap.get(task.id) || 1} 
+                                members={members}
+                                agents={agents}
+                            />
                             {dropIndicator?.taskId === task.id && dropIndicator.position === 'after' && (
                                 <div className="h-1 bg-primary/60 rounded-full mt-1 animate-pulse" />
                             )}
@@ -821,8 +883,14 @@ export function BoardView() {
         queryFn: () => api.get<AgentsResponse>('/api/v1/agents'),
     })
 
+    const { data: membersData } = useQuery<MembersResponse>({
+        queryKey: ['members'],
+        queryFn: () => api.get<MembersResponse>('/api/v1/members'),
+    })
+
     const tasks = data?.data ?? []
     const agents = agentsData?.data ?? []
+    const members = membersData?.data ?? []
 
     const tasksByCreatedAt = [...tasks].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     const taskNumberMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
@@ -955,6 +1023,8 @@ export function BoardView() {
                             tasks={filteredTasks.filter(t => t.status === status)}
                             tenantSlug={tenantSlug}
                             taskNumberMap={taskNumberMap}
+                            members={members}
+                            agents={agents}
                             onAddTask={() => setCreateOpen(true)}
                             onDropTask={onDropTask}
                         />

@@ -34,6 +34,13 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 
 
 // --- TYPES ---
@@ -42,7 +49,8 @@ type Attachment = { fileId: string; name: string; size: number; type: string }
 
 type Task = {
     id: string
-    agentId: string
+    agentId: string | null
+    assigneeId: string | null
     title: string
     description?: string | null
     status: 'backlog' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
@@ -60,6 +68,11 @@ type Task = {
     links: string[]
     attachmentFileIds: Attachment[]
 }
+
+type AgentsResponse = { data: { id: string; name: string; status: string }[] }
+type MembersResponse = { data: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
+
+type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; id: string; name: string }
 
 type Step = {
     id: string
@@ -103,6 +116,7 @@ type TaskDetailResponse = {
         steps: Step[]
         events: TaskEvent[]
         agent?: { name: string }
+        assignee?: { name: string }
     }
 }
 
@@ -637,13 +651,33 @@ export function TaskDetailView() {
     const attachFileInputRef = useRef<HTMLInputElement>(null)
     const newLinkInputRef = useRef<HTMLInputElement>(null)
 
+    const { data: agentsData } = useQuery<AgentsResponse>({
+        queryKey: ['agents'],
+        queryFn: () => api.get<AgentsResponse>('/api/v1/agents'),
+    })
+
+    const { data: membersData } = useQuery<MembersResponse>({
+        queryKey: ['members'],
+        queryFn: () => api.get<MembersResponse>('/api/v1/members'),
+    })
+
+    const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
+    const members = membersData?.data ?? []
+
+    const assigneeOptions: Assignee[] = [
+        ...members.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
+        ...activeAgents.map(a => ({ type: 'agent' as const, id: a.id, name: a.name })),
+    ]
+
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
         refetchInterval: 30000,
     })
 
-    const { task, steps, events, agent } = data?.data ?? {}
+    const { task, steps, events, agent, assignee } = data?.data ?? {}
+
+    const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
 
     // Sync local state when task data loads
     useEffect(() => {
@@ -651,8 +685,20 @@ export function TaskDetailView() {
             setTitleValue(task.title)
             setDescriptionValue(task.description || '')
             setLocalCriteria(task.acceptanceCriteria ?? [])
+
+            if (task.assigneeId) {
+                const opt = assigneeOptions.find(o => o.type === 'member' && o.id === task.assigneeId)
+                if (opt) setSelectedAssignee(opt)
+                else if (assignee) setSelectedAssignee({ type: 'member', id: task.assigneeId, name: assignee.name })
+            } else if (task.agentId) {
+                const opt = assigneeOptions.find(o => o.type === 'agent' && o.id === task.agentId)
+                if (opt) setSelectedAssignee(opt)
+                else if (agent) setSelectedAssignee({ type: 'agent', id: task.agentId, name: agent.name })
+            } else {
+                setSelectedAssignee(null)
+            }
         }
-    }, [task?.id, task?.title, task?.description, task?.acceptanceCriteria])
+    }, [task?.id, task?.title, task?.description, task?.acceptanceCriteria, task?.assigneeId, task?.agentId, assignee?.name, agent?.name, assigneeOptions.length])
 
     const patchTask = useMutation({
         mutationFn: (updates: Partial<{
@@ -665,6 +711,8 @@ export function TaskDetailView() {
             startedAt: string | null
             links: string[]
             attachmentFileIds: Attachment[]
+            assigneeId: string | null
+            agentId: string | null
         }>) => api.patch(`/api/v1/tasks/${taskId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
         onError: (err: any) => toast.error(err.message || 'Failed to save change'),
@@ -907,10 +955,10 @@ export function TaskDetailView() {
                         </DropdownMenuContent>
                       </DropdownMenu>
 
-                      {/* Agent pill — informational, shows real agent name */}
+                      {/* Assignee pill — shows current assignee (member or agent) */}
                       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
-                        <Bot className="w-3.5 h-3.5" />
-                        <span>{agent?.name ?? 'Agent'}</span>
+                        {selectedAssignee?.type === 'agent' ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                        <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
                       </div>
 
                       {/* Est. Hours pill */}
@@ -1196,31 +1244,56 @@ export function TaskDetailView() {
                            <button onClick={() => setActiveTab('Activity')} className={cn("text-sm pb-2 transition-colors", activeTab === 'Activity' ? 'text-foreground border-b-2 border-white font-medium' : 'text-muted-foreground hover:text-foreground/80')}>Activity</button>
                            <button onClick={() => setActiveTab('Events')} className={cn("text-sm pb-2 transition-colors", activeTab === 'Events' ? 'text-foreground border-b-2 border-white font-medium' : 'text-muted-foreground hover:text-foreground/80')}>Events</button>
                         </div>
-                        <div className="space-y-5">
+                        <div className="space-y-6 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-px before:bg-[#1e1e1e] ml-1">
                             {events.filter(e => {
                                 if (activeTab === 'Activity') return e.actorType !== 'system'
                                 if (activeTab === 'Events') return e.actorType === 'system'
                                 return true
                             }).map(event => {
                                 const ActorIcon = event.actorType === 'agent' ? Bot : event.actorType === 'human' ? User : Settings;
-                                const actorName = event.actorType === 'human' ? 'You' : event.actorName || 'System';
+                                const actorName = event.actorType === 'human' ? 'You' : event.actorType === 'agent' ? 'Agent' : 'System';
                                 
+                                // Map event types to readable descriptions and icons
+                                let description = event.eventType.replace(/_/g, ' ');
+                                let Icon = ActorIcon;
+                                
+                                if (event.eventType === 'status_changed') {
+                                    Icon = RefreshCw;
+                                    description = `Status changed to ${event.payload?.to || 'unknown'}`;
+                                } else if (event.eventType === 'comment_added') {
+                                    Icon = MessageSquare;
+                                    description = 'Added a comment';
+                                } else if (event.eventType === 'plan_approved') {
+                                    Icon = CheckCircle;
+                                    description = 'Approved the execution plan';
+                                } else if (event.eventType === 'plan_rejected') {
+                                    Icon = XCircle;
+                                    description = 'Requested changes to the plan';
+                                } else if (event.eventType === 'clarification_requested') {
+                                    Icon = MessageSquare;
+                                    description = 'Requested clarification';
+                                } else if (event.eventType === 'clarification_answered') {
+                                    Icon = Check;
+                                    description = 'Provided clarification';
+                                }
+
                                 return (
-                                    <div key={event.id} className="flex items-start gap-4">
-                                        <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0 mt-0.5">
-                                           <ActorIcon className={cn("w-4 h-4", event.actorType === 'agent' ? 'text-primary' : 'text-muted-foreground')} />
+                                    <div key={event.id} className="relative pl-9">
+                                        <div className="absolute left-1 top-0.5 w-4 h-4 rounded-full bg-[#0f0f0f] border border-[#1e1e1e] flex items-center justify-center z-10">
+                                            <Icon className={cn("w-2.5 h-2.5", event.actorType === 'agent' ? 'text-primary' : 'text-muted-foreground')} />
                                         </div>
-                                        <div className="flex flex-col text-sm pt-1">
-                                            <p className="text-sm text-foreground">
-                                                <span className="font-medium mr-1.5">{actorName}</span>
-                                                <span className="text-muted-foreground/90">{event.eventType.replace(/_/g, ' ')}</span>
-                                            </p>
+                                        <div className="flex flex-col gap-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[13px] text-foreground/90 font-medium">{actorName}</span>
+                                                <span className="text-[13px] text-muted-foreground/60">{description}</span>
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground/30">{formatRelativeTime(event.createdAt)} ago</span>
+                                            
                                             {event.eventType === 'comment' && event.payload?.comment && (
                                                 <div className="mt-2 bg-[#161616] border border-[#1e1e1e] p-3 rounded-lg text-sm text-foreground/80 leading-relaxed">
                                                     <RichTextEditor value={event.payload.comment} isReadOnly />
                                                 </div>
                                             )}
-                                            <p className="text-xs text-muted-foreground/50 mt-1">{formatRelativeTime(event.createdAt)} ago</p>
                                         </div>
                                     </div>
                                 )
@@ -1328,17 +1401,99 @@ export function TaskDetailView() {
                             <StatusIcon status={task.status} /> 
                             <span className="text-xs">Status</span>
                         </div>
-                        <div className={cn("text-xs flex items-center gap-1.5 font-medium", STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text)}>
-                            {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label}
+                        <div className="text-xs text-foreground flex-1">
+                            <Select
+                                value={task.status}
+                                onValueChange={(val) => patchTask.mutate({ status: val })}
+                            >
+                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                                    <span className={cn("font-medium", STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text)}>
+                                        {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label}
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                                    {(['backlog', 'todo', 'in_progress', 'review', 'done', 'blocked'] as const).map((s) => (
+                                        <SelectItem key={s} value={s} className="text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <StatusIcon status={s} />
+                                                <span className={STATUS_CONFIG[s].text}>{STATUS_CONFIG[s].label}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     
                     <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
                         <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <Bot className="w-3.5 h-3.5 opacity-50" /> 
-                            <span className="text-xs">Agent</span>
+                            {selectedAssignee?.type === 'agent'
+                                ? <Bot className="w-3.5 h-3.5 opacity-50" />
+                                : <User className="w-3.5 h-3.5 opacity-50" />}
+                            <span className="text-xs">Assignee</span>
                         </div>
-                        <div className="text-xs text-foreground flex items-center gap-1.5">{agent?.name ?? 'Agent'}</div>
+                        <div className="text-xs text-foreground flex-1">
+                            <Select
+                                value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'}
+                                onValueChange={(val) => {
+                                    if (!val || val === 'unassigned') {
+                                        setSelectedAssignee(null)
+                                        patchTask.mutate({ assigneeId: null, agentId: null })
+                                        return
+                                    }
+                                    const colonIdx = val.indexOf(':')
+                                    const type = val.slice(0, colonIdx) as 'agent' | 'member'
+                                    const id = val.slice(colonIdx + 1)
+                                    const opt = assigneeOptions.find(o => o.type === type && o.id === id)
+                                    if (opt) {
+                                        setSelectedAssignee(opt)
+                                        if (type === 'member') {
+                                            patchTask.mutate({ assigneeId: id, agentId: null })
+                                        } else {
+                                            patchTask.mutate({ agentId: id, assigneeId: null })
+                                        }
+                                    }
+                                }}
+                            >
+                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                                    <span className="text-foreground">{selectedAssignee?.name ?? 'No Assignee'}</span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                                    <SelectItem value="unassigned">
+                                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                                            <User className="w-3.5 h-3.5" />
+                                            No Assignee
+                                        </div>
+                                    </SelectItem>
+                                    {members.length > 0 && (
+                                        <>
+                                            <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                            {members.map(m => (
+                                                <SelectItem key={m.userId} value={`member:${m.userId}`}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <User className="w-3.5 h-3.5" />
+                                                        {m.userName || m.userEmail}
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </>
+                                    )}
+                                    {activeAgents.length > 0 && (
+                                        <>
+                                            <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                            {activeAgents.map(a => (
+                                                <SelectItem key={a.id} value={`agent:${a.id}`}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Bot className="w-3.5 h-3.5" />
+                                                        {a.name}
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                     
                     <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
