@@ -1,7 +1,13 @@
 import type { SQSHandler } from 'aws-lambda';
-import { db } from '@serverless-saas/database';
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import * as schema from '@serverless-saas/database/schema';
 import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema';
 import { eq, asc } from 'drizzle-orm';
+
+// Import schema from TypeScript source so esbuild bundles fresh — avoids stale dist/schema
+// causing db.query.agentTasks to be undefined at runtime.
+const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 import { pushWebSocketEvent } from '../lib/websocket';
 import { initRuntimeSecrets } from '../lib/secrets';
 

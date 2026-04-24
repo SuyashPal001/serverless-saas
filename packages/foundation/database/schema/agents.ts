@@ -62,7 +62,7 @@ export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
 
 // ── Agent Scrum Board ─────────────────────────────────────────────────────────
 
-export const taskStatusEnum = pgEnum('task_status', ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']);
+export const taskStatusEnum = pgEnum('task_status', ['backlog', 'todo', 'planning', 'awaiting_approval', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']);
 export const taskStepStatusEnum = pgEnum('task_step_status', ['pending', 'running', 'done', 'skipped', 'failed']);
 export const taskEventActorTypeEnum = pgEnum('task_event_actor_type', ['agent', 'human', 'system']);
 export const taskEventTypeEnum = pgEnum('task_event_type', ['status_changed', 'step_completed', 'step_failed', 'clarification_requested', 'clarification_answered', 'plan_proposed', 'plan_approved', 'plan_rejected', 'task_cancelled', 'comment']);

@@ -58,7 +58,7 @@ tasksRoutes.post('/', async (c) => {
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         links: links ?? [],
-        status: 'planning',
+        status: 'backlog',
     }).returning();
 
     await db.insert(taskEvents).values({
@@ -67,10 +67,8 @@ tasksRoutes.post('/', async (c) => {
         actorType: 'system',
         actorId: 'system',
         eventType: 'status_changed',
-        payload: { from: null, to: 'planning' },
+        payload: { from: null, to: 'backlog' },
     });
-
-    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId: task.id });
 
     try {
         await db.insert(auditLog).values({
@@ -103,11 +101,16 @@ tasksRoutes.get('/', async (c) => {
     const statusFilter = c.req.query('status');
     const agentIdFilter = c.req.query('agentId');
 
+    // Internal states are hidden from the board list unless explicitly requested via ?status=
+    const boardCondition = !statusFilter
+        ? sql`${agentTasks.status} NOT IN ('planning', 'awaiting_approval')`
+        : eq(agentTasks.status, statusFilter as any);
+
     const taskList = await db.select()
         .from(agentTasks)
         .where(and(
             eq(agentTasks.tenantId, tenantId),
-            statusFilter ? eq(agentTasks.status, statusFilter as any) : undefined,
+            boardCondition,
             agentIdFilter ? eq(agentTasks.agentId, agentIdFilter) : undefined,
         ))
         .orderBy(asc(agentTasks.sortOrder), desc(agentTasks.createdAt));
@@ -211,7 +214,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    if (task.status !== 'backlog' && task.status !== 'blocked') {
+    if (task.status !== 'awaiting_approval' && task.status !== 'blocked') {
         return c.json({ error: 'Task plan cannot be reviewed in its current state' }, 400);
     }
 
@@ -424,7 +427,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
             checked: z.boolean()
         })).optional(),
         dueDate: z.string().datetime().nullable().optional(),
-        status: z.enum(['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
+        status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
         startedAt: z.string().datetime().nullable().optional(),
         links: z.array(z.string().url()).optional(),
         attachmentFileIds: z.array(z.object({
@@ -471,6 +474,16 @@ tasksRoutes.patch('/:taskId', async (c) => {
         .set(updateValues)
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
+
+    // backlog → todo: auto-trigger planning
+    if (status === 'todo' && task.status === 'backlog') {
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+        try {
+            await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'todo' });
+        } catch (wsErr) {
+            console.error('WS push failed (non-fatal):', wsErr);
+        }
+    }
 
     try {
         await db.insert(auditLog).values({

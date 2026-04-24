@@ -52,7 +52,7 @@ type Task = {
     agentId: string
     title: string
     description?: string | null
-    status: 'backlog' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
     totalSteps: number
@@ -74,7 +74,7 @@ type AgentsResponse = { data: { id: string; name: string; status: string }[] }
 
 const STATUS_CONFIG = {
     backlog:     { label: 'Backlog',     color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
-    ready:       { label: 'Ready',       color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
+    todo:        { label: 'Todo',        color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
     in_progress: { label: 'In Progress', color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
     review:      { label: 'Review',      color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
     blocked:     { label: 'Blocked',     color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
@@ -82,7 +82,7 @@ const STATUS_CONFIG = {
     cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
 } as const
 
-const COLUMNS: Task['status'][] = ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done']
+const COLUMNS: Task['status'][] = ['backlog', 'todo', 'in_progress', 'review', 'done', 'blocked']
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -115,10 +115,10 @@ function formatRelativeTime(dateString: string): string {
 const StatusIcon = ({ status }: { status: string }) => {
   const configs = {
     backlog: <circle cx="12" cy="12" r="9" stroke="#6B7280" strokeWidth="1.5" strokeDasharray="4 2" fill="none"/>,
-    ready: <circle cx="12" cy="12" r="9" stroke="#3B82F6" strokeWidth="1.5" fill="none"/>,
+    todo: <circle cx="12" cy="12" r="9" stroke="#3B82F6" strokeWidth="1.5" fill="none"/>,
     in_progress: <>
-      <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="12" r="4" fill="#F59E0B"/>
+      <circle cx="12" cy="12" r="9" stroke="#8B5CF6" strokeWidth="1.5" fill="none"/>
+      <circle cx="12" cy="12" r="4" fill="#8B5CF6"/>
     </>,
     review: <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>,
     blocked: <circle cx="12" cy="12" r="9" stroke="#EF4444" strokeWidth="1.5" fill="none"/>,
@@ -274,7 +274,7 @@ function CreateTaskDialog({
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
-            toast.success('Task created — agent is planning')
+            toast.success('Task created')
             reset()
             // also reset new pill states
             setLinks([])
@@ -445,7 +445,7 @@ function CreateTaskDialog({
                         <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground/40 flex items-center gap-1.5">
                                 <Bot className="w-3.5 h-3.5" />
-                                Agent will plan automatically
+                                Move to Todo to start planning
                             </span>
                             {(errors.title || errors.agentId) && (
                                 <span className="text-[10px] text-destructive mt-1">
@@ -468,7 +468,7 @@ function CreateTaskDialog({
                                 className="bg-[#1e40af] hover:bg-[#1d4ed8] text-white text-sm px-4 py-2 rounded-lg font-medium"
                             >
                                 {isPending ? (
-                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Planning...</>
+                                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
                                 ) : (
                                     'Create Task'
                                 )}
