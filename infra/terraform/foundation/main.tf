@@ -96,6 +96,11 @@ module "sqs" {
       visibility_timeout_seconds = var.visibility_timeout_seconds
       message_retention_seconds  = var.message_retention_seconds
     }
+    agent_task = {
+      name                       = var.agent_task_queue_name
+      visibility_timeout_seconds = var.visibility_timeout_seconds
+      message_retention_seconds  = var.message_retention_seconds
+    }
   }
 
   tags = {}
@@ -150,6 +155,10 @@ module "cloudwatch" {
     }
     foundation_pretoken = {
       name              = "/aws/lambda/${local.name_prefix}-foundation-pretoken"
+      retention_in_days = var.log_retention_days
+    }
+    task_worker = {
+      name              = "/aws/lambda/${local.name_prefix}-task-worker"
       retention_in_days = var.log_retention_days
     }
   }
@@ -319,6 +328,11 @@ module "esm" {
       lambda_arn = var.foundation_worker_lambda_arn
       batch_size = 10
     }
+    agent_task = {
+      queue_arn  = module.sqs.queue_arns["agent_task"]
+      lambda_arn = var.task_worker_lambda_arn
+      batch_size = 1
+    }
   }
 }
 
@@ -369,6 +383,7 @@ module "iam" {
             Resource = [
               module.sqs.queue_arns["processing"],
               module.sqs.queue_arns["workflow"],
+              module.sqs.queue_arns["agent_task"],
             ]
           }]
         })
@@ -566,6 +581,62 @@ module "iam" {
         })
       }
     }
+
+    task_worker = {
+      name        = "${local.name_prefix}-task-worker-role"
+      description = "Execution role for Task Worker Lambda (SQS consumer)"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        sqs_consume = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "sqs:ReceiveMessage",
+              "sqs:DeleteMessage",
+              "sqs:GetQueueAttributes"
+            ]
+            Resource = module.sqs.queue_arns["agent_task"]
+          }]
+        })
+        manage_connections = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = "execute-api:ManageConnections"
+            Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
+          }]
+        })
+      }
+    }
   }
 
   tags = {}
@@ -671,6 +742,18 @@ resource "aws_ssm_parameter" "iam_foundation_websocket_role_arn" {
   name  = "/${var.project}/${var.environment}/iam/foundation-websocket-role-arn"
   type  = "String"
   value = module.iam.role_arns["foundation_websocket"]
+}
+
+resource "aws_ssm_parameter" "sqs_agent_task_queue_url" {
+  name  = "${local.ssm_prefix}/sqs/agent-task-queue-url"
+  type  = "String"
+  value = module.sqs.queue_urls["agent_task"]
+}
+
+resource "aws_ssm_parameter" "iam_task_worker_role_arn" {
+  name  = "${local.ssm_prefix}/iam/task-worker-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["task_worker"]
 }
 
 resource "aws_secretsmanager_secret" "token_encryption_key" {

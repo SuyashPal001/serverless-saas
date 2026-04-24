@@ -62,6 +62,16 @@ output "sqs_workflow_queue_arn" {
   value       = module.sqs.queue_arns["workflow"]
 }
 
+output "sqs_agent_task_queue_url" {
+  description = "Agent task queue URL."
+  value       = module.sqs.queue_urls["agent_task"]
+}
+
+output "sqs_agent_task_queue_arn" {
+  description = "Agent task queue ARN."
+  value       = module.sqs.queue_arns["agent_task"]
+}
+
 # -------------------------------------------------------
 # SNS
 # -------------------------------------------------------

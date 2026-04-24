@@ -128,6 +128,18 @@ variable "foundation_worker_lambda_arn" {
   type        = string
 }
 
+variable "agent_task_queue_name" {
+  description = "Name of the agent task SQS queue"
+  type        = string
+  default     = "serverless-saas-agent-task-queue-dev"
+}
+
+variable "task_worker_lambda_arn" {
+  description = "ARN of the Task Worker Lambda (deployed by SAM)"
+  type        = string
+  default     = ""
+}
+
 # Upstash Redis
 variable "upstash_redis_rest_url" {
   description = "Upstash Redis REST URL"
