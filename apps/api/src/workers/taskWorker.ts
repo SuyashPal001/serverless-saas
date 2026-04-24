@@ -20,14 +20,14 @@ export const handler: SQSHandler = async (event) => {
     const { type, taskId } = message;
 
     if (type === 'plan_task' || type === 'replan_task') {
-      await handlePlanning(taskId);
+      await handlePlanning(taskId, message.extraContext as string | undefined);
     } else if (type === 'execute_task') {
       await handleExecution(taskId);
     }
   }
 };
 
-async function handlePlanning(taskId: string) {
+async function handlePlanning(taskId: string, extraContext?: string) {
   const task = await db.query.agentTasks.findFirst({
     where: eq(agentTasks.id, taskId),
   });
@@ -46,6 +46,7 @@ async function handlePlanning(taskId: string) {
       title: task.title,
       description: task.description,
       acceptanceCriteria: task.acceptanceCriteria,
+      ...(extraContext ? { extraContext } : {}),
     }),
   });
 

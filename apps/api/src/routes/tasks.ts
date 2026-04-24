@@ -6,196 +6,9 @@ import { publishToQueue } from '../lib/sqs';
 import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
+import { pushWebSocketEvent } from '../lib/websocket';
 import type { AppEnv } from '../types';
-import { randomUUID } from 'crypto';
-
 export const tasksRoutes = new Hono<AppEnv>();
-
-interface PlanStep {
-    title: string;
-    description: string;
-    toolName: string | null;
-    reasoning: string;
-    estimatedHours: number;
-    confidenceScore: number;
-}
-
-interface PlanResult {
-    steps?: PlanStep[];
-    clarificationNeeded?: boolean;
-    questions?: string[];
-}
-
-async function generateTaskPlan(
-    task: { id: string; title: string; description: string | null; acceptanceCriteria: unknown },
-    tenantId: string,
-    agentId: string,
-    extraContext?: string,
-): Promise<PlanResult> {
-    const relayUrl = process.env.RELAY_URL;
-    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-
-    if (!relayUrl || !serviceKey) {
-        throw new Error('RELAY_URL or INTERNAL_SERVICE_KEY not configured');
-    }
-
-    const planningPrompt = `You are an AI assistant that has been assigned a task by a user.
-Before starting, plan how you will complete it step by step.
-
-Task Title: ${task.title}
-Description: ${task.description ?? 'No description provided'}
-Acceptance Criteria: ${JSON.stringify(task.acceptanceCriteria)}
-${extraContext ? `\nAdditional context: ${extraContext}` : ''}
-
-If the task is unclear and you need more information before planning,
-respond with:
-{"clarificationNeeded": true, "questions": ["question 1", "question 2"]}
-
-If the task is clear, respond ONLY with a JSON array of steps.
-No explanation outside the JSON. Each step must have:
-- title: string (short, clear action e.g. "Send confirmation email")
-- description: string (what will be done in plain English)
-- toolName: string | null (exact tool name you will use, or null)
-- reasoning: string (why this step is needed and why this tool)
-- estimatedHours: number (realistic estimate)
-- confidenceScore: number 0 to 1 (how confident you are this step will succeed)`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60_000);
-
-    let response: Response;
-    try {
-        response = await fetch(`${relayUrl}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Service-Key': serviceKey,
-            },
-            body: JSON.stringify({
-                conversationId: randomUUID(),
-                agentId,
-                tenantId,
-                message: planningPrompt,
-                attachments: [],
-            }),
-            signal: controller.signal,
-        });
-    } catch (err: any) {
-        clearTimeout(timeoutId);
-        if (err.name === 'AbortError') {
-            throw new Error('Planning timed out after 60 seconds');
-        }
-        throw err;
-    }
-
-    if (!response.body) {
-        clearTimeout(timeoutId);
-        throw new Error('No response body from relay');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let doneText: string | null = null;
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-
-            const blocks = buffer.split('\n\n');
-            buffer = blocks.pop() ?? '';
-
-            for (const block of blocks) {
-                if (!block.trim()) continue;
-
-                const lines = block.split('\n');
-                let eventType = '';
-                let dataStr = '';
-
-                for (const line of lines) {
-                    if (line.startsWith('event:')) {
-                        eventType = line.slice(6).trim();
-                    } else if (line.startsWith('data:')) {
-                        dataStr = line.slice(5).trim();
-                    }
-                }
-
-                if (eventType === 'done') {
-                    const parsed = JSON.parse(dataStr) as { text: string };
-                    doneText = parsed.text;
-                    break;
-                } else if (eventType === 'error') {
-                    const parsed = JSON.parse(dataStr) as { message?: string };
-                    throw new Error(parsed.message ?? 'Planning error from relay');
-                } else if (eventType === 'auth_expired') {
-                    throw new Error('Internal service auth expired — check INTERNAL_SERVICE_KEY')
-                }
-            }
-
-            if (doneText !== null) break;
-        }
-    } finally {
-        clearTimeout(timeoutId);
-        reader.releaseLock();
-    }
-
-    if (doneText === null) {
-        throw new Error('Planning stream ended without a done event');
-    }
-
-    const cleaned = doneText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(cleaned);
-    } catch {
-        throw new Error(`Planning returned non-JSON: ${doneText.slice(0, 200)}`);
-    }
-
-    if (
-        typeof parsed === 'object' &&
-        parsed !== null &&
-        'clarificationNeeded' in parsed &&
-        (parsed as Record<string, unknown>).clarificationNeeded === true
-    ) {
-        return {
-            clarificationNeeded: true,
-            questions: (parsed as Record<string, unknown>).questions as string[] ?? [],
-        };
-    }
-
-    if (!Array.isArray(parsed)) {
-        throw new Error(`Expected JSON array from planner, got: ${typeof parsed}`);
-    }
-
-    return { steps: parsed as PlanStep[] };
-}
-
-function buildStepValues(steps: PlanStep[], taskId: string, tenantId: string) {
-    return steps.map((s, i) => ({
-        taskId,
-        tenantId,
-        stepNumber: i + 1,
-        title: s.title,
-        description: s.description ?? null,
-        toolName: s.toolName,
-        reasoning: s.reasoning ?? null,
-        estimatedHours: s.estimatedHours !== undefined ? String(s.estimatedHours) : null,
-        confidenceScore: s.confidenceScore !== undefined ? String(s.confidenceScore) : null,
-        status: 'pending' as const,
-    }));
-}
-
-function computePlanMetrics(steps: PlanStep[]) {
-    const totalEstimatedHours = steps.reduce((sum, s) => sum + (s.estimatedHours ?? 0), 0);
-    const overallConfidence = steps.length > 0
-        ? steps.reduce((sum, s) => sum + (s.confidenceScore ?? 0), 0) / steps.length
-        : null;
-    return { totalEstimatedHours, overallConfidence };
-}
 
 // POST /tasks — create task and generate plan via relay
 tasksRoutes.post('/', async (c) => {
@@ -508,55 +321,37 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
         payload: { answer },
     });
 
-    const agentId = task.agentId;
-    const planResult = await generateTaskPlan(task, tenantId, agentId, 'User clarification: ' + answer);
-
-    if (planResult.clarificationNeeded) {
-        await db.insert(taskEvents).values({
-            taskId,
-            tenantId,
-            actorType: 'agent',
-            actorId: agentId,
-            eventType: 'clarification_requested',
-            payload: { questions: planResult.questions },
-        });
-
-        const [updatedTask] = await db.update(agentTasks)
-            .set({ blockedReason: 'Further clarification needed', updatedAt: new Date() })
-            .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
-            .returning();
-
-        return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, clarificationQuestions: planResult.questions } });
-    }
-
-    await db.delete(taskSteps).where(and(
-        eq(taskSteps.taskId, taskId),
-        eq(taskSteps.status, 'pending'),
-    ));
-
-    const steps = planResult.steps ?? [];
-    const stepValues = buildStepValues(steps, taskId, tenantId);
-    const insertedSteps = stepValues.length > 0
-        ? await db.insert(taskSteps).values(stepValues).returning()
-        : [];
-
-    const { totalEstimatedHours } = computePlanMetrics(steps);
-
     const [updatedTask] = await db.update(agentTasks)
-        .set({ status: 'backlog', blockedReason: null, updatedAt: new Date() })
+        .set({ status: 'planning', blockedReason: null, updatedAt: new Date() })
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
 
     await db.insert(taskEvents).values({
         taskId,
         tenantId,
-        actorType: 'agent',
-        actorId: agentId,
-        eventType: 'plan_proposed',
-        payload: { stepCount: insertedSteps.length, totalEstimatedHours },
+        actorType: 'system',
+        actorId: 'system',
+        eventType: 'status_changed',
+        payload: { from: 'blocked', to: 'planning' },
     });
 
-    return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 }, steps: insertedSteps } });
+    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
+        type: 'replan_task',
+        taskId,
+        extraContext: 'User clarification: ' + answer,
+    });
+
+    try {
+        await pushWebSocketEvent(tenantId, {
+            type: 'task.status.changed',
+            taskId,
+            status: 'planning',
+        });
+    } catch (wsErr) {
+        console.error('WS push failed (non-fatal):', wsErr);
+    }
+
+    return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 } } });
 });
 
 // DELETE /tasks/:taskId — soft-cancel a task
