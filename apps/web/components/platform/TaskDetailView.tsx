@@ -730,10 +730,20 @@ export function TaskDetailView() {
             attachmentFileIds: Attachment[]
             assigneeId: string | null
             agentId: string | null
-        }>) => api.patch(`/api/v1/tasks/${taskId}`, updates),
+        }>) => {
+            console.log('[patchTask]', updates, new Error().stack)
+            return api.patch(`/api/v1/tasks/${taskId}`, updates)
+        },
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
         onError: (err: any) => toast.error(err.message || 'Failed to save change'),
     })
+
+    // Log initial status on mount/load
+    useEffect(() => {
+        if (task?.id) {
+            console.log('[TaskDetail mount] task.status:', task?.status)
+        }
+    }, [task?.id])
 
     const voteMutation = useMutation({
         mutationFn: (type: 'up' | 'down') => api.post(`/api/v1/tasks/${taskId}/vote`, { type }),
