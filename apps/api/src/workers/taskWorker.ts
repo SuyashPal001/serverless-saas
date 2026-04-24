@@ -83,7 +83,7 @@ async function handlePlanning(taskId: string, extraContext?: string) {
     taskId: task.id,
     tenantId: task.tenantId,
     actorType: 'agent',
-    actorId: task.agentId,
+    actorId: task.agentId ?? 'system',
     eventType: 'plan_proposed',
     payload: { stepCount: steps.length },
   });

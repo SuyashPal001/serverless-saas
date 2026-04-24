@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskSteps, taskEvents, taskComments } from '@serverless-saas/database/schema/agents';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import type { AppEnv } from '../../types';
 
@@ -242,6 +242,54 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
   await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'awaiting_clarification' });
 
   return c.json({ success: true });
+});
+
+// POST /internal/tasks/:taskId/comments — agent posting a comment
+internalTasksRoute.post('/:taskId/comments', async (c) => {
+  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const taskId = c.req.param('taskId');
+
+  const bodySchema = z.object({
+    content: z.string().min(1),
+    agentId: z.string().uuid(),
+    parentId: z.string().uuid().optional(),
+  });
+
+  const parsed = bodySchema.safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
+
+  const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const { tenantId } = task;
+  const { content, agentId, parentId } = parsed.data;
+
+  const [comment] = await db.insert(taskComments).values({
+    taskId,
+    tenantId,
+    authorId: agentId,
+    authorType: 'agent',
+    content,
+    parentId: parentId ?? null,
+  }).returning();
+
+  await db.insert(taskEvents).values({
+    taskId,
+    tenantId,
+    actorType: 'agent',
+    actorId: agentId,
+    eventType: 'comment_added',
+    payload: { commentId: comment.id },
+  });
+
+  await pushWebSocketEvent(tenantId, {
+    type: 'task.comment.added',
+    taskId,
+    comment,
+  });
+
+  return c.json({ data: comment }, 201);
 });
 
 export default internalTasksRoute;

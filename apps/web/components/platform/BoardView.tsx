@@ -13,7 +13,7 @@ import {
     Plus, X, Loader2, AlertCircle,
     AlertTriangle, Bot, LayoutList, GripVertical, Search,
     Maximize2, MoreHorizontal, Clock, ChevronDown, ChevronUp,
-    Link2, Paperclip, FileText,
+    Link2, Paperclip, FileText, User,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -69,6 +69,9 @@ type Task = {
 
 type TasksResponse = { data: Task[] }
 type AgentsResponse = { data: { id: string; name: string; status: string }[] }
+type MembersResponse = { data: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
+
+type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; id: string; name: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -87,7 +90,6 @@ const COLUMNS: Task['status'][] = ['backlog', 'todo', 'in_progress', 'review', '
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const createTaskSchema = z.object({
-    agentId: z.string().min(1, 'Please select an agent'),
     title: z.string().min(1, 'Title is required').max(200),
     description: z.string().optional(),
     estimatedHours: z.string().optional(),
@@ -233,7 +235,22 @@ function CreateTaskDialog({
         enabled: open,
     })
 
-    const agents = agentsData?.data?.filter(a => a.status === 'active') ?? []
+    const { data: membersData } = useQuery<MembersResponse>({
+        queryKey: ['members'],
+        queryFn: () => api.get<MembersResponse>('/api/v1/members'),
+        enabled: open,
+    })
+
+    const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
+    const members = membersData?.data ?? []
+
+    const assigneeOptions: Assignee[] = [
+        ...members.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
+        ...activeAgents.map(a => ({ type: 'agent' as const, id: a.id, name: a.name })),
+    ]
+
+    const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
+    const [hoursEditing, setHoursEditing] = useState(false)
 
     const {
         register,
@@ -247,25 +264,18 @@ function CreateTaskDialog({
         defaultValues: { acceptanceCriteria: [] as { text: string }[] },
     })
 
-    const selectedAgentId = watch('agentId')
-    const selectedAgent = agents.find(a => a.id === selectedAgentId)
     const estimatedHoursVal = watch('estimatedHours')
 
     const [criteriaExpanded, setCriteriaExpanded] = useState(false)
-    
-    // State for new pills
     const [links, setLinks] = useState<{ url: string; title: string }[]>([])
-    const [attachments, setAttachments] = useState<File[]>([])
-    const [references, setReferences] = useState<string[]>([])
     const [linkDialogOpen, setLinkDialogOpen] = useState(false)
-    const [refDialogOpen, setRefDialogOpen] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
 
     const { fields, append, remove } = useFieldArray({ control, name: 'acceptanceCriteria' })
 
     const { mutate, isPending } = useMutation({
         mutationFn: (payload: {
-            agentId: string
+            agentId?: string
+            assigneeId?: string
             title: string
             description?: string
             estimatedHours?: number
@@ -276,10 +286,8 @@ function CreateTaskDialog({
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             toast.success('Task created')
             reset()
-            // also reset new pill states
             setLinks([])
-            setAttachments([])
-            setReferences([])
+            setSelectedAssignee(null)
             onOpenChange(false)
         },
         onError: (err: Error) => {
@@ -289,9 +297,9 @@ function CreateTaskDialog({
 
     const onSubmit = (data: CreateTaskForm) => {
         const hours = data.estimatedHours ? parseFloat(data.estimatedHours) : undefined
-        
         mutate({
-            agentId: data.agentId,
+            agentId: selectedAssignee?.type === 'agent' ? selectedAssignee.id : undefined,
+            assigneeId: selectedAssignee?.type === 'member' ? selectedAssignee.id : undefined,
             title: data.title,
             description: data.description || undefined,
             estimatedHours: hours && !isNaN(hours) ? hours : undefined,
@@ -300,12 +308,6 @@ function CreateTaskDialog({
                 .map(c => ({ text: c.text.trim(), checked: false })),
             links: links.map(l => l.url),
         })
-    }
-    
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (event.target.files) {
-            setAttachments(prev => [...prev, ...Array.from(event.target.files as FileList)])
-        }
     }
 
     return (
@@ -322,45 +324,87 @@ function CreateTaskDialog({
 
                     {/* Section 2 - Properties row */}
                     <div className="flex items-center gap-2 px-6 py-3 border-y border-[#1e1e1e] flex-wrap">
-                        {/* Agent pill */}
-                        <div className="relative group">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                                <Bot className="w-3.5 h-3.5" />
-                                <span>{selectedAgent ? selectedAgent.name : 'No Agent'}</span>
-                            </div>
-                            <select 
-                                className="absolute inset-0 w-full opacity-0 cursor-pointer"
-                                {...register('agentId')}
-                            >
-                                <option value="">Select agent...</option>
-                                {agents.map(agent => (
-                                    <option key={agent.id} value={agent.id}>
-                                        {agent.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        
+                        {/* Assignee picker — members + agents combined */}
+                        <Select
+                            value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : ''}
+                            onValueChange={(val) => {
+                                if (!val) { setSelectedAssignee(null); return }
+                                const colonIdx = val.indexOf(':')
+                                const type = val.slice(0, colonIdx) as 'agent' | 'member'
+                                const id = val.slice(colonIdx + 1)
+                                const opt = assigneeOptions.find(o => o.type === type && o.id === id)
+                                if (opt) setSelectedAssignee(opt)
+                            }}
+                        >
+                            <SelectTrigger className="h-auto px-2.5 py-1 text-xs border-[#1e1e1e] bg-transparent w-auto gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                                {selectedAssignee?.type === 'agent'
+                                    ? <Bot className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    : <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                                <span className="text-muted-foreground">{selectedAssignee?.name ?? 'No Assignee'}</span>
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                                <SelectItem value="">
+                                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                                        <User className="w-3.5 h-3.5" />
+                                        No Assignee
+                                    </div>
+                                </SelectItem>
+                                {members.length > 0 && (
+                                    <>
+                                        <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                        {members.map(m => (
+                                            <SelectItem key={m.userId} value={`member:${m.userId}`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <User className="w-3.5 h-3.5" />
+                                                    {m.userName || m.userEmail}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </>
+                                )}
+                                {activeAgents.length > 0 && (
+                                    <>
+                                        <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                        {activeAgents.map(a => (
+                                            <SelectItem key={a.id} value={`agent:${a.id}`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Bot className="w-3.5 h-3.5" />
+                                                    {a.name}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </>
+                                )}
+                            </SelectContent>
+                        </Select>
+
                         {/* Status pill */}
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
                             <StatusIcon status="backlog" />
                             <span>Backlog</span>
                         </div>
 
-                        {/* Hours pill */}
-                        <div className="relative group">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                                <Clock className="w-3.5 h-3.5" />
-                                <span>{estimatedHoursVal ? `${estimatedHoursVal}h` : 'Est. hours'}</span>
-                            </div>
+                        {/* Est. hours — toggle between pill and inline input */}
+                        {hoursEditing ? (
                             <input
                                 type="number"
                                 min="0"
                                 step="0.5"
-                                className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                                placeholder="hours"
+                                autoFocus
+                                className="w-20 bg-transparent text-xs text-foreground border border-[#3a3a3a] rounded-md px-2.5 py-1 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 {...register('estimatedHours')}
+                                onBlur={() => setHoursEditing(false)}
                             />
-                        </div>
+                        ) : (
+                            <div
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                                onClick={() => setHoursEditing(true)}
+                            >
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>{estimatedHoursVal ? `${estimatedHoursVal}h` : 'Est. hours'}</span>
+                            </div>
+                        )}
 
                         {/* Link pill */}
                         <div
@@ -368,24 +412,30 @@ function CreateTaskDialog({
                             onClick={() => setLinkDialogOpen(true)}
                         >
                             <Link2 className="w-3.5 h-3.5" />
-                            <span>{links.length > 0 ? `${links.length} link${links.length > 1 ? 's' : ''}`: 'Add link'}</span>
+                            <span>{links.length > 0 ? `${links.length} link${links.length > 1 ? 's' : ''}` : 'Add link'}</span>
                         </div>
 
-                        {/* Attachment pill */}
-                        <div
-                            className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-50 cursor-not-allowed border border-[#1e1e1e]"
-                        >
-                            <Paperclip className="w-3.5 h-3.5" />
-                            <span>{attachments.length > 0 ? `${attachments.length} file${attachments.length > 1 ? 's' : ''}` : 'Attach'}</span>
-                        </div>
+                        {/* Attachment — coming soon */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground/40 border border-[#1e1e1e] cursor-default select-none">
+                                    <Paperclip className="w-3.5 h-3.5" />
+                                    <span>Attach</span>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">Coming soon</TooltipContent>
+                        </Tooltip>
 
-                        {/* Reference pill */}
-                        <div
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground opacity-50 cursor-not-allowed border border-[#1e1e1e]"
-                        >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>{references.length > 0 ? `${references.length} ref${references.length > 1 ? 's' : ''}`: 'Add reference'}</span>
-                        </div>
+                        {/* References — coming soon */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground/40 border border-[#1e1e1e] cursor-default select-none">
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>Add reference</span>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">Coming soon</TooltipContent>
+                        </Tooltip>
                     </div>
 
                     {/* Section 3 - Description */}
@@ -447,9 +497,9 @@ function CreateTaskDialog({
                                 <Bot className="w-3.5 h-3.5" />
                                 Move to Todo to start planning
                             </span>
-                            {(errors.title || errors.agentId) && (
+                            {errors.title && (
                                 <span className="text-[10px] text-destructive mt-1">
-                                    {errors.title?.message || errors.agentId?.message}
+                                    {errors.title.message}
                                 </span>
                             )}
                         </div>
@@ -478,7 +528,6 @@ function CreateTaskDialog({
                 </form>
             </DialogContent>
             <AddLinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onAddLink={link => setLinks(p => [...p, link])} />
-            <AddReferenceDialog open={refDialogOpen} onOpenChange={setRefDialogOpen} onAddReference={ref => setReferences(p => [...p, ref])} existingReferences={references} setReferences={setReferences} />
         </Dialog>
     )
 }
@@ -728,7 +777,7 @@ export function BoardView() {
     })
 
     const onDropTask = (taskId: string, newStatus: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => {
-        const tasks = data?.data ?? []
+        const tasks = queryClient.getQueryData<TasksResponse>(['tasks'])?.data ?? []
         const taskToMove = tasks.find(t => t.id === taskId)
         if (!taskToMove) return
 

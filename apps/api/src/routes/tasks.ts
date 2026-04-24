@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { publishToQueue } from '../lib/sqs';
-import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskSteps, taskEvents, taskComments, agents } from '@serverless-saas/database/schema/agents';
+import { users } from '@serverless-saas/database/schema/auth';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
@@ -22,7 +23,8 @@ tasksRoutes.post('/', async (c) => {
     }
 
     const schema = z.object({
-        agentId: z.string().uuid(),
+        agentId: z.string().uuid().optional(),
+        assigneeId: z.string().uuid().optional(),
         title: z.string().min(1).max(200),
         description: z.string().optional(),
         acceptanceCriteria: z.array(z.object({
@@ -38,20 +40,23 @@ tasksRoutes.post('/', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const { agentId, title, description, acceptanceCriteria, estimatedHours, links } = result.data;
+    const { agentId, assigneeId, title, description, acceptanceCriteria, estimatedHours, links } = result.data;
 
-    const agent = (await db.select().from(agents).where(and(
-        eq(agents.id, agentId),
-        eq(agents.tenantId, tenantId),
-    )).limit(1))[0];
+    if (agentId) {
+        const agent = (await db.select().from(agents).where(and(
+            eq(agents.id, agentId),
+            eq(agents.tenantId, tenantId),
+        )).limit(1))[0];
 
-    if (!agent) {
-        return c.json({ error: 'Agent not found in tenant' }, 404);
+        if (!agent) {
+            return c.json({ error: 'Agent not found in tenant' }, 404);
+        }
     }
 
     const [task] = await db.insert(agentTasks).values({
         tenantId,
-        agentId,
+        agentId: agentId ?? null,
+        assigneeId: assigneeId ?? null,
         createdBy: userId,
         title,
         description,
@@ -475,9 +480,11 @@ tasksRoutes.patch('/:taskId', async (c) => {
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
 
-    // backlog → todo: auto-trigger planning
+    // backlog → todo: trigger planning only if an agent is assigned
     if (status === 'todo' && task.status === 'backlog') {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+        if (task.agentId) {
+            await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+        }
         try {
             await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'todo' });
         } catch (wsErr) {
@@ -503,7 +510,58 @@ tasksRoutes.patch('/:taskId', async (c) => {
     return c.json({ data: updatedTask });
 });
 
-// POST /tasks/:taskId/comments — add a comment event to the task
+// GET /tasks/:taskId/comments — list comments for a task
+tasksRoutes.get('/:taskId/comments', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agent_tasks', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const taskId = c.req.param('taskId');
+
+    const task = (await db.select({ id: agentTasks.id }).from(agentTasks).where(and(
+        eq(agentTasks.id, taskId),
+        eq(agentTasks.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!task) {
+        return c.json({ error: 'Task not found' }, 404);
+    }
+
+    const comments = await db
+        .select({
+            id: taskComments.id,
+            taskId: taskComments.taskId,
+            authorId: taskComments.authorId,
+            authorType: taskComments.authorType,
+            authorName: sql<string>`COALESCE(${users.name}, ${agents.name}, 'Unknown')`,
+            content: taskComments.content,
+            parentId: taskComments.parentId,
+            createdAt: taskComments.createdAt,
+            updatedAt: taskComments.updatedAt,
+        })
+        .from(taskComments)
+        .leftJoin(users, and(
+            eq(taskComments.authorId, users.id),
+            eq(taskComments.authorType, 'member'),
+        ))
+        .leftJoin(agents, and(
+            sql`${taskComments.authorId} = ${agents.id}`,
+            eq(taskComments.authorType, 'agent'),
+        ))
+        .where(and(
+            eq(taskComments.taskId, taskId),
+            eq(taskComments.tenantId, tenantId),
+        ))
+        .orderBy(asc(taskComments.createdAt));
+
+    return c.json({ data: comments });
+});
+
+// POST /tasks/:taskId/comments — post a comment as the current user
 tasksRoutes.post('/:taskId/comments', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
@@ -517,7 +575,8 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
     const taskId = c.req.param('taskId');
 
     const schema = z.object({
-        comment: z.string().min(1),
+        content: z.string().min(1),
+        parentId: z.string().uuid().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -534,16 +593,43 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const [event] = await db.insert(taskEvents).values({
+    const [comment] = await db.insert(taskComments).values({
+        taskId,
+        tenantId,
+        authorId: userId,
+        authorType: 'member',
+        content: result.data.content,
+        parentId: result.data.parentId ?? null,
+    }).returning();
+
+    await db.insert(taskEvents).values({
         taskId,
         tenantId,
         actorType: 'human',
         actorId: userId,
-        eventType: 'comment',
-        payload: { comment: result.data.comment },
-    }).returning();
+        eventType: 'comment_added',
+        payload: { commentId: comment.id },
+    });
 
-    return c.json({ data: event }, 201);
+    try {
+        await pushWebSocketEvent(tenantId, {
+            type: 'task.comment.added',
+            taskId,
+            comment,
+        });
+    } catch (wsErr) {
+        console.error('WS push failed (non-fatal):', wsErr);
+    }
+
+    if (task.agentId) {
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
+            type: 'plan_task',
+            taskId,
+            triggerCommentId: comment.id,
+        });
+    }
+
+    return c.json({ data: comment }, 201);
 });
 
 // POST /tasks/:taskId/vote — upvote or downvote a task

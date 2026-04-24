@@ -65,12 +65,14 @@ export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
 export const taskStatusEnum = pgEnum('task_status', ['backlog', 'todo', 'planning', 'awaiting_approval', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']);
 export const taskStepStatusEnum = pgEnum('task_step_status', ['pending', 'running', 'done', 'skipped', 'failed']);
 export const taskEventActorTypeEnum = pgEnum('task_event_actor_type', ['agent', 'human', 'system']);
-export const taskEventTypeEnum = pgEnum('task_event_type', ['status_changed', 'step_completed', 'step_failed', 'clarification_requested', 'clarification_answered', 'plan_proposed', 'plan_approved', 'plan_rejected', 'task_cancelled', 'comment']);
+export const taskEventTypeEnum = pgEnum('task_event_type', ['status_changed', 'step_completed', 'step_failed', 'clarification_requested', 'clarification_answered', 'plan_proposed', 'plan_approved', 'plan_rejected', 'task_cancelled', 'comment', 'comment_added']);
+export const taskCommentAuthorTypeEnum = pgEnum('task_comment_author_type', ['member', 'agent']);
 
 export const agentTasks = pgTable('agent_tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
-  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  agentId: uuid('agent_id').references(() => agents.id),
+  assigneeId: uuid('assignee_id').references(() => users.id),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   title: text('title').notNull(),
   description: text('description'),
@@ -135,4 +137,19 @@ export const taskEvents = pgTable('task_events', {
 }, (t) => ({
   taskCreatedAtIdx: index('task_events_task_created_at_idx').on(t.taskId, t.createdAt),
   tenantEventTypeIdx: index('task_events_tenant_event_type_idx').on(t.tenantId, t.eventType),
+}));
+
+export const taskComments = pgTable('task_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskId: uuid('task_id').notNull().references(() => agentTasks.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  authorId: uuid('author_id').notNull(),
+  authorType: taskCommentAuthorTypeEnum('author_type').notNull(),
+  content: text('content').notNull(),
+  parentId: uuid('parent_id'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  taskIdIdx: index('task_comments_task_id_idx').on(t.taskId),
+  tenantTaskIdx: index('task_comments_tenant_task_idx').on(t.tenantId, t.taskId),
 }));
