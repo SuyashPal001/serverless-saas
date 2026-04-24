@@ -53,7 +53,7 @@ type Task = {
     assigneeId: string | null
     title: string
     description?: string | null
-    status: 'backlog' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    status: 'backlog' | 'todo' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
     acceptanceCriteria?: AcceptanceCriterion[] | null
@@ -124,11 +124,12 @@ type TaskDetailResponse = {
 
 const STATUS_CONFIG = {
     backlog:     { label: 'Backlog',     color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
-    ready:       { label: 'Ready',       color: '#3B82F6', bg: 'bg-primary/10',    text: 'text-primary' },
+    todo:        { label: 'Todo',        color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
     in_progress: { label: 'In Progress', color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
-    review:      { label: 'Review',      color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
+    review:      { label: 'Review',      color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
     blocked:     { label: 'Blocked',     color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
     done:        { label: 'Done',        color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+    ready:       { label: 'Ready',       color: '#3B82F6', bg: 'bg-primary/10',    text: 'text-primary' },
     cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
 } as const
 
@@ -149,12 +150,13 @@ function formatRelativeTime(dateString: string): string {
 const StatusIcon = ({ status, className }: { status: string; className?: string }) => {
   const configs = {
     backlog: <circle cx="12" cy="12" r="9" stroke="#6B7280" strokeWidth="1.5" strokeDasharray="4 2" fill="none"/>,
+    todo: <circle cx="12" cy="12" r="9" stroke="#3B82F6" strokeWidth="1.5" fill="none"/>,
     ready: <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" fill="none"/>,
     in_progress: <>
       <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
       <circle cx="12" cy="12" r="4" fill="#F59E0B"/>
     </>,
-    review: <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>,
+    review: <circle cx="12" cy="12" r="9" stroke="#8B5CF6" strokeWidth="1.5" fill="none"/>,
     blocked: <circle cx="12" cy="12" r="9" stroke="#EF4444" strokeWidth="1.5" fill="none"/>,
     done: <>
       <circle cx="12" cy="12" r="9" fill="#10B981"/>
