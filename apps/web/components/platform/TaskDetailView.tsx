@@ -54,6 +54,7 @@ type Task = {
     title: string
     description?: string | null
     status: 'backlog' | 'todo' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    priority: 'low' | 'medium' | 'high' | 'urgent'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
     acceptanceCriteria?: AcceptanceCriterion[] | null
@@ -133,6 +134,13 @@ const STATUS_CONFIG = {
     cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
 } as const
 
+const PRIORITY_CONFIG = {
+    low:    { label: 'Low',    color: '#6B7280', text: 'text-gray-400' },
+    medium: { label: 'Medium', color: '#3B82F6', text: 'text-blue-400' },
+    high:   { label: 'High',   color: '#F59E0B', text: 'text-amber-400' },
+    urgent: { label: 'Urgent', color: '#EF4444', text: 'text-red-400' },
+} as const
+
 // --- HELPER FUNCTIONS ---
 function formatRelativeTime(dateString: string): string {
     const date = new Date(dateString)
@@ -168,6 +176,12 @@ const StatusIcon = ({ status, className }: { status: string; className?: string 
     <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className={className}>
       {configs[status as keyof typeof configs] ?? configs.backlog}
     </svg>
+  )
+}
+
+const PriorityIcon = ({ priority, className }: { priority: string; className?: string }) => {
+  return (
+    <div className={cn("w-2 h-2 rounded-full", className)} style={{ backgroundColor: PRIORITY_CONFIG[priority as keyof typeof PRIORITY_CONFIG]?.color }} />
   )
 }
 
@@ -707,6 +721,7 @@ export function TaskDetailView() {
             title: string
             description: string | null
             status: string
+            priority: string
             estimatedHours: number | null
             acceptanceCriteria: { text: string; checked: boolean }[]
             dueDate: string | null
@@ -1419,6 +1434,35 @@ export function TaskDetailView() {
                                             <div className="flex items-center gap-2">
                                                 <StatusIcon status={s} />
                                                 <span className={STATUS_CONFIG[s].text}>{STATUS_CONFIG[s].label}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
+                        <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
+                            <PriorityIcon priority={task.priority} /> 
+                            <span className="text-xs">Priority</span>
+                        </div>
+                        <div className="text-xs text-foreground flex-1">
+                            <Select
+                                value={task.priority}
+                                onValueChange={(val) => patchTask.mutate({ priority: val })}
+                            >
+                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                                    <span className={cn("font-medium", PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG]?.text)}>
+                                        {PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG]?.label}
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                                    {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
+                                        <SelectItem key={p} value={p} className="text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <PriorityIcon priority={p} />
+                                                <span className={PRIORITY_CONFIG[p].text}>{PRIORITY_CONFIG[p].label}</span>
                                             </div>
                                         </SelectItem>
                                     ))}

@@ -63,6 +63,7 @@ export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
 // ── Agent Scrum Board ─────────────────────────────────────────────────────────
 
 export const taskStatusEnum = pgEnum('task_status', ['backlog', 'todo', 'planning', 'awaiting_approval', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled']);
+export const taskPriorityEnum = pgEnum('task_priority', ['low', 'medium', 'high', 'urgent']);
 export const taskStepStatusEnum = pgEnum('task_step_status', ['pending', 'running', 'done', 'skipped', 'failed']);
 export const taskEventActorTypeEnum = pgEnum('task_event_actor_type', ['agent', 'human', 'system']);
 export const taskEventTypeEnum = pgEnum('task_event_type', ['status_changed', 'step_completed', 'step_failed', 'clarification_requested', 'clarification_answered', 'plan_proposed', 'plan_approved', 'plan_rejected', 'task_cancelled', 'comment', 'comment_added']);
@@ -78,6 +79,7 @@ export const agentTasks = pgTable('agent_tasks', {
   description: text('description'),
   acceptanceCriteria: jsonb('acceptance_criteria').notNull().default([]),
   status: taskStatusEnum('status').notNull().default('backlog'),
+  priority: taskPriorityEnum('priority').default('medium'),
   estimatedHours: decimal('estimated_hours', { precision: 5, scale: 2 }),
   confidenceScore: decimal('confidence_score', { precision: 3, scale: 2 }),
   planApprovedAt: timestamp('plan_approved_at'),

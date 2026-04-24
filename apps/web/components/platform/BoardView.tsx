@@ -54,6 +54,7 @@ type Task = {
     title: string
     description?: string | null
     status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    priority: 'low' | 'medium' | 'high' | 'urgent'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
     totalSteps: number
@@ -84,6 +85,13 @@ const STATUS_CONFIG = {
     blocked:     { label: 'Blocked',     color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
     done:        { label: 'Done',        color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
     cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
+} as const
+
+const PRIORITY_CONFIG = {
+    low:    { label: 'Low',    color: '#6B7280', text: 'text-gray-400' },
+    medium: { label: 'Medium', color: '#3B82F6', text: 'text-blue-400' },
+    high:   { label: 'High',   color: '#F59E0B', text: 'text-amber-400' },
+    urgent: { label: 'Urgent', color: '#EF4444', text: 'text-red-400' },
 } as const
 
 const COLUMNS: Task['status'][] = ['backlog', 'todo', 'in_progress', 'review', 'done', 'blocked']
@@ -189,7 +197,10 @@ function TaskCard({
             <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border transition-colors relative">
                 {/* Row 1 */}
                 <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground/60 font-medium">TASK-{taskNumber}</span>
+                    <div className="flex items-center gap-2">
+                        <div className={cn("w-1.5 h-1.5 rounded-full", task.priority === 'urgent' && "animate-pulse")} style={{ backgroundColor: PRIORITY_CONFIG[task.priority]?.color }} />
+                        <span className="text-xs text-muted-foreground/60 font-medium uppercase tracking-tighter">TASK-{taskNumber}</span>
+                    </div>
                     <MoreHorizontal className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
 
