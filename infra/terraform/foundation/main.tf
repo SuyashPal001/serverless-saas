@@ -49,8 +49,8 @@ module "cognito" {
       ]
       allowed_oauth_flows          = ["code"]
       allowed_oauth_scopes         = ["email", "openid", "profile"]
-      callback_urls                = ["http://localhost:3000/auth/callback"]
-      logout_urls                  = ["http://localhost:3000"]
+      callback_urls                = var.cognito_callback_urls
+      logout_urls                  = var.cognito_logout_urls
       supported_identity_providers = ["COGNITO","Google"]
       read_attributes              = ["email", "name", "custom:tenantId", "custom:role", "custom:plan"]
       write_attributes             = ["email", "name"]

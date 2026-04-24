@@ -36,6 +36,18 @@ variable "cognito_domain_prefix" {
   type        = string
 }
 
+variable "cognito_callback_urls" {
+  description = "Allowed callback URLs for Cognito web client"
+  type        = list(string)
+  default     = ["http://localhost:3000/auth/callback"]
+}
+
+variable "cognito_logout_urls" {
+  description = "Allowed logout URLs for Cognito web client"
+  type        = list(string)
+  default     = ["http://localhost:3000"]
+}
+
 variable "pre_token_generation_lambda_arn" {
   description = "ARN of the Pre Token Generation Lambda. Written by SAM, read here."
   type        = string
