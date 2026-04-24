@@ -31,6 +31,10 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /serverless-saas/dev/iam/foundation-websocket-role-arn
 
+  TaskWorkerRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/task-worker-role-arn
+
 Globals:
   Function:
     Runtime: nodejs20.x
@@ -172,7 +176,7 @@ Resources:
       Handler: taskWorker.handler
       Timeout: 300
       MemorySize: 512
-      Role: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/iam/task-worker-role-arn}}"
+      Role: !Ref TaskWorkerRoleArn
       Environment:
         Variables:
           LAMBDA_TYPE: task-worker
