@@ -85,6 +85,18 @@ type TaskEvent = {
     createdAt: string
 }
 
+type TaskComment = {
+    id: string
+    taskId: string
+    authorId: string
+    authorType: 'member' | 'agent'
+    authorName: string
+    content: string
+    parentId: string | null
+    createdAt: string
+    updatedAt: string
+}
+
 type TaskDetailResponse = {
     data: {
         task: Task
@@ -615,8 +627,7 @@ export function TaskDetailView() {
     const [titleValue, setTitleValue] = useState('')
     const [isEditingDescription, setIsEditingDescription] = useState(false)
     const [descriptionValue, setDescriptionValue] = useState('')
-    const [comment, setComment] = useState('')
-    const [commentResetKey, setCommentResetKey] = useState(0)
+    const [commentText, setCommentText] = useState('')
     const [localCriteria, setLocalCriteria] = useState<AcceptanceCriterion[]>([])
     const [isEditingHours, setIsEditingHours] = useState(false)
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
@@ -698,15 +709,43 @@ export function TaskDetailView() {
         setTimeout(() => newLinkInputRef.current?.focus(), 300)
     }
 
-    const commentMutation = useMutation({
-        mutationFn: (text: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { comment: text }),
-        onSuccess: () => {
-            setComment('')
-            setCommentResetKey(k => k + 1)  // triggers TipTap editor reset
-            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
-            toast.success('Comment posted')
+    const { data: commentsData } = useQuery<{ data: TaskComment[] }>({
+        queryKey: ['task-comments', taskId],
+        queryFn: () => api.get<{ data: TaskComment[] }>(`/api/v1/tasks/${taskId}/comments`),
+    })
+    const comments = commentsData?.data ?? []
+
+    const addComment = useMutation({
+        mutationFn: (content: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { content }),
+        onMutate: async (content) => {
+            await queryClient.cancelQueries({ queryKey: ['task-comments', taskId] })
+            const prev = queryClient.getQueryData<{ data: TaskComment[] }>(['task-comments', taskId])
+            const optimistic: TaskComment = {
+                id: `optimistic-${Date.now()}`,
+                taskId,
+                authorId: 'me',
+                authorType: 'member',
+                authorName: 'You',
+                content,
+                parentId: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            }
+            queryClient.setQueryData<{ data: TaskComment[] }>(['task-comments', taskId], old => ({
+                data: [...(old?.data ?? []), optimistic],
+            }))
+            return { prev }
         },
-        onError: (err: any) => toast.error(err.message || 'Failed to post comment'),
+        onError: (err: any, _, context) => {
+            if (context?.prev) queryClient.setQueryData(['task-comments', taskId], context.prev)
+            toast.error(err.message || 'Failed to post comment')
+        },
+        onSuccess: () => {
+            setCommentText('')
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] })
+        },
     })
 
     const { mutate: approvePlan } = useMutation({
@@ -1187,30 +1226,85 @@ export function TaskDetailView() {
                                 )
                             })}
                         </div>
-                        <div className="mt-8 flex items-start gap-4 pt-6 border-t border-[#1e1e1e]">
-                           <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
-                               <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-xs font-medium text-foreground">U</div>
-                               <span className="text-[10px] text-muted-foreground/60 font-medium">You</span>
-                           </div>
-                           <div className="flex-1">
-                               <RichTextEditor 
-                                   value={comment}
-                                   onChange={setComment}
-                                   placeholder="Add a comment..."
-                                   minHeight="80px"
-                                   resetKey={commentResetKey}
-                               />
-                               <div className="flex justify-end mt-2">
-                                   <Button 
-                                       size="sm" 
-                                       disabled={!comment.trim() || commentMutation.isPending}
-                                       className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
-                                       onClick={() => commentMutation.mutate(comment)}
-                                   >
-                                       {commentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Comment'}
-                                   </Button>
-                               </div>
-                           </div>
+                        {/* ── COMMENTS SECTION ── */}
+                        <div className="mt-8 border-t border-[#1e1e1e] pt-6">
+                            <h3 className="text-sm font-medium text-foreground mb-4 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                                Comments
+                                {comments.length > 0 && (
+                                    <span className="text-[10px] text-muted-foreground/60 bg-[#1a1a1a] px-1.5 py-0.5 rounded border border-[#2a2a2a]">{comments.length}</span>
+                                )}
+                            </h3>
+
+                            {comments.length === 0 ? (
+                                <p className="text-sm text-muted-foreground/40 italic py-4">No comments yet. Be the first to leave a note.</p>
+                            ) : (
+                                <div className="space-y-4 mb-6">
+                                    {comments.map(c => (
+                                        <div
+                                            key={c.id}
+                                            className={cn(
+                                                'flex items-start gap-3',
+                                                c.authorType === 'agent' && 'pl-3 border-l-2 border-primary/20',
+                                            )}
+                                        >
+                                            {c.authorType === 'agent' ? (
+                                                <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                                                    <Bot className="w-3.5 h-3.5 text-primary" />
+                                                </div>
+                                            ) : (
+                                                <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0 text-[10px] font-semibold text-foreground">
+                                                    {(c.authorName ?? 'U').charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs font-medium text-foreground">{c.authorName ?? 'Unknown'}</span>
+                                                    <span className="text-[10px] text-muted-foreground/50">{formatRelativeTime(c.createdAt)} ago</span>
+                                                </div>
+                                                <div className={cn(
+                                                    'text-sm text-foreground/80 leading-relaxed rounded-lg px-3 py-2',
+                                                    c.authorType === 'agent'
+                                                        ? 'bg-primary/5 border border-primary/10'
+                                                        : 'bg-[#161616] border border-[#1e1e1e]',
+                                                )}>
+                                                    {c.content}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="flex items-start gap-3 pt-4 border-t border-[#1e1e1e]">
+                                <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0 text-[10px] font-semibold text-foreground mt-0.5">
+                                    U
+                                </div>
+                                <div className="flex-1">
+                                    <textarea
+                                        value={commentText}
+                                        onChange={e => setCommentText(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && commentText.trim()) {
+                                                addComment.mutate(commentText.trim())
+                                            }
+                                        }}
+                                        placeholder="Add a comment… (⌘+Enter to send)"
+                                        rows={2}
+                                        className="w-full bg-[#111] border border-[#1e1e1e] focus:border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/30 outline-none resize-none transition-colors"
+                                    />
+                                    <div className="flex justify-end mt-2">
+                                        <Button
+                                            size="sm"
+                                            disabled={!commentText.trim() || addComment.isPending}
+                                            className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
+                                            onClick={() => addComment.mutate(commentText.trim())}
+                                        >
+                                            {addComment.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Comment'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -18,7 +18,23 @@ interface TaskStatusChangedEvent {
   status: string;
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent;
+interface TaskCommentAddedEvent {
+  type: 'task.comment.added';
+  taskId: string;
+  comment: {
+    id: string;
+    taskId: string;
+    authorId: string;
+    authorType: 'member' | 'agent';
+    authorName: string;
+    content: string;
+    parentId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -66,7 +82,7 @@ export function useTaskStream(taskId: string | undefined) {
             const message = JSON.parse(event.data) as (TaskWsEvent | { type: 'pong'; taskId?: string });
             if (message.type === 'pong') return;
 
-            if (message.taskId !== taskId) return;
+            if ('taskId' in message && message.taskId !== taskId) return;
 
             if (message.type === 'task.step.updated') {
               const ev = message as TaskStepUpdatedEvent;
@@ -91,6 +107,16 @@ export function useTaskStream(taskId: string | undefined) {
                       ),
                     },
                   };
+                }
+              );
+            } else if (message.type === 'task.comment.added') {
+              const ev = message as TaskCommentAddedEvent;
+              queryClient.setQueryData(
+                ['task-comments', taskId],
+                (old: any) => {
+                  const existing: any[] = old?.data ?? [];
+                  if (existing.some((c: any) => c.id === ev.comment.id)) return old;
+                  return { ...old, data: [...existing, ev.comment] };
                 }
               );
             } else if (message.type === 'task.status.changed') {
