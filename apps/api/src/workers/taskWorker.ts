@@ -3,11 +3,18 @@ import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema';
 import { eq } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
+import { initRuntimeSecrets } from '../lib/secrets';
 
 const RELAY_URL = process.env.RELAY_URL!;
-const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY!;
+const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
+
+let secretsInitialised = false;
 
 export const handler: SQSHandler = async (event) => {
+  if (!secretsInitialised) {
+    await initRuntimeSecrets();
+    secretsInitialised = true;
+  }
   for (const record of event.Records) {
     const message = JSON.parse(record.body);
     const { type, taskId } = message;
@@ -30,7 +37,7 @@ async function handlePlanning(taskId: string) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-internal-service-key': INTERNAL_SERVICE_KEY,
+      'x-internal-service-key': INTERNAL_SERVICE_KEY(),
     },
     body: JSON.stringify({
       taskId: task.id,
