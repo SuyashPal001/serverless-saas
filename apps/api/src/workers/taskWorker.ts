@@ -2,7 +2,7 @@ import type { SQSHandler } from 'aws-lambda';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '@serverless-saas/database/schema';
-import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema';
+import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema';
 import { eq, asc } from 'drizzle-orm';
 
 // Import schema from TypeScript source so esbuild bundles fresh — avoids stale dist/schema
@@ -39,6 +39,10 @@ async function handlePlanning(taskId: string, extraContext?: string) {
   });
   if (!task) throw new Error(`Task not found: ${taskId}`);
 
+  const agent = task.agentId
+    ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
+    : null;
+
   const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
     method: 'POST',
     headers: {
@@ -52,6 +56,7 @@ async function handlePlanning(taskId: string, extraContext?: string) {
       title: task.title,
       description: task.description,
       acceptanceCriteria: task.acceptanceCriteria,
+      agentName: agent?.name ?? null,
       ...(extraContext ? { extraContext } : {}),
     }),
   });
@@ -101,6 +106,10 @@ async function handleExecution(taskId: string) {
   });
   if (!task) throw new Error(`Task not found: ${taskId}`);
 
+  const agent = task.agentId
+    ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
+    : null;
+
   const steps = await db.select()
     .from(taskSteps)
     .where(eq(taskSteps.taskId, taskId))
@@ -116,6 +125,9 @@ async function handleExecution(taskId: string) {
       taskId: task.id,
       agentId: task.agentId,
       tenantId: task.tenantId,
+      taskTitle: task.title,
+      taskDescription: task.description ?? '',
+      agentName: agent?.name ?? null,
       steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
         id: s.id,
         stepNumber: s.stepNumber,
