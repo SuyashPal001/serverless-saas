@@ -922,9 +922,15 @@ export function TaskDetailView() {
     }
 
     const generatePlan = useMutation({
-        mutationFn: () => api.post(`/api/v1/tasks/${taskId}/plan`),
+        mutationFn: () => {
+            console.log('Generate Plan clicked, taskId:', taskId, 'task.id:', task?.id, 'status:', task?.status, 'agentId:', task?.agentId)
+            return api.post(`/api/v1/tasks/${taskId}/plan`)
+        },
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
-        onError: (err: any) => toast.error(err?.data?.error || 'Failed to generate plan'),
+        onError: (err: any) => {
+            console.error('Generate Plan error:', err)
+            toast.error(err?.data?.error || 'Failed to generate plan')
+        },
     })
 
     const { mutate: deleteTask } = useMutation({
