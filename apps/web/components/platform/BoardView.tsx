@@ -654,7 +654,7 @@ function CreateTaskDialog({
                             <Button 
                                 type="submit" 
                                 disabled={isPending}
-                                className="bg-[#1e40af] hover:bg-[#1d4ed8] text-white text-sm px-4 py-2 rounded-lg font-medium"
+                                className="bg-[#f5f5f5] hover:bg-white text-[#0f0f0f] text-sm px-4 py-2 rounded-lg font-medium"
                             >
                                 {isPending ? (
                                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
