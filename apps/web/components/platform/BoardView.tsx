@@ -71,7 +71,7 @@ type Task = {
 
 type TasksResponse = { data: Task[] }
 type AgentsResponse = { data: { id: string; name: string; status: string }[] }
-type MembersResponse = { data: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
+type MembersResponse = { members: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
 
 type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; id: string; name: string }
 
@@ -156,7 +156,7 @@ function TaskCard({
     task: Task; 
     tenantSlug: string; 
     taskNumber: number;
-    members: MembersResponse['data'];
+    members: MembersResponse['members'];
     agents: AgentsResponse['data'];
 }) {
     const score = task.confidenceScore != null ? Number(task.confidenceScore) : null
@@ -305,7 +305,7 @@ function CreateTaskDialog({
     })
 
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
-    const members = membersData?.data ?? []
+    const members = membersData?.members ?? []
 
     const assigneeOptions: Assignee[] = [
         ...members.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
@@ -781,7 +781,7 @@ function KanbanColumn({
     tasks: Task[]
     tenantSlug: string
     taskNumberMap: Map<string, number>
-    members: MembersResponse['data']
+    members: MembersResponse['members']
     agents: AgentsResponse['data']
     onAddTask: () => void
     onDropTask: (taskId: string, status: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => void
@@ -978,7 +978,7 @@ export function BoardView() {
 
     const tasks = data?.data ?? []
     const agents = agentsData?.data ?? []
-    const members = membersData?.data ?? []
+    const members = membersData?.members ?? []
 
     const tasksByCreatedAt = [...tasks].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     const taskNumberMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
