@@ -1207,13 +1207,16 @@ export function TaskDetailView() {
 
                       {/* Start date pill */}
                       {isEditing ? (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a] cursor-pointer">
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />
+                          <span className="pointer-events-none">
+                            {draftStartedAt ? new Date(draftStartedAt).toLocaleDateString() : 'Start date'}
+                          </span>
                           <input
                             type="date"
                             value={draftStartedAt}
                             onChange={(e) => setDraftStartedAt(e.target.value)}
-                            className="bg-transparent outline-none text-foreground text-xs cursor-pointer"
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
                           />
                         </div>
                       ) : (
@@ -1237,13 +1240,16 @@ export function TaskDetailView() {
 
                       {/* Due date pill */}
                       {isEditing ? (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
-                          <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a] cursor-pointer">
+                          <CalendarClock className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />
+                          <span className="pointer-events-none">
+                            {draftDueDate ? new Date(draftDueDate).toLocaleDateString() : 'Due date'}
+                          </span>
                           <input
                             type="date"
                             value={draftDueDate}
                             onChange={(e) => setDraftDueDate(e.target.value)}
-                            className="bg-transparent outline-none text-foreground text-xs cursor-pointer"
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
                           />
                         </div>
                       ) : (
