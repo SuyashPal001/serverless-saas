@@ -455,6 +455,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         assigneeId: z.string().uuid().nullable().optional(),
         agentId: z.string().uuid().nullable().optional(),
+        referenceText: z.string().nullable().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -471,7 +472,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId, referenceText } = result.data;
 
     if (agentId) {
         const agent = (await db.select().from(agents).where(and(
@@ -503,6 +504,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (priority !== undefined) updateValues.priority = priority;
     if (assigneeId !== undefined) updateValues.assigneeId = assigneeId;
     if (agentId !== undefined) updateValues.agentId = agentId;
+    if (referenceText !== undefined) updateValues.referenceText = referenceText;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)

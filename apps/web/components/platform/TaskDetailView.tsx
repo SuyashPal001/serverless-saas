@@ -662,6 +662,7 @@ export function TaskDetailView() {
     const dueDateRef = useRef<HTMLInputElement>(null)
     const attachFileInputRef = useRef<HTMLInputElement>(null)
     const newLinkInputRef = useRef<HTMLInputElement>(null)
+    const referenceTextRef = useRef<HTMLTextAreaElement>(null)
 
     // Edit mode
     const [isEditing, setIsEditing] = useState(false)
@@ -737,6 +738,7 @@ export function TaskDetailView() {
             attachmentFileIds: string[]
             assigneeId: string | null
             agentId: string | null
+            referenceText: string | null
         }>) => {
             console.log('[patchTask]', updates, new Error().stack)
             return api.patch(`/api/v1/tasks/${taskId}`, updates)
@@ -786,6 +788,11 @@ export function TaskDetailView() {
     const focusLinkInput = () => {
         document.getElementById('links-section')?.scrollIntoView({ behavior: 'smooth' })
         setTimeout(() => newLinkInputRef.current?.focus(), 300)
+    }
+
+    const focusReferenceInput = () => {
+        document.getElementById('reference-section')?.scrollIntoView({ behavior: 'smooth' })
+        setTimeout(() => referenceTextRef.current?.focus(), 300)
     }
 
     const { data: commentsData } = useQuery<{ data: TaskComment[] }>({
@@ -1208,16 +1215,14 @@ export function TaskDetailView() {
 
                       {/* Start date pill */}
                       {isEditing ? (
-                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a] cursor-pointer">
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />
-                          <span className="pointer-events-none">
-                            {draftStartedAt ? new Date(draftStartedAt).toLocaleDateString() : 'Start date'}
-                          </span>
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
                           <input
                             type="date"
                             value={draftStartedAt}
                             onChange={(e) => setDraftStartedAt(e.target.value)}
-                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                            className="bg-transparent outline-none text-xs text-foreground cursor-pointer"
+                            placeholder="Start date"
                           />
                         </div>
                       ) : (
@@ -1241,16 +1246,14 @@ export function TaskDetailView() {
 
                       {/* Due date pill */}
                       {isEditing ? (
-                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a] cursor-pointer">
-                          <CalendarClock className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />
-                          <span className="pointer-events-none">
-                            {draftDueDate ? new Date(draftDueDate).toLocaleDateString() : 'Due date'}
-                          </span>
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
+                          <CalendarClock className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
                           <input
                             type="date"
                             value={draftDueDate}
                             onChange={(e) => setDraftDueDate(e.target.value)}
-                            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                            className="bg-transparent outline-none text-xs text-foreground cursor-pointer"
+                            placeholder="Due date"
                           />
                         </div>
                       ) : (
@@ -1346,7 +1349,7 @@ export function TaskDetailView() {
                             <span>{isUploadingAttachment ? 'Uploading…' : 'Attach'}</span>
                         </button>
                         <button
-                            onClick={focusLinkInput}
+                            onClick={focusReferenceInput}
                             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
                         >
                             <FileText className="w-3.5 h-3.5" />
@@ -1877,8 +1880,8 @@ export function TaskDetailView() {
                                             className="text-[11px] text-primary hover:underline truncate flex-1 text-left"
                                             onClick={async () => {
                                                 try {
-                                                    const res = await api.get<{ presignedUrl: string }>(`/api/v1/files/${fileId}/presigned-url`)
-                                                    window.open(res.presignedUrl, '_blank')
+                                                    const res = await api.get<{ data: { downloadUrl: string } }>(`/api/v1/files/${fileId}/download`)
+                                                    window.open(res.data.downloadUrl, '_blank')
                                                 } catch {
                                                     toast.error('Failed to open attachment')
                                                 }
@@ -1902,17 +1905,25 @@ export function TaskDetailView() {
                         )}
                     </div>
 
-                    {task.referenceText && (
-                        <div className="flex flex-col py-2.5 border-b border-[#1a1a1a]">
-                            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                                <FileText className="w-3.5 h-3.5 opacity-50" />
-                                <span className="text-xs">Reference</span>
-                            </div>
-                            <pre className="text-[11px] text-foreground/70 leading-relaxed whitespace-pre-wrap break-words font-sans bg-[#111] border border-[#1e1e1e] rounded-lg p-2.5 max-h-[120px] overflow-y-auto">
-                                {task.referenceText}
-                            </pre>
+                    <div id="reference-section" className="flex flex-col py-2.5 border-b border-[#1a1a1a]">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                            <FileText className="w-3.5 h-3.5 opacity-50" />
+                            <span className="text-xs">Reference</span>
                         </div>
-                    )}
+                        <textarea
+                            ref={referenceTextRef}
+                            defaultValue={task.referenceText ?? ''}
+                            onBlur={(e) => {
+                                const val = e.target.value.trim()
+                                if (val !== (task.referenceText ?? '').trim()) {
+                                    patchTask.mutate({ referenceText: val || null })
+                                }
+                            }}
+                            placeholder="Add reference notes, markdown content, or context…"
+                            rows={3}
+                            className="text-[11px] text-foreground/80 leading-relaxed bg-[#111] border border-[#1e1e1e] rounded-lg p-2.5 outline-none focus:border-primary/40 resize-none w-full placeholder:text-muted-foreground/30 transition-colors"
+                        />
+                    </div>
                 </div>
                 
                 <div className="my-5 border-t border-[#1e1e1e]"></div>
