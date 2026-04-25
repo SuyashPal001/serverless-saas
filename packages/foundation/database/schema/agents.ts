@@ -91,7 +91,7 @@ export const agentTasks = pgTable('agent_tasks', {
   downvotes: integer('downvotes').notNull().default(0),
   referenceText: text('reference_text'),
   links: jsonb('links').$type<string[]>().default([]),
-  attachmentFileIds: jsonb('attachment_file_ids').$type<string[]>().notNull().default([]),
+  attachmentFileIds: text('attachment_file_ids').array().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),

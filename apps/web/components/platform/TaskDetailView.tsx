@@ -32,15 +32,10 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
 
 
 // --- TYPES ---
@@ -71,7 +66,7 @@ type Task = {
 }
 
 type AgentsResponse = { data: { id: string; name: string; status: string }[] }
-type MembersResponse = { data: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
+type MembersResponse = { members: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
 
 type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; id: string; name: string }
 
@@ -689,7 +684,7 @@ export function TaskDetailView() {
     })
 
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
-    const members = membersData?.data ?? []
+    const members = membersData?.members ?? []
 
     const assigneeOptions: Assignee[] = [
         ...members.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
@@ -862,7 +857,9 @@ export function TaskDetailView() {
         setDraftStatus(task.status)
         setDraftPriority(task.priority)
         setDraftAssigneeKey(
-            selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'
+            task.assigneeId ? `member:${task.assigneeId}`
+            : task.agentId ? `agent:${task.agentId}`
+            : 'unassigned'
         )
         setDraftStartedAt(task.startedAt ? new Date(task.startedAt).toISOString().split('T')[0] : '')
         setDraftDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '')
@@ -1069,21 +1066,22 @@ export function TaskDetailView() {
                       
                       {/* Status pill */}
                       {isEditing ? (
-                        <Select value={draftStatus} onValueChange={(v) => setDraftStatus(v as Task['status'])}>
-                          <SelectTrigger className="h-auto px-2.5 py-1 text-xs border border-[#1e1e1e] bg-transparent rounded-md gap-1.5 [&>svg]:h-3 [&>svg]:w-3">
-                            <div className="flex items-center gap-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-[#1e1e1e] bg-[#1a1a1a] hover:bg-[#222] transition-colors cursor-pointer select-none outline-none">
                               <StatusIcon status={draftStatus} />
                               <span className={STATUS_CONFIG[draftStatus]?.text}>{STATUS_CONFIG[draftStatus]?.label}</span>
+                              <ChevronDown className="w-3 h-3 opacity-40" />
                             </div>
-                          </SelectTrigger>
-                          <SelectContent className="bg-[#141414] border-[#2a2a2a]">
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="bg-[#141414] border-[#2a2a2a]" align="start">
                             {(Object.entries(STATUS_CONFIG) as [Task['status'], typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([s, cfg]) => (
-                              <SelectItem key={s} value={s} className="text-xs cursor-pointer">
-                                <div className="flex items-center gap-2"><StatusIcon status={s} /><span className={cfg.text}>{cfg.label}</span></div>
-                              </SelectItem>
+                              <DropdownMenuItem key={s} className="gap-2 text-xs cursor-pointer" onSelect={() => setDraftStatus(s)}>
+                                <StatusIcon status={s} /><span className={cfg.text}>{cfg.label}</span>
+                              </DropdownMenuItem>
                             ))}
-                          </SelectContent>
-                        </Select>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1111,43 +1109,46 @@ export function TaskDetailView() {
 
                       {/* Assignee pill */}
                       {isEditing ? (
-                        <Select value={draftAssigneeKey} onValueChange={setDraftAssigneeKey}>
-                          <SelectTrigger className="h-auto px-2.5 py-1 text-xs border border-[#1e1e1e] bg-transparent rounded-md gap-1.5 [&>svg]:h-3 [&>svg]:w-3">
-                            <div className="flex items-center gap-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-[#1e1e1e] bg-[#1a1a1a] hover:bg-[#222] transition-colors cursor-pointer select-none outline-none">
                               {draftAssigneeKey.startsWith('agent:') ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                               <span>
                                 {draftAssigneeKey === 'unassigned'
                                   ? 'No Assignee'
                                   : assigneeOptions.find(o => `${o.type}:${o.id}` === draftAssigneeKey)?.name ?? 'No Assignee'}
                               </span>
+                              <ChevronDown className="w-3 h-3 opacity-40" />
                             </div>
-                          </SelectTrigger>
-                          <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
-                            <SelectItem value="unassigned" className="text-xs">
-                              <div className="flex items-center gap-1.5 text-muted-foreground"><User className="w-3.5 h-3.5" />No Assignee</div>
-                            </SelectItem>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a] text-xs" align="start">
+                            <DropdownMenuItem className="gap-1.5 text-xs" onSelect={() => setDraftAssigneeKey('unassigned')}>
+                              <User className="w-3.5 h-3.5" /> No Assignee
+                            </DropdownMenuItem>
                             {members.length > 0 && (
                               <>
-                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Members</DropdownMenuLabel>
                                 {members.map(m => (
-                                  <SelectItem key={m.userId} value={`member:${m.userId}`} className="text-xs">
-                                    <div className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{m.userName || m.userEmail}</div>
-                                  </SelectItem>
+                                  <DropdownMenuItem key={m.userId} className="gap-1.5 text-xs" onSelect={() => setDraftAssigneeKey(`member:${m.userId}`)}>
+                                    <User className="w-3.5 h-3.5" />{m.userName || m.userEmail}
+                                  </DropdownMenuItem>
                                 ))}
                               </>
                             )}
                             {activeAgents.length > 0 && (
                               <>
-                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Agents</DropdownMenuLabel>
                                 {activeAgents.map(a => (
-                                  <SelectItem key={a.id} value={`agent:${a.id}`} className="text-xs">
-                                    <div className="flex items-center gap-1.5"><Bot className="w-3.5 h-3.5" />{a.name}</div>
-                                  </SelectItem>
+                                  <DropdownMenuItem key={a.id} className="gap-1.5 text-xs" onSelect={() => setDraftAssigneeKey(`agent:${a.id}`)}>
+                                    <Bot className="w-3.5 h-3.5" />{a.name}
+                                  </DropdownMenuItem>
                                 ))}
                               </>
                             )}
-                          </SelectContent>
-                        </Select>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
                           {selectedAssignee?.type === 'agent' ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
@@ -1638,65 +1639,61 @@ export function TaskDetailView() {
                 <div className="flex flex-col">
                     <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
                         <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <StatusIcon status={task.status} /> 
+                            <StatusIcon status={task.status} />
                             <span className="text-xs">Status</span>
                         </div>
                         <div className="text-xs text-foreground flex-1">
-                            <Select
-                                value={isEditing ? draftStatus : task.status}
-                                onValueChange={(val) => {
-                                    if (isEditing) setDraftStatus(val as Task['status'])
-                                    else patchTask.mutate({ status: val })
-                                }}
-                            >
-                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className={cn("font-medium", STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.text)}>
-                                        {STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.label}
-                                    </span>
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 outline-none select-none">
+                                        <span className={cn("font-medium", STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.text)}>
+                                            {STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.label}
+                                        </span>
+                                        <ChevronDown className="w-3 h-3 opacity-40" />
+                                    </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a]" align="start">
                                     {(['backlog', 'todo', 'in_progress', 'review', 'done', 'blocked'] as const).map((s) => (
-                                        <SelectItem key={s} value={s} className="text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <StatusIcon status={s} />
-                                                <span className={STATUS_CONFIG[s].text}>{STATUS_CONFIG[s].label}</span>
-                                            </div>
-                                        </SelectItem>
+                                        <DropdownMenuItem key={s} className="text-xs cursor-pointer gap-2" onSelect={() => {
+                                            if (isEditing) setDraftStatus(s)
+                                            else patchTask.mutate({ status: s })
+                                        }}>
+                                            <StatusIcon status={s} />
+                                            <span className={STATUS_CONFIG[s].text}>{STATUS_CONFIG[s].label}</span>
+                                        </DropdownMenuItem>
                                     ))}
-                                </SelectContent>
-                            </Select>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
                         <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
-                            <PriorityIcon priority={task.priority} /> 
+                            <PriorityIcon priority={isEditing ? draftPriority : task.priority} />
                             <span className="text-xs">Priority</span>
                         </div>
                         <div className="text-xs text-foreground flex-1">
-                            <Select
-                                value={isEditing ? draftPriority : task.priority}
-                                onValueChange={(val) => {
-                                    if (isEditing) setDraftPriority(val as Task['priority'])
-                                    else patchTask.mutate({ priority: val })
-                                }}
-                            >
-                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className={cn("font-medium", PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.text)}>
-                                        {PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.label}
-                                    </span>
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 outline-none select-none">
+                                        <span className={cn("font-medium", PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.text)}>
+                                            {PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.label}
+                                        </span>
+                                        <ChevronDown className="w-3 h-3 opacity-40" />
+                                    </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a]" align="start">
                                     {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
-                                        <SelectItem key={p} value={p} className="text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <PriorityIcon priority={p} />
-                                                <span className={PRIORITY_CONFIG[p].text}>{PRIORITY_CONFIG[p].label}</span>
-                                            </div>
-                                        </SelectItem>
+                                        <DropdownMenuItem key={p} className="text-xs cursor-pointer gap-2" onSelect={() => {
+                                            if (isEditing) setDraftPriority(p)
+                                            else patchTask.mutate({ priority: p })
+                                        }}>
+                                            <PriorityIcon priority={p} />
+                                            <span className={PRIORITY_CONFIG[p].text}>{PRIORITY_CONFIG[p].label}</span>
+                                        </DropdownMenuItem>
                                     ))}
-                                </SelectContent>
-                            </Select>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                     
@@ -1708,71 +1705,59 @@ export function TaskDetailView() {
                             <span className="text-xs">Assignee</span>
                         </div>
                         <div className="text-xs text-foreground flex-1">
-                            <Select
-                                value={isEditing ? draftAssigneeKey : (selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned')}
-                                onValueChange={(val) => {
-                                    if (isEditing) { setDraftAssigneeKey(val); return }
-                                    if (!val || val === 'unassigned') {
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 outline-none select-none">
+                                        <span>
+                                            {isEditing
+                                                ? (draftAssigneeKey === 'unassigned' ? 'No Assignee' : assigneeOptions.find(o => `${o.type}:${o.id}` === draftAssigneeKey)?.name ?? 'No Assignee')
+                                                : (selectedAssignee?.name ?? 'No Assignee')}
+                                        </span>
+                                        <ChevronDown className="w-3 h-3 opacity-40" />
+                                    </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a] text-xs" align="start">
+                                    <DropdownMenuItem className="gap-1.5 text-xs" onSelect={() => {
+                                        if (isEditing) { setDraftAssigneeKey('unassigned'); return }
                                         setSelectedAssignee(null)
                                         patchTask.mutate({ assigneeId: null, agentId: null })
-                                        return
-                                    }
-                                    const colonIdx = val.indexOf(':')
-                                    const type = val.slice(0, colonIdx) as 'agent' | 'member'
-                                    const id = val.slice(colonIdx + 1)
-                                    const opt = assigneeOptions.find(o => o.type === type && o.id === id)
-                                    if (opt) {
-                                        setSelectedAssignee(opt)
-                                        if (type === 'member') {
-                                            patchTask.mutate({ assigneeId: id, agentId: null })
-                                        } else {
-                                            patchTask.mutate({ agentId: id, assigneeId: null })
-                                        }
-                                    }
-                                }}
-                            >
-                                <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className="text-foreground">
-                                        {isEditing
-                                            ? (draftAssigneeKey === 'unassigned' ? 'No Assignee' : assigneeOptions.find(o => `${o.type}:${o.id}` === draftAssigneeKey)?.name ?? 'No Assignee')
-                                            : (selectedAssignee?.name ?? 'No Assignee')}
-                                    </span>
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
-                                    <SelectItem value="unassigned">
-                                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                                            <User className="w-3.5 h-3.5" />
-                                            No Assignee
-                                        </div>
-                                    </SelectItem>
+                                    }}>
+                                        <User className="w-3.5 h-3.5" /> No Assignee
+                                    </DropdownMenuItem>
                                     {members.length > 0 && (
                                         <>
-                                            <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                            <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                            <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Members</DropdownMenuLabel>
                                             {members.map(m => (
-                                                <SelectItem key={m.userId} value={`member:${m.userId}`}>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <User className="w-3.5 h-3.5" />
-                                                        {m.userName || m.userEmail}
-                                                    </div>
-                                                </SelectItem>
+                                                <DropdownMenuItem key={m.userId} className="gap-1.5 text-xs" onSelect={() => {
+                                                    if (isEditing) { setDraftAssigneeKey(`member:${m.userId}`); return }
+                                                    const opt: Assignee = { type: 'member', id: m.userId, name: m.userName || m.userEmail }
+                                                    setSelectedAssignee(opt)
+                                                    patchTask.mutate({ assigneeId: m.userId, agentId: null })
+                                                }}>
+                                                    <User className="w-3.5 h-3.5" />{m.userName || m.userEmail}
+                                                </DropdownMenuItem>
                                             ))}
                                         </>
                                     )}
                                     {activeAgents.length > 0 && (
                                         <>
-                                            <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                            <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                            <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Agents</DropdownMenuLabel>
                                             {activeAgents.map(a => (
-                                                <SelectItem key={a.id} value={`agent:${a.id}`}>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Bot className="w-3.5 h-3.5" />
-                                                        {a.name}
-                                                    </div>
-                                                </SelectItem>
+                                                <DropdownMenuItem key={a.id} className="gap-1.5 text-xs" onSelect={() => {
+                                                    if (isEditing) { setDraftAssigneeKey(`agent:${a.id}`); return }
+                                                    const opt: Assignee = { type: 'agent', id: a.id, name: a.name }
+                                                    setSelectedAssignee(opt)
+                                                    patchTask.mutate({ agentId: a.id, assigneeId: null })
+                                                }}>
+                                                    <Bot className="w-3.5 h-3.5" />{a.name}
+                                                </DropdownMenuItem>
                                             ))}
                                         </>
                                     )}
-                                </SelectContent>
-                            </Select>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                     

@@ -74,10 +74,10 @@ tasksRoutes.post('/', async (c) => {
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
         links: Array.isArray(links) ? links : [],
-        attachmentFileIds: (() => {
-            const ids = Array.isArray(attachmentFileIds) ? attachmentFileIds : [];
-            return sql`ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::text[]`;
-        })(),
+        attachmentFileIds: sql`ARRAY[${sql.join(
+            (Array.isArray(attachmentFileIds) ? attachmentFileIds : []).map(id => sql`${id}`),
+            sql`, `
+        )}]::text[]`,
         status: 'backlog',
     }).returning();
 
@@ -452,6 +452,9 @@ tasksRoutes.patch('/:taskId', async (c) => {
         links: z.array(z.string().url()).optional(),
         attachmentFileIds: z.array(z.string().uuid()).optional(),
         sortOrder: z.number().int().optional(),
+        priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+        assigneeId: z.string().uuid().nullable().optional(),
+        agentId: z.string().uuid().nullable().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -468,7 +471,15 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId } = result.data;
+
+    if (agentId) {
+        const agent = (await db.select().from(agents).where(and(
+            eq(agents.id, agentId),
+            eq(agents.tenantId, tenantId),
+        )).limit(1))[0];
+        if (!agent) return c.json({ error: 'Agent not found in tenant' }, 404);
+    }
 
     const updateValues: Partial<typeof agentTasks.$inferInsert> = {
         updatedAt: new Date(),
@@ -483,10 +494,15 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
     if (links !== undefined) updateValues.links = links;
     if (attachmentFileIds !== undefined) {
-        // text[] column — use explicit ARRAY constructor so Drizzle doesn't emit "[]" as a plain string
-        (updateValues as any).attachmentFileIds = sql`ARRAY[${sql.join(attachmentFileIds.map(id => sql`${id}`), sql`, `)}]::text[]`;
+        (updateValues as any).attachmentFileIds = sql`ARRAY[${sql.join(
+            attachmentFileIds.map(id => sql`${id}`),
+            sql`, `
+        )}]::text[]`;
     }
     if (sortOrder !== undefined) updateValues.sortOrder = sortOrder;
+    if (priority !== undefined) updateValues.priority = priority;
+    if (assigneeId !== undefined) updateValues.assigneeId = assigneeId;
+    if (agentId !== undefined) updateValues.agentId = agentId;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)
