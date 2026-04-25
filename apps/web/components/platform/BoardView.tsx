@@ -332,8 +332,49 @@ function CreateTaskDialog({
     const [criteriaExpanded, setCriteriaExpanded] = useState(false)
     const [links, setLinks] = useState<{ url: string; title: string }[]>([])
     const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+    const [references, setReferences] = useState<string[]>([])
+    const [referenceDialogOpen, setReferenceDialogOpen] = useState(false)
+    const [attachmentFileIds, setAttachmentFileIds] = useState<{ fileId: string; name: string; size: number; type: string }[]>([])
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+    const attachFileInputRef = useRef<HTMLInputElement>(null)
 
     const { fields, append, remove } = useFieldArray({ control, name: 'acceptanceCriteria' })
+
+    const handleAttachmentUpload = async (file: File) => {
+        setIsUploadingAttachment(true)
+        try {
+            // 1. Get signed URL
+            const { data } = await api.post<{ data: { fileId: string; uploadUrl: string } }>(
+                '/api/v1/files/upload',
+                { filename: file.name, contentType: file.type || 'application/octet-stream' }
+            )
+
+            // 2. Upload to S3/Storage
+            const uploadRes = await fetch(data.uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            })
+
+            if (!uploadRes.ok) throw new Error('Upload failed')
+
+            // 3. Confirm upload
+            await api.post(`/api/v1/files/confirm/${data.fileId}`, {})
+
+            setAttachmentFileIds(prev => [...prev, {
+                fileId: data.fileId,
+                name: file.name,
+                size: file.size,
+                type: file.type
+            }])
+            toast.success(`Attached ${file.name}`)
+        } catch (error) {
+            console.error('Upload failed:', error)
+            toast.error('Failed to upload attachment')
+        } finally {
+            setIsUploadingAttachment(false)
+        }
+    }
 
     const { mutate, isPending } = useMutation({
         mutationFn: (payload: {
@@ -344,12 +385,15 @@ function CreateTaskDialog({
             estimatedHours?: number
             acceptanceCriteria: { text: string; checked: boolean }[]
             links?: string[]
+            attachmentFileIds?: { fileId: string; name: string; size: number; type: string }[]
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             toast.success('Task created')
             reset()
             setLinks([])
+            setReferences([])
+            setAttachmentFileIds([])
             setSelectedAssignee(null)
             onOpenChange(false)
         },
@@ -369,7 +413,8 @@ function CreateTaskDialog({
             acceptanceCriteria: data.acceptanceCriteria
                 .filter(c => c.text.trim())
                 .map(c => ({ text: c.text.trim(), checked: false })),
-            links: links.map(l => l.url),
+            links: [...links.map(l => l.url), ...references],
+            attachmentFileIds: attachmentFileIds,
         })
     }
 
@@ -478,27 +523,36 @@ function CreateTaskDialog({
                             <span>{links.length > 0 ? `${links.length} link${links.length > 1 ? 's' : ''}` : 'Add link'}</span>
                         </div>
 
-                        {/* Attachment — coming soon */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground/40 border border-[#1e1e1e] cursor-default select-none">
-                                    <Paperclip className="w-3.5 h-3.5" />
-                                    <span>Attach</span>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">Coming soon</TooltipContent>
-                        </Tooltip>
+                        {/* Attachment */}
+                        <div
+                            className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]",
+                                isUploadingAttachment && "opacity-50 cursor-wait"
+                            )}
+                            onClick={() => !isUploadingAttachment && attachFileInputRef.current?.click()}
+                        >
+                            {isUploadingAttachment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+                            <span>{attachmentFileIds.length > 0 ? `${attachmentFileIds.length} file${attachmentFileIds.length > 1 ? 's' : ''}` : 'Attach'}</span>
+                        </div>
+                        <input
+                            type="file"
+                            ref={attachFileInputRef}
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleAttachmentUpload(file)
+                                e.target.value = ''
+                            }}
+                        />
 
-                        {/* References — coming soon */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground/40 border border-[#1e1e1e] cursor-default select-none">
-                                    <FileText className="w-3.5 h-3.5" />
-                                    <span>Add reference</span>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">Coming soon</TooltipContent>
-                        </Tooltip>
+                        {/* References */}
+                        <div
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]"
+                            onClick={() => setReferenceDialogOpen(true)}
+                        >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>{references.length > 0 ? `${references.length} ref${references.length > 1 ? 's' : ''}` : 'Add reference'}</span>
+                        </div>
                     </div>
 
                     {/* Section 3 - Description */}
@@ -591,6 +645,7 @@ function CreateTaskDialog({
                 </form>
             </DialogContent>
             <AddLinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onAddLink={link => setLinks(p => [...p, link])} />
+            <AddReferenceDialog open={referenceDialogOpen} onOpenChange={setReferenceDialogOpen} onAddReference={ref => setReferences(p => [...p, ref])} existingReferences={references} setReferences={setReferences} />
         </Dialog>
     )
 }
