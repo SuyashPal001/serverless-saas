@@ -74,7 +74,10 @@ tasksRoutes.post('/', async (c) => {
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
         links: Array.isArray(links) ? links : [],
-        attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
+        attachmentFileIds: (() => {
+            const ids = Array.isArray(attachmentFileIds) ? attachmentFileIds : [];
+            return sql`ARRAY[${sql.join(ids.map(id => sql`${id}`), sql`, `)}]::text[]`;
+        })(),
         status: 'backlog',
     }).returning();
 
@@ -479,7 +482,10 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (status !== undefined) updateValues.status = status;
     if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
     if (links !== undefined) updateValues.links = links;
-    if (attachmentFileIds !== undefined) updateValues.attachmentFileIds = attachmentFileIds;
+    if (attachmentFileIds !== undefined) {
+        // text[] column — use explicit ARRAY constructor so Drizzle doesn't emit "[]" as a plain string
+        (updateValues as any).attachmentFileIds = sql`ARRAY[${sql.join(attachmentFileIds.map(id => sql`${id}`), sql`, `)}]::text[]`;
+    }
     if (sortOrder !== undefined) updateValues.sortOrder = sortOrder;
 
     const [updatedTask] = await db.update(agentTasks)
