@@ -34,13 +34,19 @@ tasksRoutes.post('/', async (c) => {
         })).default([]),
         estimatedHours: z.number().positive().optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-        links: z.array(z.string().url()).optional(),
-        attachmentFileIds: z.array(z.object({
-            fileId: z.string(),
-            name: z.string(),
-            size: z.number(),
-            type: z.string(),
-        })).optional(),
+        links: z.preprocess(
+            (v) => (typeof v === 'string' ? JSON.parse(v) : v),
+            z.array(z.string().url()).optional(),
+        ),
+        attachmentFileIds: z.preprocess(
+            (v) => (typeof v === 'string' ? JSON.parse(v) : v),
+            z.array(z.object({
+                fileId: z.string(),
+                name: z.string(),
+                size: z.number(),
+                type: z.string(),
+            })).optional(),
+        ),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -72,8 +78,8 @@ tasksRoutes.post('/', async (c) => {
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
-        links: links ?? [],
-        attachmentFileIds: attachmentFileIds ?? [],
+        links: Array.isArray(links) ? links : [],
+        attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
         status: 'backlog',
     }).returning();
 
