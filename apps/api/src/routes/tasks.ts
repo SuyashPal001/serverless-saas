@@ -27,12 +27,20 @@ tasksRoutes.post('/', async (c) => {
         assigneeId: z.string().uuid().optional(),
         title: z.string().min(1).max(200),
         description: z.string().optional(),
+        referenceText: z.string().optional(),
         acceptanceCriteria: z.array(z.object({
             text: z.string(),
             checked: z.boolean().default(false),
         })).default([]),
         estimatedHours: z.number().positive().optional(),
+        priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         links: z.array(z.string().url()).optional(),
+        attachmentFileIds: z.array(z.object({
+            fileId: z.string(),
+            name: z.string(),
+            size: z.number(),
+            type: z.string(),
+        })).optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -40,7 +48,7 @@ tasksRoutes.post('/', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const { agentId, assigneeId, title, description, acceptanceCriteria, estimatedHours, links } = result.data;
+    const { agentId, assigneeId, title, description, referenceText, acceptanceCriteria, estimatedHours, priority, links, attachmentFileIds } = result.data;
 
     if (agentId) {
         const agent = (await db.select().from(agents).where(and(
@@ -60,9 +68,12 @@ tasksRoutes.post('/', async (c) => {
         createdBy: userId,
         title,
         description,
+        referenceText: referenceText ?? null,
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
+        priority: priority ?? 'medium',
         links: links ?? [],
+        attachmentFileIds: attachmentFileIds ?? [],
         status: 'backlog',
     }).returning();
 
