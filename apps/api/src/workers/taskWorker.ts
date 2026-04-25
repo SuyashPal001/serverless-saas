@@ -65,8 +65,40 @@ async function handlePlanning(taskId: string, extraContext?: string) {
     throw new Error(`Relay planning failed: ${response.status}`);
   }
 
-  const body = await response.json() as { steps: Array<{ title: string; description: string; toolName?: string }> };
+  const body = await response.json() as {
+    steps?: Array<{ title: string; description: string; toolName?: string }>;
+    clarificationNeeded?: boolean;
+    questions?: string[];
+  };
+
+  if (body.clarificationNeeded) {
+    const questions = body.questions ?? [];
+    const reason = `Agent needs clarification:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+    await db.update(agentTasks)
+      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+      .where(eq(agentTasks.id, task.id));
+
+    await db.insert(taskEvents).values({
+      taskId: task.id,
+      tenantId: task.tenantId,
+      actorType: 'agent',
+      actorId: task.agentId ?? 'system',
+      eventType: 'clarification_requested',
+      payload: { questions },
+    });
+
+    await pushWebSocketEvent(task.tenantId, {
+      type: 'task.status.changed',
+      taskId: task.id,
+      status: 'blocked',
+    });
+    return;
+  }
+
   const { steps } = body;
+  if (!steps || steps.length === 0) {
+    throw new Error('Relay returned no steps and no clarification');
+  }
 
   await db.insert(taskSteps).values(
     steps.map((step, index) => ({
