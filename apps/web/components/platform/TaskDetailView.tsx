@@ -410,6 +410,13 @@ function TaskStatusBanner({ task, needsClarification }: { task: Task; needsClari
                 <p className="text-sm text-primary/90 font-medium">Agent is working...</p>
             </div>
         )
+    } else if (status === 'awaiting_approval') {
+        content = (
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <CheckCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                <p className="text-sm text-amber-400/90 font-medium">Plan ready — review and approve to start execution</p>
+            </div>
+        )
     } else if (status === 'awaiting_clarification' || needsClarification) {
         content = (
             <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20">
@@ -948,8 +955,17 @@ export function TaskDetailView() {
         patchTask.mutate({ acceptanceCriteria: updated })
     }
 
-    const needsClarification = task?.status === 'blocked' && events?.find(e => e.eventType === 'clarification_requested') && !events?.find(e => e.eventType === 'clarification_answered')
-    const clarificationQuestions = needsClarification ? events?.find(e => e.eventType === 'clarification_requested')?.payload?.questions as string[] ?? [] : []
+    const needsClarification = task?.status === 'blocked' && (
+        (events?.find(e => e.eventType === 'clarification_requested') && !events?.find(e => e.eventType === 'clarification_answered')) ||
+        !!task.blockedReason?.startsWith('Agent needs clarification:')
+    )
+    const clarificationQuestions = needsClarification
+        ? ((events?.find(e => e.eventType === 'clarification_requested')?.payload?.questions as string[] | undefined)?.filter(Boolean) ?? (
+              task?.blockedReason?.startsWith('Agent needs clarification:')
+                  ? [task.blockedReason.replace(/^Agent needs clarification:\s*/, '')]
+                  : []
+          ))
+        : []
     const completedSteps = steps?.filter(s => s.status === 'done').length ?? 0
 
     if (isLoading) return <div className="p-8"><Skeleton className="h-[calc(100vh-120px)] w-full" /></div>
@@ -1501,7 +1517,7 @@ export function TaskDetailView() {
                                 {steps.map((step, i) => <StepCard key={step.id} step={step} index={i} />)}
 
                                 {/* Approve / Reject bar — only show when plan not yet approved and agent not executing */}
-                                {(!task.planApprovedAt) && (task.status === 'backlog') && (
+                                {(!task.planApprovedAt) && (task.status === 'backlog' || task.status === 'awaiting_approval') && (
                                     <div className="mt-4 p-3 rounded-xl border border-[#1e1e1e] bg-[#0f0f0f] flex items-center justify-between gap-3">
                                         <p className="text-xs text-muted-foreground">Review the {steps.length}-step plan above and approve or request changes.</p>
                                         <div className="flex items-center gap-2 flex-shrink-0">

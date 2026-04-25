@@ -60,7 +60,7 @@ type Task = {
     assigneeId: string | null
     title: string
     description?: string | null
-    status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    status: 'backlog' | 'todo' | 'in_progress' | 'awaiting_approval' | 'review' | 'blocked' | 'done' | 'cancelled'
     priority: 'low' | 'medium' | 'high' | 'urgent'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
@@ -85,13 +85,14 @@ type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-    backlog:     { label: 'Backlog',     color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
-    todo:        { label: 'Todo',        color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
-    in_progress: { label: 'In Progress', color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
-    review:      { label: 'Review',      color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
-    blocked:     { label: 'Blocked',     color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
-    done:        { label: 'Done',        color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-    cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
+    backlog:          { label: 'Backlog',           color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
+    todo:             { label: 'Todo',              color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
+    in_progress:      { label: 'In Progress',       color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
+    awaiting_approval:{ label: 'Awaiting Approval', color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
+    review:           { label: 'Review',            color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
+    blocked:          { label: 'Blocked',           color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
+    done:             { label: 'Done',              color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+    cancelled:        { label: 'Cancelled',         color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
 } as const
 
 const PRIORITY_CONFIG = {
@@ -101,7 +102,7 @@ const PRIORITY_CONFIG = {
     urgent: { label: 'Urgent', color: '#EF4444', text: 'text-red-400' },
 } as const
 
-const COLUMNS: Task['status'][] = ['backlog', 'todo', 'in_progress', 'review', 'done', 'blocked']
+const COLUMNS: Task['status'][] = ['backlog', 'todo', 'in_progress', 'awaiting_approval', 'review', 'done', 'blocked']
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,10 @@ const StatusIcon = ({ status }: { status: string }) => {
     in_progress: <>
       <circle cx="12" cy="12" r="9" stroke="#8B5CF6" strokeWidth="1.5" fill="none"/>
       <circle cx="12" cy="12" r="4" fill="#8B5CF6"/>
+    </>,
+    awaiting_approval: <>
+      <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
+      <path d="M12 7v5l3 3" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
     </>,
     review: <circle cx="12" cy="12" r="9" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>,
     blocked: <circle cx="12" cy="12" r="9" stroke="#EF4444" strokeWidth="1.5" fill="none"/>,
