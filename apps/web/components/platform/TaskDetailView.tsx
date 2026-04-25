@@ -48,6 +48,7 @@ type Task = {
     assigneeId: string | null
     title: string
     description?: string | null
+    referenceText?: string | null
     status: 'backlog' | 'todo' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
     priority: 'low' | 'medium' | 'high' | 'urgent'
     estimatedHours?: string | number | null
@@ -1863,7 +1864,7 @@ export function TaskDetailView() {
                             <button
                                 onClick={() => attachFileInputRef.current?.click()}
                                 disabled={isUploadingAttachment}
-                                className="text-[10px] text-muted-foreground opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity bg-[#1a1a1a] px-1.5 py-0.5 rounded hover:text-foreground border border-[#2a2a2a] disabled:cursor-not-allowed"
+                                className="text-[10px] text-muted-foreground hover:text-foreground bg-[#1a1a1a] px-1.5 py-0.5 rounded border border-[#2a2a2a] disabled:cursor-not-allowed transition-colors"
                             >
                                 {isUploadingAttachment ? '…' : '+ Add'}
                             </button>
@@ -1872,14 +1873,19 @@ export function TaskDetailView() {
                             <div className="space-y-1">
                                 {task.attachmentFileIds.map((fileId, i) => (
                                     <div key={fileId} className="flex items-center justify-between group/att">
-                                        <a
-                                            href={`/api/proxy/api/v1/files/${fileId}/presigned-url`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[11px] text-primary hover:underline truncate flex-1"
+                                        <button
+                                            className="text-[11px] text-primary hover:underline truncate flex-1 text-left"
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await api.get<{ presignedUrl: string }>(`/api/v1/files/${fileId}/presigned-url`)
+                                                    window.open(res.presignedUrl, '_blank')
+                                                } catch {
+                                                    toast.error('Failed to open attachment')
+                                                }
+                                            }}
                                         >
                                             Attachment {i + 1}
-                                        </a>
+                                        </button>
                                         <button
                                             onClick={() => patchTask.mutate({
                                                 attachmentFileIds: task.attachmentFileIds.filter(id => id !== fileId)
@@ -1895,6 +1901,18 @@ export function TaskDetailView() {
                             <span className="text-[11px] text-muted-foreground/40 italic">No attachments</span>
                         )}
                     </div>
+
+                    {task.referenceText && (
+                        <div className="flex flex-col py-2.5 border-b border-[#1a1a1a]">
+                            <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                                <FileText className="w-3.5 h-3.5 opacity-50" />
+                                <span className="text-xs">Reference</span>
+                            </div>
+                            <pre className="text-[11px] text-foreground/70 leading-relaxed whitespace-pre-wrap break-words font-sans bg-[#111] border border-[#1e1e1e] rounded-lg p-2.5 max-h-[120px] overflow-y-auto">
+                                {task.referenceText}
+                            </pre>
+                        </div>
+                    )}
                 </div>
                 
                 <div className="my-5 border-t border-[#1e1e1e]"></div>
