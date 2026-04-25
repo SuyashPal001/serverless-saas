@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
@@ -341,7 +340,7 @@ function CreateTaskDialog({
     const [criteriaExpanded, setCriteriaExpanded] = useState(false)
     const [links, setLinks] = useState<{ url: string; title: string }[]>([])
     const [linkDialogOpen, setLinkDialogOpen] = useState(false)
-    const [references, setReferences] = useState<string[]>([])
+    const [referenceText, setReferenceText] = useState<string>('')
     const [referenceDialogOpen, setReferenceDialogOpen] = useState(false)
     const [attachmentFileIds, setAttachmentFileIds] = useState<{ fileId: string; name: string; size: number; type: string }[]>([])
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
@@ -395,6 +394,7 @@ function CreateTaskDialog({
             priority?: string
             acceptanceCriteria: { text: string; checked: boolean }[]
             links?: string[]
+            referenceText?: string
             attachmentFileIds?: { fileId: string; name: string; size: number; type: string }[]
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
@@ -402,7 +402,7 @@ function CreateTaskDialog({
             toast.success('Task created')
             reset()
             setLinks([])
-            setReferences([])
+            setReferenceText('')
             setAttachmentFileIds([])
             setSelectedAssignee(null)
             setSelectedPriority('medium')
@@ -425,7 +425,8 @@ function CreateTaskDialog({
                 .filter(c => c.text.trim())
                 .map(c => ({ text: c.text.trim(), checked: false })),
             priority: selectedPriority,
-            links: [...links.map(l => l.url), ...references],
+            links: links.map(l => l.url),
+            referenceText: referenceText || undefined,
             attachmentFileIds: attachmentFileIds,
         })
     }
@@ -570,7 +571,7 @@ function CreateTaskDialog({
                             onClick={() => setReferenceDialogOpen(true)}
                         >
                             <FileText className="w-3.5 h-3.5" />
-                            <span>{references.length > 0 ? `${references.length} ref${references.length > 1 ? 's' : ''}` : 'Add reference'}</span>
+                            <span>{referenceText ? '1 ref' : 'Add reference'}</span>
                         </div>
                     </div>
 
@@ -588,7 +589,7 @@ function CreateTaskDialog({
                                     </span>
                                     <button
                                         type="button"
-                                        className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                        className="text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
                                         onClick={() => setAttachmentFileIds(prev => prev.filter(a => a.fileId !== f.fileId))}
                                     >
                                         <X className="w-3 h-3" />
@@ -672,10 +673,10 @@ function CreateTaskDialog({
                             >
                                 Cancel
                             </Button>
-                            <Button 
-                                type="submit" 
+                            <Button
+                                type="submit"
                                 disabled={isPending}
-                                className="bg-[#f5f5f5] hover:bg-white text-[#0f0f0f] text-sm px-4 py-2 rounded-lg font-medium"
+                                className="bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#3a3a3a] text-sm px-4 py-2 rounded-lg font-medium"
                             >
                                 {isPending ? (
                                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
@@ -688,7 +689,7 @@ function CreateTaskDialog({
                 </form>
             </DialogContent>
             <AddLinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onAddLink={link => setLinks(p => [...p, link])} />
-            <AddReferenceDialog open={referenceDialogOpen} onOpenChange={setReferenceDialogOpen} onAddReference={ref => setReferences(p => [...p, ref])} existingReferences={references} setReferences={setReferences} />
+            <ReferenceDocumentDialog open={referenceDialogOpen} onOpenChange={setReferenceDialogOpen} value={referenceText} onSave={setReferenceText} />
         </Dialog>
     )
 }
@@ -731,54 +732,41 @@ function AddLinkDialog({ open, onOpenChange, onAddLink }: { open: boolean, onOpe
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={handleAdd} className="bg-[#f5f5f5] hover:bg-white text-[#0f0f0f]">Add Link</Button>
+                    <Button onClick={handleAdd} className="bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#3a3a3a]">Add Link</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
     )
 }
 
-function AddReferenceDialog({ open, onOpenChange, onAddReference, existingReferences, setReferences }: { open: boolean, onOpenChange: (v: boolean) => void, onAddReference: (ref: string) => void, existingReferences: string[], setReferences: (refs: string[]) => void }) {
-    const [ref, setRef] = useState('')
+function ReferenceDocumentDialog({ open, onOpenChange, value, onSave }: { open: boolean, onOpenChange: (v: boolean) => void, value: string, onSave: (text: string) => void }) {
+    const [draft, setDraft] = useState(value)
 
-    const handleAdd = () => {
-        if (ref) {
-            onAddReference(ref)
-            setRef('')
-        }
-    }
-    
-    const handleRemove = (index: number) => {
-        setReferences(existingReferences.filter((_, i) => i !== index));
+    React.useEffect(() => {
+        if (open) setDraft(value)
+    }, [open, value])
+
+    const handleSave = () => {
+        onSave(draft)
+        onOpenChange(false)
     }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px] bg-[#1a1a1a] border border-[#2a2a2a]">
+            <DialogContent className="sm:max-w-[560px] bg-[#1a1a1a] border border-[#2a2a2a]">
                 <DialogHeader>
-                    <DialogTitle>Add reference</DialogTitle>
+                    <DialogTitle>Reference Document</DialogTitle>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <Input
-                        placeholder="Paste a URL or add a note"
-                        value={ref}
-                        onChange={(e) => setRef(e.target.value)}
-                        className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm px-3 py-2 w-full"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                        {existingReferences.map((r, i) => (
-                             <Badge key={i} variant="secondary" className="flex items-center gap-1.5">
-                                {r}
-                               <button onClick={() => handleRemove(i)} className="rounded-full hover:bg-muted-foreground/20">
-                                    <X className="h-3 w-3" />
-                                </button>
-                            </Badge>
-                        ))}
-                    </div>
-                </div>
+                <textarea
+                    rows={10}
+                    placeholder="Paste or type markdown content here..."
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg text-sm text-foreground placeholder:text-muted-foreground/40 px-3 py-2.5 outline-none resize-none font-mono"
+                />
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button variant="ghost" className="bg-[#2a2a2a] hover:bg-[#333] text-foreground border border-[#3a3a3a]" onClick={handleAdd}>Add</Button>
+                    <Button onClick={handleSave} className="bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#3a3a3a]">Save</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
