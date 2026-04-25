@@ -1491,7 +1491,7 @@ export function TaskDetailView() {
                         {steps.length === 0 && task.status === 'todo' && !task.agentId && (
                             <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center gap-2">
                                 <Bot className="w-8 h-8 text-muted-foreground/20" />
-                                <p className="text-sm text-muted-foreground/60">Assign an agent to generate a plan</p>
+                                <p className="text-sm text-muted-foreground/60">Assign an agent (not a member) to generate a plan</p>
                             </div>
                         )}
 

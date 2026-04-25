@@ -324,6 +324,10 @@ tasksRoutes.post('/:taskId/plan', async (c) => {
         return c.json({ error: 'Task must be in todo status to generate a plan' }, 400);
     }
 
+    if (!task.agentId) {
+        return c.json({ error: 'An agent must be assigned to generate a plan' }, 400);
+    }
+
     const [updatedTask] = await db.update(agentTasks)
         .set({ status: 'planning', updatedAt: new Date() })
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
