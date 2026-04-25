@@ -735,7 +735,7 @@ function AddReferenceDialog({ open, onOpenChange, onAddReference, existingRefere
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button variant="secondary" onClick={handleAdd}>Add</Button>
+                    <Button variant="ghost" className="bg-[#2a2a2a] hover:bg-[#333] text-foreground border border-[#3a3a3a]" onClick={handleAdd}>Add</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
