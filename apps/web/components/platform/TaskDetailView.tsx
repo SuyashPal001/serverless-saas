@@ -11,7 +11,7 @@ import {
     ArrowUp, ArrowDown, ChevronRight, CheckCircle, Play, XCircle, Target, LayoutList,
     Bot, User, Settings, ChevronDown, ChevronUp, Wrench, Loader2, AlertCircle,
     CheckSquare, MoreHorizontal, Trash2, Clock, Calendar, CalendarClock, Link2, Paperclip, FileText, Check, AlertTriangle,
-    Bold, Italic, List, Type, ListOrdered, Code, Quote, Plus, X, ThumbsUp, ThumbsDown, RefreshCw, Zap, MessageSquare, Pencil
+    Bold, Italic, List, Type, ListOrdered, Code, Quote, Plus, X, ThumbsUp, ThumbsDown, RefreshCw, Zap, MessageSquare, Pencil, Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -921,6 +921,12 @@ export function TaskDetailView() {
         }
     }
 
+    const generatePlan = useMutation({
+        mutationFn: () => api.post(`/api/v1/tasks/${taskId}/plan`),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+        onError: (err: any) => toast.error(err?.data?.error || 'Failed to generate plan'),
+    })
+
     const { mutate: deleteTask } = useMutation({
         mutationFn: () => api.del(`/api/v1/tasks/${taskId}`),
         onSuccess: () => {
@@ -1460,12 +1466,34 @@ export function TaskDetailView() {
                             </div>
                         )}
 
-                        {/* No plan yet — waiting for user to trigger via Generate Plan */}
-                        {steps.length === 0 && (task.status === 'backlog' || task.status === 'todo') && (
+                        {/* No plan yet — backlog */}
+                        {steps.length === 0 && task.status === 'backlog' && (
                             <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center">
                                 <Bot className="w-8 h-8 text-muted-foreground/20 mb-2" />
                                 <p className="text-sm text-muted-foreground/60">No plan yet</p>
-                                <p className="text-xs text-muted-foreground/40 mt-1">Move to Todo and click Generate Plan to start</p>
+                                <p className="text-xs text-muted-foreground/40 mt-1">Move to Todo to generate a plan</p>
+                            </div>
+                        )}
+
+                        {/* Generate Plan — available once task is in todo */}
+                        {steps.length === 0 && task.status === 'todo' && (
+                            <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3">
+                                <Bot className="w-8 h-8 text-muted-foreground/30" />
+                                <div>
+                                    <p className="text-sm text-muted-foreground/80 font-medium">Ready to plan</p>
+                                    <p className="text-xs text-muted-foreground/40 mt-1">The agent will analyse the task and propose a step-by-step execution plan.</p>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    className="mt-1 gap-2"
+                                    disabled={generatePlan.isPending}
+                                    onClick={() => generatePlan.mutate()}
+                                >
+                                    {generatePlan.isPending
+                                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating…</>
+                                        : <><Sparkles className="w-3.5 h-3.5" /> Generate Plan</>
+                                    }
+                                </Button>
                             </div>
                         )}
 

@@ -298,6 +298,57 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
     return c.json({ data: { task: updatedTask } });
 });
 
+// POST /tasks/:taskId/plan — manually trigger planning (task must be in todo)
+tasksRoutes.post('/:taskId/plan', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const taskId = c.req.param('taskId');
+
+    const task = (await db.select().from(agentTasks).where(and(
+        eq(agentTasks.id, taskId),
+        eq(agentTasks.tenantId, tenantId),
+    )).limit(1))[0];
+
+    if (!task) {
+        return c.json({ error: 'Task not found' }, 404);
+    }
+
+    if (task.status !== 'todo') {
+        return c.json({ error: 'Task must be in todo status to generate a plan' }, 400);
+    }
+
+    const [updatedTask] = await db.update(agentTasks)
+        .set({ status: 'planning', updatedAt: new Date() })
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+        .returning();
+
+    await db.insert(taskEvents).values({
+        taskId,
+        tenantId,
+        actorType: 'human',
+        actorId: userId,
+        eventType: 'status_changed',
+        payload: { from: 'todo', to: 'planning' },
+    });
+
+    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+
+    try {
+        await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'planning' });
+    } catch (wsErr) {
+        console.error('WS push failed (non-fatal):', wsErr);
+    }
+
+    return c.json({ data: { task: { ...updatedTask, sortOrder: updatedTask.sortOrder ?? 0 } } });
+});
+
 // POST /tasks/:taskId/clarify — provide clarification for a blocked task
 tasksRoutes.post('/:taskId/clarify', async (c) => {
     const requestContext = c.get('requestContext') as any;
