@@ -577,6 +577,30 @@ function CreateTaskDialog({
                         </div>
                     </div>
 
+                    {/* Attached files list */}
+                    {attachmentFileIds.length > 0 && (
+                        <div className="flex flex-col gap-1 px-6 pt-3 pb-1">
+                            {attachmentFileIds.map((f) => (
+                                <div key={f.fileId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] group">
+                                    <Paperclip className="w-3 h-3 text-muted-foreground/60 shrink-0" />
+                                    <span className="flex-1 text-xs text-foreground truncate">{f.name}</span>
+                                    <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                                        {f.size < 1024 * 1024
+                                            ? `${(f.size / 1024).toFixed(1)} KB`
+                                            : `${(f.size / (1024 * 1024)).toFixed(1)} MB`}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                        onClick={() => setAttachmentFileIds(prev => prev.filter(a => a.fileId !== f.fileId))}
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Section 3 - Description */}
                     <textarea
                         placeholder="Add description..."
