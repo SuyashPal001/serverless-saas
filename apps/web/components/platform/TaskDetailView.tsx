@@ -49,7 +49,7 @@ type Task = {
     title: string
     description?: string | null
     referenceText?: string | null
-    status: 'backlog' | 'todo' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
+    status: 'backlog' | 'todo' | 'planning' | 'awaiting_approval' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
     priority: 'low' | 'medium' | 'high' | 'urgent'
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
@@ -120,14 +120,16 @@ type TaskDetailResponse = {
 // --- CONSTANTS ---
 
 const STATUS_CONFIG = {
-    backlog:     { label: 'Backlog',     color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
-    todo:        { label: 'Todo',        color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
-    in_progress: { label: 'In Progress', color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
-    review:      { label: 'Review',      color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
-    blocked:     { label: 'Blocked',     color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
-    done:        { label: 'Done',        color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-    ready:       { label: 'Ready',       color: '#3B82F6', bg: 'bg-primary/10',    text: 'text-primary' },
-    cancelled:   { label: 'Cancelled',   color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
+    backlog:          { label: 'Backlog',           color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
+    todo:             { label: 'Todo',              color: '#3B82F6', bg: 'bg-blue-500/10',    text: 'text-blue-400' },
+    planning:         { label: 'Planning',          color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
+    awaiting_approval:{ label: 'Awaiting Approval', color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
+    in_progress:      { label: 'In Progress',       color: '#F59E0B', bg: 'bg-amber-500/10',   text: 'text-amber-400' },
+    review:           { label: 'Review',            color: '#8B5CF6', bg: 'bg-purple-500/10',  text: 'text-purple-400' },
+    blocked:          { label: 'Blocked',           color: '#EF4444', bg: 'bg-red-500/10',     text: 'text-red-400' },
+    done:             { label: 'Done',              color: '#10B981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+    ready:            { label: 'Ready',             color: '#3B82F6', bg: 'bg-primary/10',     text: 'text-primary' },
+    cancelled:        { label: 'Cancelled',         color: '#6B7280', bg: 'bg-gray-500/10',    text: 'text-gray-400' },
 } as const
 
 const PRIORITY_CONFIG = {
@@ -457,7 +459,7 @@ function TaskStatusBanner({ task, needsClarification }: { task: Task; needsClari
 function AgentActivityStream({ status, steps }: { status: string; steps: Step[] }) {
     const runningStep = steps.find(s => s.status === 'running')
     const pendingSteps = steps.filter(s => s.status === 'pending')
-    const isPlanning = status === 'backlog' && steps.length === 0
+    const isPlanning = status === 'planning'
     const isReady = status === 'ready'
     const isWorking = status === 'in_progress'
 
@@ -1449,12 +1451,21 @@ export function TaskDetailView() {
                             </div>
                         )}
 
-                        {/* Still thinking / no steps yet */}
-                        {steps.length === 0 && task.status !== 'blocked' && (
+                        {/* Planning in progress (relay is working) */}
+                        {steps.length === 0 && task.status === 'planning' && (
                             <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center">
                                 <Bot className="w-8 h-8 text-muted-foreground/30 mb-2" />
                                 <p className="text-sm text-muted-foreground">Agent is generating a plan...</p>
                                 <Loader2 className="w-4 h-4 mt-3 animate-spin text-muted-foreground/40" />
+                            </div>
+                        )}
+
+                        {/* No plan yet — waiting for user to trigger via Generate Plan */}
+                        {steps.length === 0 && (task.status === 'backlog' || task.status === 'todo') && (
+                            <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center">
+                                <Bot className="w-8 h-8 text-muted-foreground/20 mb-2" />
+                                <p className="text-sm text-muted-foreground/60">No plan yet</p>
+                                <p className="text-xs text-muted-foreground/40 mt-1">Move to Todo and click Generate Plan to start</p>
                             </div>
                         )}
 

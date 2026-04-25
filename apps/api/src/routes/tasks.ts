@@ -511,11 +511,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
 
-    // backlog → todo: trigger planning only if an agent is assigned
     if (status === 'todo' && task.status === 'backlog') {
-        if (task.agentId) {
-            await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
-        }
         try {
             await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'todo' });
         } catch (wsErr) {
@@ -650,14 +646,6 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
         });
     } catch (wsErr) {
         console.error('WS push failed (non-fatal):', wsErr);
-    }
-
-    if (task.agentId) {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
-            type: 'plan_task',
-            taskId,
-            triggerCommentId: comment.id,
-        });
     }
 
     return c.json({ data: comment }, 201);
