@@ -65,7 +65,7 @@ tasksRoutes.post('/', async (c) => {
         }
     }
 
-    const [task] = await db.insert(agentTasks).values({
+    const insertPayload = {
         tenantId,
         agentId: agentId ?? null,
         assigneeId: assigneeId ?? null,
@@ -76,10 +76,22 @@ tasksRoutes.post('/', async (c) => {
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
-        links: Array.isArray(links) ? links : [],
+        links: sql`${JSON.stringify(Array.isArray(links) ? links : [])}::jsonb`,
         attachmentFileIds: sql`${JSON.stringify(Array.isArray(attachmentFileIds) ? attachmentFileIds : [])}::jsonb`,
-        status: 'backlog',
-    }).returning();
+        status: 'backlog' as const,
+    };
+    console.log('INSERT payload (serialisable):', JSON.stringify({
+        ...insertPayload,
+        links: Array.isArray(links) ? links : [],
+        attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
+    }));
+    let task: typeof agentTasks.$inferSelect;
+    try {
+        [task] = await db.insert(agentTasks).values(insertPayload).returning();
+    } catch (dbErr: any) {
+        console.error('DB INSERT ERROR:', dbErr?.message ?? dbErr);
+        return c.json({ error: 'Database error', detail: dbErr?.message }, 500);
+    }
 
     await db.insert(taskEvents).values({
         taskId: task.id,
