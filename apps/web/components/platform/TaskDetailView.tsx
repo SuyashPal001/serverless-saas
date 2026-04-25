@@ -11,7 +11,7 @@ import {
     ArrowUp, ArrowDown, ChevronRight, CheckCircle, Play, XCircle, Target, LayoutList,
     Bot, User, Settings, ChevronDown, ChevronUp, Wrench, Loader2, AlertCircle,
     CheckSquare, MoreHorizontal, Trash2, Clock, Calendar, CalendarClock, Link2, Paperclip, FileText, Check, AlertTriangle,
-    Bold, Italic, List, Type, ListOrdered, Code, Quote, Plus, X, ThumbsUp, ThumbsDown, RefreshCw, Zap, MessageSquare
+    Bold, Italic, List, Type, ListOrdered, Code, Quote, Plus, X, ThumbsUp, ThumbsDown, RefreshCw, Zap, MessageSquare, Pencil
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -667,6 +667,17 @@ export function TaskDetailView() {
     const attachFileInputRef = useRef<HTMLInputElement>(null)
     const newLinkInputRef = useRef<HTMLInputElement>(null)
 
+    // Edit mode
+    const [isEditing, setIsEditing] = useState(false)
+    const [draftTitle, setDraftTitle] = useState('')
+    const [draftDescription, setDraftDescription] = useState('')
+    const [draftStatus, setDraftStatus] = useState<Task['status']>('backlog')
+    const [draftPriority, setDraftPriority] = useState<Task['priority']>('medium')
+    const [draftAssigneeKey, setDraftAssigneeKey] = useState('unassigned')
+    const [draftStartedAt, setDraftStartedAt] = useState('')
+    const [draftDueDate, setDraftDueDate] = useState('')
+    const [draftEstimatedHours, setDraftEstimatedHours] = useState('')
+
     const { data: agentsData } = useQuery<AgentsResponse>({
         queryKey: ['agents'],
         queryFn: () => api.get<AgentsResponse>('/api/v1/agents'),
@@ -847,7 +858,66 @@ export function TaskDetailView() {
         onError: (err: Error) => toast.error(err.message || 'Failed to send answer'),
     })
     
-    const { mutate: cancelTask } = useMutation({
+    const enterEditMode = () => {
+        if (!task) return
+        setDraftTitle(task.title)
+        setDraftDescription(task.description || '')
+        setDraftStatus(task.status)
+        setDraftPriority(task.priority)
+        setDraftAssigneeKey(
+            selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'
+        )
+        setDraftStartedAt(task.startedAt ? new Date(task.startedAt).toISOString().split('T')[0] : '')
+        setDraftDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '')
+        setDraftEstimatedHours(task.estimatedHours != null ? String(task.estimatedHours) : '')
+        setIsEditing(true)
+    }
+
+    const cancelEdit = () => setIsEditing(false)
+
+    const saveEdits = () => {
+        if (!task) return
+        const updates: Record<string, any> = {}
+
+        if (draftTitle.trim() && draftTitle.trim() !== task.title) updates.title = draftTitle.trim()
+        if (draftDescription !== (task.description || '')) updates.description = draftDescription || null
+        if (draftStatus !== task.status) updates.status = draftStatus
+        if (draftPriority !== task.priority) updates.priority = draftPriority
+
+        const origKey = selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'
+        if (draftAssigneeKey !== origKey) {
+            if (draftAssigneeKey === 'unassigned') {
+                updates.assigneeId = null; updates.agentId = null
+            } else {
+                const colonIdx = draftAssigneeKey.indexOf(':')
+                const type = draftAssigneeKey.slice(0, colonIdx)
+                const id = draftAssigneeKey.slice(colonIdx + 1)
+                if (type === 'member') { updates.assigneeId = id; updates.agentId = null }
+                else { updates.agentId = id; updates.assigneeId = null }
+            }
+        }
+
+        const origStart = task.startedAt ? new Date(task.startedAt).toISOString().split('T')[0] : ''
+        const origDue = task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''
+        if (draftStartedAt !== origStart)
+            updates.startedAt = draftStartedAt ? new Date(draftStartedAt).toISOString() : null
+        if (draftDueDate !== origDue)
+            updates.dueDate = draftDueDate ? new Date(draftDueDate).toISOString() : null
+
+        const origHours = task.estimatedHours != null ? String(task.estimatedHours) : ''
+        if (draftEstimatedHours !== origHours) {
+            const h = parseFloat(draftEstimatedHours)
+            updates.estimatedHours = draftEstimatedHours && !isNaN(h) ? h : null
+        }
+
+        if (Object.keys(updates).length > 0) {
+            patchTask.mutate(updates, { onSuccess: () => setIsEditing(false) })
+        } else {
+            setIsEditing(false)
+        }
+    }
+
+    const { mutate: deleteTask } = useMutation({
         mutationFn: () => api.del(`/api/v1/tasks/${taskId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -893,20 +963,50 @@ export function TaskDetailView() {
                         <span className="text-foreground">TASK-{task.id.slice(0,6).toUpperCase()}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button 
+                        <button
                             onClick={() => voteMutation.mutate('up')}
                             disabled={voteMutation.isPending}
                             className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors disabled:opacity-50"
                         >
                             <ArrowUp className={cn("w-3 h-3", voteMutation.isPending && "animate-pulse")} /> {task.upvotes || 0}
                         </button>
-                        <button 
+                        <button
                             onClick={() => voteMutation.mutate('down')}
                             disabled={voteMutation.isPending}
                             className="rounded-md bg-[#1a1a1a] border border-[#2a2a2a] px-2 py-1 text-xs flex items-center gap-1 text-muted-foreground hover:bg-[#222] transition-colors disabled:opacity-50"
                         >
                             <ArrowDown className={cn("w-3 h-3", voteMutation.isPending && "animate-pulse")} /> {task.downvotes || 0}
                         </button>
+                        {isEditing ? (
+                            <>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs px-2 text-muted-foreground"
+                                    onClick={cancelEdit}
+                                    disabled={patchTask.isPending}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="h-7 text-xs px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+                                    onClick={saveEdits}
+                                    disabled={patchTask.isPending}
+                                >
+                                    {patchTask.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                </Button>
+                            </>
+                        ) : (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+                                onClick={enterEditMode}
+                            >
+                                <Pencil className="w-3 h-3" /> Edit
+                            </Button>
+                        )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground">
@@ -914,7 +1014,12 @@ export function TaskDetailView() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => cancelTask()} className="text-red-500 focus:text-red-400 focus:bg-red-500/10 cursor-pointer">
+                                <DropdownMenuItem
+                                    onClick={() => {
+                                        if (window.confirm('Delete this task? This cannot be undone.')) deleteTask()
+                                    }}
+                                    className="text-red-500 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
+                                >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Delete
                                 </DropdownMenuItem>
@@ -928,7 +1033,14 @@ export function TaskDetailView() {
 
                 {/* MAIN CONTENT AREA */}
                 <div className="px-8 py-6 flex-1 overflow-y-auto">
-                    {isEditingTitle ? (
+                    {isEditing ? (
+                        <input
+                            value={draftTitle}
+                            onChange={(e) => setDraftTitle(e.target.value)}
+                            className="text-3xl font-semibold bg-transparent border-b border-primary/40 outline-none w-full text-foreground mb-6 pb-1"
+                            autoFocus
+                        />
+                    ) : isEditingTitle ? (
                         <div className="flex items-center gap-2 mb-6">
                             <input
                                 value={titleValue}
@@ -936,8 +1048,8 @@ export function TaskDetailView() {
                                 className="text-3xl font-semibold bg-transparent border-none outline-none flex-1 text-foreground focus:ring-0"
                                 autoFocus
                             />
-                            <Button 
-                                size="sm" 
+                            <Button
+                                size="sm"
                                 disabled={patchTask.isPending}
                                 onClick={() => {
                                     patchTask.mutate({ title: titleValue })
@@ -948,7 +1060,7 @@ export function TaskDetailView() {
                             </Button>
                         </div>
                     ) : (
-                        <h1 
+                        <h1
                             onClick={() => setIsEditingTitle(true)}
                             className="text-3xl font-semibold text-foreground mb-6 leading-tight cursor-pointer hover:bg-[#1a1a1a] rounded px-1 -ml-1 transition-colors"
                         >
@@ -959,38 +1071,109 @@ export function TaskDetailView() {
                     <div className="flex flex-wrap items-center gap-2 mb-6 mt-2">
                       
                       {/* Status pill */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                            <StatusIcon status={task.status} />
-                            <span className={STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text ?? 'text-muted-foreground'}>
-                              {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? task.status}
-                            </span>
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="bg-[#141414] border-[#2a2a2a]">
-                          {(Object.entries(STATUS_CONFIG) as [Task['status'], typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([s, cfg]) => (
-                            <DropdownMenuItem
-                              key={s}
-                              onClick={() => patchTask.mutate({ status: s })}
-                              className="cursor-pointer gap-2 text-xs"
-                            >
-                              <StatusIcon status={s} />
-                              <span className={cfg.text}>{cfg.label}</span>
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {isEditing ? (
+                        <Select value={draftStatus} onValueChange={(v) => setDraftStatus(v as Task['status'])}>
+                          <SelectTrigger className="h-auto px-2.5 py-1 text-xs border border-[#1e1e1e] bg-transparent rounded-md gap-1.5 [&>svg]:h-3 [&>svg]:w-3">
+                            <div className="flex items-center gap-1.5">
+                              <StatusIcon status={draftStatus} />
+                              <span className={STATUS_CONFIG[draftStatus]?.text}>{STATUS_CONFIG[draftStatus]?.label}</span>
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent className="bg-[#141414] border-[#2a2a2a]">
+                            {(Object.entries(STATUS_CONFIG) as [Task['status'], typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([s, cfg]) => (
+                              <SelectItem key={s} value={s} className="text-xs cursor-pointer">
+                                <div className="flex items-center gap-2"><StatusIcon status={s} /><span className={cfg.text}>{cfg.label}</span></div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                              <StatusIcon status={task.status} />
+                              <span className={STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text ?? 'text-muted-foreground'}>
+                                {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? task.status}
+                              </span>
+                            </div>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="bg-[#141414] border-[#2a2a2a]">
+                            {(Object.entries(STATUS_CONFIG) as [Task['status'], typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([s, cfg]) => (
+                              <DropdownMenuItem
+                                key={s}
+                                onClick={() => patchTask.mutate({ status: s })}
+                                className="cursor-pointer gap-2 text-xs"
+                              >
+                                <StatusIcon status={s} />
+                                <span className={cfg.text}>{cfg.label}</span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
 
-                      {/* Assignee pill — shows current assignee (member or agent) */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
-                        {selectedAssignee?.type === 'agent' ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
-                        <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
-                      </div>
+                      {/* Assignee pill */}
+                      {isEditing ? (
+                        <Select value={draftAssigneeKey} onValueChange={setDraftAssigneeKey}>
+                          <SelectTrigger className="h-auto px-2.5 py-1 text-xs border border-[#1e1e1e] bg-transparent rounded-md gap-1.5 [&>svg]:h-3 [&>svg]:w-3">
+                            <div className="flex items-center gap-1.5">
+                              {draftAssigneeKey.startsWith('agent:') ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                              <span>
+                                {draftAssigneeKey === 'unassigned'
+                                  ? 'No Assignee'
+                                  : assigneeOptions.find(o => `${o.type}:${o.id}` === draftAssigneeKey)?.name ?? 'No Assignee'}
+                              </span>
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                            <SelectItem value="unassigned" className="text-xs">
+                              <div className="flex items-center gap-1.5 text-muted-foreground"><User className="w-3.5 h-3.5" />No Assignee</div>
+                            </SelectItem>
+                            {members.length > 0 && (
+                              <>
+                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                {members.map(m => (
+                                  <SelectItem key={m.userId} value={`member:${m.userId}`} className="text-xs">
+                                    <div className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" />{m.userName || m.userEmail}</div>
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                            {activeAgents.length > 0 && (
+                              <>
+                                <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                {activeAgents.map(a => (
+                                  <SelectItem key={a.id} value={`agent:${a.id}`} className="text-xs">
+                                    <div className="flex items-center gap-1.5"><Bot className="w-3.5 h-3.5" />{a.name}</div>
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
+                          {selectedAssignee?.type === 'agent' ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                          <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
+                        </div>
+                      )}
 
                       {/* Est. Hours pill */}
                       <div className="relative">
-                        {isEditingHours ? (
+                        {isEditing ? (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#1e1e1e] bg-[#1a1a1a]">
+                            <Clock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={draftEstimatedHours}
+                              onChange={(e) => setDraftEstimatedHours(e.target.value)}
+                              placeholder="hours"
+                              className="w-16 text-xs bg-transparent outline-none text-foreground"
+                            />
+                          </div>
+                        ) : isEditingHours ? (
                           <input
                             type="number"
                             min="0"
@@ -1024,56 +1207,89 @@ export function TaskDetailView() {
                         )}
                       </div>
 
-                      {/* Start date pill — transparent date input overlays the pill; browser opens picker on click natively */}
-                      <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                        <Calendar className="w-3.5 h-3.5 pointer-events-none" />
-                        <span className="pointer-events-none">
+                      {/* Start date pill */}
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                          <input
+                            type="date"
+                            value={draftStartedAt}
+                            onChange={(e) => setDraftStartedAt(e.target.value)}
+                            className="bg-transparent outline-none text-foreground text-xs cursor-pointer"
+                          />
+                        </div>
+                      ) : (
+                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                          <Calendar className="w-3.5 h-3.5 pointer-events-none" />
+                          <span className="pointer-events-none">
                             {task.startedAt ? new Date(task.startedAt).toLocaleDateString() : 'Start date'}
-                        </span>
-                        <input
+                          </span>
+                          <input
                             ref={startDateRef}
                             type="date"
                             className="absolute inset-0 opacity-0 cursor-pointer w-full"
                             value={task.startedAt ? new Date(task.startedAt).toISOString().split('T')[0] : ''}
                             onChange={(e) => {
-                                if (e.target.value) patchTask.mutate({ startedAt: new Date(e.target.value).toISOString() })
-                                else patchTask.mutate({ startedAt: null })
+                              if (e.target.value) patchTask.mutate({ startedAt: new Date(e.target.value).toISOString() })
+                              else patchTask.mutate({ startedAt: null })
                             }}
-                        />
-                      </div>
+                          />
+                        </div>
+                      )}
 
                       {/* Due date pill */}
-                      <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
-                        <CalendarClock className="w-3.5 h-3.5 pointer-events-none" />
-                        <span className="pointer-events-none">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-[#1a1a1a]">
+                          <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                          <input
+                            type="date"
+                            value={draftDueDate}
+                            onChange={(e) => setDraftDueDate(e.target.value)}
+                            className="bg-transparent outline-none text-foreground text-xs cursor-pointer"
+                          />
+                        </div>
+                      ) : (
+                        <div className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer border border-[#1e1e1e]">
+                          <CalendarClock className="w-3.5 h-3.5 pointer-events-none" />
+                          <span className="pointer-events-none">
                             {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'Due date'}
-                        </span>
-                        <input
+                          </span>
+                          <input
                             ref={dueDateRef}
                             type="date"
                             className="absolute inset-0 opacity-0 cursor-pointer w-full"
                             value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
                             onChange={(e) => {
-                                if (e.target.value) patchTask.mutate({ dueDate: new Date(e.target.value).toISOString() })
-                                else patchTask.mutate({ dueDate: null })
+                              if (e.target.value) patchTask.mutate({ dueDate: new Date(e.target.value).toISOString() })
+                              else patchTask.mutate({ dueDate: null })
                             }}
-                        />
-                      </div>
+                          />
+                        </div>
+                      )}
 
                     </div>
                     
-                    {isEditingDescription ? (
+                    {isEditing ? (
                         <div className="mb-6">
-                            <RichTextEditor 
+                            <RichTextEditor
+                                value={draftDescription}
+                                onChange={setDraftDescription}
+                                placeholder="Add description..."
+                                minHeight="160px"
+                            />
+                        </div>
+                    ) : isEditingDescription ? (
+                        <div className="mb-6">
+                            <RichTextEditor
                                 value={descriptionValue}
                                 onChange={setDescriptionValue}
                                 placeholder="Add description..."
                                 minHeight="160px"
                             />
                             <div className="flex items-center justify-end gap-2 mt-2">
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     className="text-xs h-7"
                                     onClick={() => {
                                         setDescriptionValue(task?.description || '')
@@ -1082,8 +1298,8 @@ export function TaskDetailView() {
                                 >
                                     Cancel
                                 </Button>
-                                <Button 
-                                    size="sm" 
+                                <Button
+                                    size="sm"
                                     className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
                                     disabled={patchTask.isPending}
                                     onClick={() => {
@@ -1096,7 +1312,7 @@ export function TaskDetailView() {
                             </div>
                         </div>
                     ) : (
-                        <div 
+                        <div
                             onClick={() => setIsEditingDescription(true)}
                             className="text-sm text-foreground/80 leading-relaxed mb-6 cursor-pointer hover:bg-[#1a1a1a] rounded p-2 -ml-2 transition-colors min-h-[40px]"
                         >
@@ -1430,12 +1646,15 @@ export function TaskDetailView() {
                         </div>
                         <div className="text-xs text-foreground flex-1">
                             <Select
-                                value={task.status}
-                                onValueChange={(val) => patchTask.mutate({ status: val })}
+                                value={isEditing ? draftStatus : task.status}
+                                onValueChange={(val) => {
+                                    if (isEditing) setDraftStatus(val as Task['status'])
+                                    else patchTask.mutate({ status: val })
+                                }}
                             >
                                 <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className={cn("font-medium", STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.text)}>
-                                        {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label}
+                                    <span className={cn("font-medium", STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.text)}>
+                                        {STATUS_CONFIG[(isEditing ? draftStatus : task.status) as keyof typeof STATUS_CONFIG]?.label}
                                     </span>
                                 </SelectTrigger>
                                 <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
@@ -1459,12 +1678,15 @@ export function TaskDetailView() {
                         </div>
                         <div className="text-xs text-foreground flex-1">
                             <Select
-                                value={task.priority}
-                                onValueChange={(val) => patchTask.mutate({ priority: val })}
+                                value={isEditing ? draftPriority : task.priority}
+                                onValueChange={(val) => {
+                                    if (isEditing) setDraftPriority(val as Task['priority'])
+                                    else patchTask.mutate({ priority: val })
+                                }}
                             >
                                 <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className={cn("font-medium", PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG]?.text)}>
-                                        {PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG]?.label}
+                                    <span className={cn("font-medium", PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.text)}>
+                                        {PRIORITY_CONFIG[(isEditing ? draftPriority : task.priority) as keyof typeof PRIORITY_CONFIG]?.label}
                                     </span>
                                 </SelectTrigger>
                                 <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
@@ -1490,8 +1712,9 @@ export function TaskDetailView() {
                         </div>
                         <div className="text-xs text-foreground flex-1">
                             <Select
-                                value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'}
+                                value={isEditing ? draftAssigneeKey : (selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned')}
                                 onValueChange={(val) => {
+                                    if (isEditing) { setDraftAssigneeKey(val); return }
                                     if (!val || val === 'unassigned') {
                                         setSelectedAssignee(null)
                                         patchTask.mutate({ assigneeId: null, agentId: null })
@@ -1512,7 +1735,11 @@ export function TaskDetailView() {
                                 }}
                             >
                                 <SelectTrigger className="h-auto px-0 py-0 text-xs border-none bg-transparent w-full gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                    <span className="text-foreground">{selectedAssignee?.name ?? 'No Assignee'}</span>
+                                    <span className="text-foreground">
+                                        {isEditing
+                                            ? (draftAssigneeKey === 'unassigned' ? 'No Assignee' : assigneeOptions.find(o => `${o.type}:${o.id}` === draftAssigneeKey)?.name ?? 'No Assignee')
+                                            : (selectedAssignee?.name ?? 'No Assignee')}
+                                    </span>
                                 </SelectTrigger>
                                 <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
                                     <SelectItem value="unassigned">
@@ -1705,8 +1932,13 @@ export function TaskDetailView() {
                         </button>
                     )}
                     {task.status !== 'done' && task.status !== 'cancelled' && (
-                        <button onClick={() => cancelTask()} className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left">
-                            <XCircle className="w-4 h-4 text-red-500" /> <span className="text-red-500/90 font-medium">Cancel Task</span>
+                        <button
+                            onClick={() => {
+                                if (window.confirm('Delete this task? This cannot be undone.')) deleteTask()
+                            }}
+                            className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"
+                        >
+                            <XCircle className="w-4 h-4 text-red-500" /> <span className="text-red-500/90 font-medium">Delete Task</span>
                         </button>
                     )}
                 </div>
