@@ -44,12 +44,9 @@ tasksRoutes.post('/', async (c) => {
         ),
     });
 
-    const body = await c.req.json();
-    const result = schema.safeParse(body);
+    const result = schema.safeParse(await c.req.json());
     if (!result.success) {
-        console.log('VALIDATION FAILED body:', JSON.stringify(body));
-        console.log('VALIDATION ERRORS:', JSON.stringify(result.error.issues));
-        return c.json({ error: result.error.issues }, 400);
+        return c.json({ error: result.error.errors[0].message }, 400);
     }
 
     const { agentId, assigneeId, title, description, referenceText, acceptanceCriteria, estimatedHours, priority, links, attachmentFileIds } = result.data;
@@ -65,7 +62,7 @@ tasksRoutes.post('/', async (c) => {
         }
     }
 
-    const insertPayload = {
+    const [task] = await db.insert(agentTasks).values({
         tenantId,
         agentId: agentId ?? null,
         assigneeId: assigneeId ?? null,
@@ -76,22 +73,10 @@ tasksRoutes.post('/', async (c) => {
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
-        links: sql`${JSON.stringify(Array.isArray(links) ? links : [])}::jsonb`,
-        attachmentFileIds: sql`${JSON.stringify(Array.isArray(attachmentFileIds) ? attachmentFileIds : [])}::jsonb`,
-        status: 'backlog' as const,
-    };
-    console.log('INSERT payload (serialisable):', JSON.stringify({
-        ...insertPayload,
         links: Array.isArray(links) ? links : [],
         attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
-    }));
-    let task: typeof agentTasks.$inferSelect;
-    try {
-        [task] = await db.insert(agentTasks).values(insertPayload).returning();
-    } catch (dbErr: any) {
-        console.error('DB INSERT ERROR:', dbErr?.message ?? dbErr);
-        return c.json({ error: 'Database error', detail: dbErr?.message }, 500);
-    }
+        status: 'backlog',
+    }).returning();
 
     await db.insert(taskEvents).values({
         taskId: task.id,
