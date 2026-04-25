@@ -189,9 +189,7 @@ function TaskCard({
     }
 
     const card = (
-        <Link 
-            href={`/${tenantSlug}/dashboard/board/${task.id}`} 
-            className="block"
+        <div
             draggable={true}
             onDragStart={(e) => {
                 e.dataTransfer.setData('taskId', task.id)
@@ -200,6 +198,11 @@ function TaskCard({
             onDragEnd={(e) => {
                 e.currentTarget.style.opacity = '1'
             }}
+        >
+        <Link
+            href={`/${tenantSlug}/dashboard/board/${task.id}`}
+            className="block"
+            draggable={false}
         >
             <div className="group bg-[#1C1C1E] border border-transparent rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border transition-colors relative">
                 {/* Row 1 */}
@@ -272,6 +275,7 @@ function TaskCard({
                 )}
             </div>
         </Link>
+        </div>
     )
 
     if (task.status === 'blocked' && task.blockedReason) {
