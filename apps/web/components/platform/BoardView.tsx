@@ -957,7 +957,7 @@ export function BoardView() {
                 const prevTask = targetColumnTasks[targetIdx - 1]
                 const targetTask = targetColumnTasks[targetIdx]
                 if (prevTask) {
-                    newSortOrder = (prevTask.sortOrder + targetTask.sortOrder) / 2
+                    newSortOrder = Math.floor((prevTask.sortOrder + targetTask.sortOrder) / 2)
                 } else {
                     newSortOrder = targetTask.sortOrder - 1000
                 }
@@ -965,7 +965,7 @@ export function BoardView() {
                 const targetTask = targetColumnTasks[targetIdx]
                 const nextTask = targetColumnTasks[targetIdx + 1]
                 if (nextTask) {
-                    newSortOrder = (targetTask.sortOrder + nextTask.sortOrder) / 2
+                    newSortOrder = Math.floor((targetTask.sortOrder + nextTask.sortOrder) / 2)
                 } else {
                     newSortOrder = targetTask.sortOrder + 1000
                 }
@@ -975,6 +975,9 @@ export function BoardView() {
             const lastTask = targetColumnTasks[targetColumnTasks.length - 1]
             newSortOrder = lastTask ? lastTask.sortOrder + 1000 : 0
         }
+
+        // Don't fire the mutation if nothing actually changed
+        if (taskToMove.status === newStatus && taskToMove.sortOrder === newSortOrder) return
 
         updateTaskStatus.mutate({ taskId, status: newStatus, sortOrder: newSortOrder })
     }
