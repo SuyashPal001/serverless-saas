@@ -44,6 +44,14 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -437,58 +445,46 @@ function CreateTaskDialog({
                     {/* Section 2 - Properties row */}
                     <div className="flex items-center gap-2 px-6 py-3 border-y border-[#1e1e1e] flex-wrap">
                         {/* Assignee picker — members + agents combined */}
-                        <Select
-                            value={selectedAssignee ? `${selectedAssignee.type}:${selectedAssignee.id}` : 'unassigned'}
-                            onValueChange={(val) => {
-                                if (!val || val === 'unassigned') { setSelectedAssignee(null); return }
-                                const colonIdx = val.indexOf(':')
-                                const type = val.slice(0, colonIdx) as 'agent' | 'member'
-                                const id = val.slice(colonIdx + 1)
-                                const opt = assigneeOptions.find(o => o.type === type && o.id === id)
-                                if (opt) setSelectedAssignee(opt)
-                            }}
-                        >
-                            <SelectTrigger className="h-auto px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-transparent w-auto gap-1.5 hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                {selectedAssignee?.type === 'agent'
-                                    ? <Bot className="w-3.5 h-3.5 shrink-0" />
-                                    : <User className="w-3.5 h-3.5 shrink-0" />}
-                                <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
-                            </SelectTrigger>
-                            <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
-                                <SelectItem value="unassigned">
-                                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                                        <User className="w-3.5 h-3.5" />
-                                        No Assignee
-                                    </div>
-                                </SelectItem>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer select-none outline-none">
+                                    {selectedAssignee?.type === 'agent'
+                                        ? <Bot className="w-3.5 h-3.5 shrink-0" />
+                                        : <User className="w-3.5 h-3.5 shrink-0" />}
+                                    <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
+                                    <ChevronDown className="w-3 h-3 opacity-40 shrink-0" />
+                                </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a] text-xs" align="start">
+                                <DropdownMenuItem className="gap-1.5 text-xs" onSelect={() => setSelectedAssignee(null)}>
+                                    <User className="w-3.5 h-3.5" /> No Assignee
+                                </DropdownMenuItem>
                                 {members.length > 0 && (
                                     <>
-                                        <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Members</div>
+                                        <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                        <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Members</DropdownMenuLabel>
                                         {members.map(m => (
-                                            <SelectItem key={m.userId} value={`member:${m.userId}`}>
-                                                <div className="flex items-center gap-1.5">
-                                                    <User className="w-3.5 h-3.5" />
-                                                    {m.userName || m.userEmail}
-                                                </div>
-                                            </SelectItem>
+                                            <DropdownMenuItem key={m.userId} className="gap-1.5 text-xs" onSelect={() => setSelectedAssignee({ type: 'member', id: m.userId, name: m.userName || m.userEmail })}>
+                                                <User className="w-3.5 h-3.5" />
+                                                {m.userName || m.userEmail}
+                                            </DropdownMenuItem>
                                         ))}
                                     </>
                                 )}
                                 {activeAgents.length > 0 && (
                                     <>
-                                        <div className="px-2 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Agents</div>
+                                        <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                                        <DropdownMenuLabel className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 py-1">Agents</DropdownMenuLabel>
                                         {activeAgents.map(a => (
-                                            <SelectItem key={a.id} value={`agent:${a.id}`}>
-                                                <div className="flex items-center gap-1.5">
-                                                    <Bot className="w-3.5 h-3.5" />
-                                                    {a.name}
-                                                </div>
-                                            </SelectItem>
+                                            <DropdownMenuItem key={a.id} className="gap-1.5 text-xs" onSelect={() => setSelectedAssignee({ type: 'agent', id: a.id, name: a.name })}>
+                                                <Bot className="w-3.5 h-3.5" />
+                                                {a.name}
+                                            </DropdownMenuItem>
                                         ))}
                                     </>
                                 )}
-                            </SelectContent>
-                        </Select>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
 
                         {/* Status pill */}
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e]">
@@ -497,22 +493,23 @@ function CreateTaskDialog({
                         </div>
 
                         {/* Priority picker */}
-                        <Select value={selectedPriority} onValueChange={(v) => setSelectedPriority(v as typeof selectedPriority)}>
-                            <SelectTrigger className="h-auto px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-transparent w-auto gap-1.5 hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
-                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_CONFIG[selectedPriority].color }} />
-                                <span>{PRIORITY_CONFIG[selectedPriority].label}</span>
-                            </SelectTrigger>
-                            <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer select-none outline-none">
+                                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_CONFIG[selectedPriority].color }} />
+                                    <span>{PRIORITY_CONFIG[selectedPriority].label}</span>
+                                    <ChevronDown className="w-3 h-3 opacity-40 shrink-0" />
+                                </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a]" align="start">
                                 {(Object.entries(PRIORITY_CONFIG) as [keyof typeof PRIORITY_CONFIG, typeof PRIORITY_CONFIG[keyof typeof PRIORITY_CONFIG]][]).map(([key, cfg]) => (
-                                    <SelectItem key={key} value={key}>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
-                                            {cfg.label}
-                                        </div>
-                                    </SelectItem>
+                                    <DropdownMenuItem key={key} className="gap-1.5 text-xs" onSelect={() => setSelectedPriority(key)}>
+                                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />
+                                        {cfg.label}
+                                    </DropdownMenuItem>
                                 ))}
-                            </SelectContent>
-                        </Select>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
 
                         {/* Est. hours — toggle between pill and inline input */}
                         {hoursEditing ? (
@@ -734,7 +731,7 @@ function AddLinkDialog({ open, onOpenChange, onAddLink }: { open: boolean, onOpe
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700">Add Link</Button>
+                    <Button onClick={handleAdd} className="bg-[#f5f5f5] hover:bg-white text-[#0f0f0f]">Add Link</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
