@@ -313,6 +313,7 @@ function CreateTaskDialog({
     ]
 
     const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
+    const [selectedPriority, setSelectedPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
     const [hoursEditing, setHoursEditing] = useState(false)
 
     const {
@@ -383,6 +384,7 @@ function CreateTaskDialog({
             title: string
             description?: string
             estimatedHours?: number
+            priority?: string
             acceptanceCriteria: { text: string; checked: boolean }[]
             links?: string[]
             attachmentFileIds?: { fileId: string; name: string; size: number; type: string }[]
@@ -395,6 +397,7 @@ function CreateTaskDialog({
             setReferences([])
             setAttachmentFileIds([])
             setSelectedAssignee(null)
+            setSelectedPriority('medium')
             onOpenChange(false)
         },
         onError: (err: Error) => {
@@ -413,6 +416,7 @@ function CreateTaskDialog({
             acceptanceCriteria: data.acceptanceCriteria
                 .filter(c => c.text.trim())
                 .map(c => ({ text: c.text.trim(), checked: false })),
+            priority: selectedPriority,
             links: [...links.map(l => l.url), ...references],
             attachmentFileIds: attachmentFileIds,
         })
@@ -444,11 +448,11 @@ function CreateTaskDialog({
                                 if (opt) setSelectedAssignee(opt)
                             }}
                         >
-                            <SelectTrigger className="h-auto px-2.5 py-1 text-xs border-[#1e1e1e] bg-transparent w-auto gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                            <SelectTrigger className="h-auto px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-transparent w-auto gap-1.5 hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
                                 {selectedAssignee?.type === 'agent'
-                                    ? <Bot className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    : <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                                <span className="text-muted-foreground">{selectedAssignee?.name ?? 'No Assignee'}</span>
+                                    ? <Bot className="w-3.5 h-3.5 shrink-0" />
+                                    : <User className="w-3.5 h-3.5 shrink-0" />}
+                                <span>{selectedAssignee?.name ?? 'No Assignee'}</span>
                             </SelectTrigger>
                             <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
                                 <SelectItem value="unassigned">
@@ -491,6 +495,24 @@ function CreateTaskDialog({
                             <StatusIcon status="backlog" />
                             <span>Backlog</span>
                         </div>
+
+                        {/* Priority picker */}
+                        <Select value={selectedPriority} onValueChange={(v) => setSelectedPriority(v as typeof selectedPriority)}>
+                            <SelectTrigger className="h-auto px-2.5 py-1 rounded-md text-xs text-muted-foreground border border-[#1e1e1e] bg-transparent w-auto gap-1.5 hover:bg-[#1a1a1a] hover:text-foreground transition-colors cursor-pointer focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-50">
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_CONFIG[selectedPriority].color }} />
+                                <span>{PRIORITY_CONFIG[selectedPriority].label}</span>
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#1a1a1a] border-[#2a2a2a]">
+                                {(Object.entries(PRIORITY_CONFIG) as [keyof typeof PRIORITY_CONFIG, typeof PRIORITY_CONFIG[keyof typeof PRIORITY_CONFIG]][]).map(([key, cfg]) => (
+                                    <SelectItem key={key} value={key}>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
+                                            {cfg.label}
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
 
                         {/* Est. hours — toggle between pill and inline input */}
                         {hoursEditing ? (
