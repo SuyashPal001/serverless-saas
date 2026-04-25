@@ -40,12 +40,7 @@ tasksRoutes.post('/', async (c) => {
         ),
         attachmentFileIds: z.preprocess(
             (v) => (typeof v === 'string' ? JSON.parse(v) : v),
-            z.array(z.object({
-                fileId: z.string(),
-                name: z.string(),
-                size: z.number(),
-                type: z.string(),
-            })).optional(),
+            z.array(z.string().uuid()).optional(),
         ),
     });
 
@@ -79,7 +74,7 @@ tasksRoutes.post('/', async (c) => {
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
         links: Array.isArray(links) ? links : [],
-        attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
+        attachmentFileIds: sql`${JSON.stringify(Array.isArray(attachmentFileIds) ? attachmentFileIds : [])}::jsonb`,
         status: 'backlog',
     }).returning();
 
@@ -452,12 +447,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
         startedAt: z.string().datetime().nullable().optional(),
         links: z.array(z.string().url()).optional(),
-        attachmentFileIds: z.array(z.object({
-            fileId: z.string(),
-            name: z.string(),
-            size: z.number(),
-            type: z.string(),
-        })).optional(),
+        attachmentFileIds: z.array(z.string().uuid()).optional(),
         sortOrder: z.number().int().optional(),
     });
 

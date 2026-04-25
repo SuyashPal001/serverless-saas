@@ -395,7 +395,7 @@ function CreateTaskDialog({
             acceptanceCriteria: { text: string; checked: boolean }[]
             links?: string[]
             referenceText?: string
-            attachmentFileIds?: { fileId: string; name: string; size: number; type: string }[]
+            attachmentFileIds?: string[]
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -427,7 +427,7 @@ function CreateTaskDialog({
             priority: selectedPriority,
             links: links.map(l => l.url),
             referenceText: referenceText || undefined,
-            attachmentFileIds: attachmentFileIds,
+            attachmentFileIds: attachmentFileIds.map(f => f.fileId),
         })
     }
 

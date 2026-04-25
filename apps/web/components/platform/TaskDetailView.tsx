@@ -67,7 +67,7 @@ type Task = {
     upvotes: number
     downvotes: number
     links: string[]
-    attachmentFileIds: Attachment[]
+    attachmentFileIds: string[]
 }
 
 type AgentsResponse = { data: { id: string; name: string; status: string }[] }
@@ -738,7 +738,7 @@ export function TaskDetailView() {
             dueDate: string | null
             startedAt: string | null
             links: string[]
-            attachmentFileIds: Attachment[]
+            attachmentFileIds: string[]
             assigneeId: string | null
             agentId: string | null
         }>) => {
@@ -776,10 +776,7 @@ export function TaskDetailView() {
             })
             await api.post(`/api/v1/files/${data.fileId}/confirm`, { size: file.size })
             patchTask.mutate({
-                attachmentFileIds: [
-                    ...(task?.attachmentFileIds ?? []),
-                    { fileId: data.fileId, name: file.name, size: file.size, type: file.type || 'application/octet-stream' },
-                ],
+                attachmentFileIds: [...(task?.attachmentFileIds ?? []), data.fileId],
             })
             toast.success('File attached')
         } catch (err: any) {
@@ -1882,20 +1879,19 @@ export function TaskDetailView() {
                         </div>
                         {task.attachmentFileIds?.length > 0 ? (
                             <div className="space-y-1">
-                                {task.attachmentFileIds.map((att) => (
-                                    <div key={att.fileId} className="flex items-center justify-between group/att">
+                                {task.attachmentFileIds.map((fileId, i) => (
+                                    <div key={fileId} className="flex items-center justify-between group/att">
                                         <a
-                                            href={`/api/proxy/api/v1/files/${att.fileId}/presigned-url`}
+                                            href={`/api/proxy/api/v1/files/${fileId}/presigned-url`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-[11px] text-primary hover:underline truncate flex-1"
-                                            title={att.name}
                                         >
-                                            {att.name}
+                                            Attachment {i + 1}
                                         </a>
                                         <button
                                             onClick={() => patchTask.mutate({
-                                                attachmentFileIds: task.attachmentFileIds.filter(a => a.fileId !== att.fileId)
+                                                attachmentFileIds: task.attachmentFileIds.filter(id => id !== fileId)
                                             })}
                                             className="opacity-0 group-hover/att:opacity-100 p-0.5 hover:bg-red-500/10 rounded transition-all ml-1"
                                         >
