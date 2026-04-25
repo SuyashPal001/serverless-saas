@@ -359,7 +359,7 @@ function CreateTaskDialog({
             if (!uploadRes.ok) throw new Error('Upload failed')
 
             // 3. Confirm upload
-            await api.post(`/api/v1/files/confirm/${data.fileId}`, {})
+            await api.post(`/api/v1/files/${data.fileId}/confirm`, { size: file.size })
 
             setAttachmentFileIds(prev => [...prev, {
                 fileId: data.fileId,
@@ -735,7 +735,7 @@ function AddReferenceDialog({ open, onOpenChange, onAddReference, existingRefere
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={handleAdd}>Add</Button>
+                    <Button variant="secondary" onClick={handleAdd}>Add</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
