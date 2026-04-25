@@ -44,9 +44,12 @@ tasksRoutes.post('/', async (c) => {
         ),
     });
 
-    const result = schema.safeParse(await c.req.json());
+    const body = await c.req.json();
+    const result = schema.safeParse(body);
     if (!result.success) {
-        return c.json({ error: result.error.errors[0].message }, 400);
+        console.log('VALIDATION FAILED body:', JSON.stringify(body));
+        console.log('VALIDATION ERRORS:', JSON.stringify(result.error.issues));
+        return c.json({ error: result.error.issues }, 400);
     }
 
     const { agentId, assigneeId, title, description, referenceText, acceptanceCriteria, estimatedHours, priority, links, attachmentFileIds } = result.data;
