@@ -288,6 +288,14 @@ export function RichTextEditor({
     },
   });
 
+  // Keep Tiptap's editable state in sync when isReadOnly changes (React may reuse
+  // the same instance instead of remounting, so useEditor's initial value is stale)
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(!isReadOnly)
+    }
+  }, [editor, isReadOnly])
+
   // Sync external value changes in (skip if the change came from us)
   useEffect(() => {
     if (!editor) return;
