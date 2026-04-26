@@ -1950,7 +1950,13 @@ export function TaskDetailView() {
                                                         ? 'bg-primary/5 border border-primary/10'
                                                         : 'bg-[#161616] border border-[#1e1e1e]',
                                                 )}>
-                                                    {c.content}
+                                                    {c.authorType === 'agent' ? (
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
+                                                            {c.content}
+                                                        </ReactMarkdown>
+                                                    ) : (
+                                                        c.content
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

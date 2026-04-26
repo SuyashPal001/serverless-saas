@@ -347,6 +347,7 @@ export function RichTextEditor({
                   'w-8 h-8',
                   editor.isActive(item.key) ? 'bg-[#222] text-foreground' : 'text-muted-foreground hover:bg-[#222]'
                 )}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => item.action(editor)}
               >
                 {item.icon}
