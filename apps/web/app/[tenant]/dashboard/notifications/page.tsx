@@ -102,7 +102,7 @@ export default function NotificationsPage() {
         mutationFn: (taskId: string) =>
             api.patch(`/api/v1/tasks/${taskId}/approve`),
         onSuccess: (_data, taskId) => {
-            router.push(`/${tenantSlug}/dashboard/tasks/${taskId}`);
+            router.push(`/${tenantSlug}/dashboard/board/${taskId}`);
         },
     });
 
@@ -111,7 +111,7 @@ export default function NotificationsPage() {
             markReadMutation.mutate(n.id);
         }
         if (n.metadata?.taskId) {
-            router.push(`/${tenantSlug}/dashboard/tasks/${n.metadata.taskId}`);
+            router.push(`/${tenantSlug}/dashboard/board/${n.metadata.taskId}`);
         }
     };
 
@@ -194,7 +194,7 @@ export default function NotificationsPage() {
                             }}
                             className={[
                                 "rounded-lg px-4 py-3.5 transition-colors group relative",
-                                canUpdate && !n.read ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring" : "",
+                                (canUpdate && !n.read) || n.metadata?.taskId ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring" : "",
                                 n.read
                                     ? "bg-transparent hover:bg-muted/40"
                                     : "border border-primary/20 bg-primary/5 hover:bg-primary/10",
