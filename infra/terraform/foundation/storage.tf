@@ -27,7 +27,7 @@ resource "aws_s3_bucket_cors_configuration" "files" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST"]
-    allowed_origins = ["http://localhost:3000", "https://*.${var.domain}"]
+    allowed_origins = ["http://localhost:3000", "https://*.${var.domain}", "https://agent-saas.fitnearn.com"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }
