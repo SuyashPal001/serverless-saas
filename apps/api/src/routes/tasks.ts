@@ -274,16 +274,24 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         if (stepFeedbackContext) parts.push(stepFeedbackContext);
         const fullFeedbackContext = parts.join('\n');
 
+        console.log('[SQS] Publishing replan_task for task', taskId);
+        try {
+            await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
+                type: 'replan_task',
+                taskId,
+                ...(fullFeedbackContext ? { extraContext: fullFeedbackContext } : {}),
+            });
+        } catch (sqsErr) {
+            console.error('[SQS] replan_task publish failed for task', taskId, sqsErr);
+            return c.json({ error: 'Failed to queue task for replanning. Please retry.' }, 502);
+        }
+
+        // Delete pending steps only after a successful publish — if publish fails above,
+        // steps are preserved so the user can retry without losing the plan.
         await db.delete(taskSteps).where(and(
             eq(taskSteps.taskId, taskId),
             eq(taskSteps.status, 'pending'),
         ));
-
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
-            type: 'replan_task',
-            taskId,
-            ...(fullFeedbackContext ? { extraContext: fullFeedbackContext } : {}),
-        });
 
         const [updatedTask] = await db.update(agentTasks)
             .set({ status: 'planning', updatedAt: new Date() })
@@ -313,7 +321,16 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         payload: {},
     });
 
-    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId });
+    console.log('[SQS] Publishing execute_task for task', taskId);
+    try {
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId });
+    } catch (sqsErr) {
+        console.error('[SQS] execute_task publish failed for task', taskId, sqsErr);
+        await db.update(agentTasks)
+            .set({ status: 'blocked', blockedReason: 'Failed to queue task for execution. Please retry.', updatedAt: new Date() })
+            .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
+        return c.json({ error: 'Failed to queue task for execution. Please retry.' }, 502);
+    }
 
     return c.json({ data: { task: updatedTask } });
 });
@@ -362,7 +379,16 @@ tasksRoutes.post('/:taskId/plan', async (c) => {
         payload: { from: 'todo', to: 'planning' },
     });
 
-    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+    console.log('[SQS] Publishing plan_task for task', taskId);
+    try {
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+    } catch (sqsErr) {
+        console.error('[SQS] plan_task publish failed for task', taskId, sqsErr);
+        await db.update(agentTasks)
+            .set({ status: 'blocked', blockedReason: 'Failed to queue task for planning. Please retry.', updatedAt: new Date() })
+            .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
+        return c.json({ error: 'Failed to queue task for planning. Please retry.' }, 502);
+    }
 
     try {
         await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'planning' });
@@ -433,11 +459,20 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
         payload: { from: 'blocked', to: 'planning' },
     });
 
-    await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
-        type: 'replan_task',
-        taskId,
-        extraContext: 'User clarification: ' + answer,
-    });
+    console.log('[SQS] Publishing replan_task (clarification) for task', taskId);
+    try {
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
+            type: 'replan_task',
+            taskId,
+            extraContext: 'User clarification: ' + answer,
+        });
+    } catch (sqsErr) {
+        console.error('[SQS] replan_task (clarification) publish failed for task', taskId, sqsErr);
+        await db.update(agentTasks)
+            .set({ status: 'blocked', blockedReason: 'Failed to queue task for replanning. Please retry.', updatedAt: new Date() })
+            .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
+        return c.json({ error: 'Failed to queue task for replanning. Please retry.' }, 502);
+    }
 
     try {
         await pushWebSocketEvent(tenantId, {
