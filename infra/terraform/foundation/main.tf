@@ -632,6 +632,18 @@ module "iam" {
             Resource = module.sqs.queue_arns["agent_task"]
           }]
         })
+        sqs_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = ["sqs:SendMessage"]
+            Resource = [
+              module.sqs.queue_arns["processing"],
+              module.sqs.queue_arns["workflow"],
+              module.sqs.queue_arns["agent_task"],
+            ]
+          }]
+        })
         manage_connections = jsonencode({
           Version = "2012-10-17"
           Statement = [{
