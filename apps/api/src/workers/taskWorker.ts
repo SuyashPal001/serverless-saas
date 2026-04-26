@@ -58,6 +58,8 @@ async function handlePlanning(taskId: string, extraContext?: string) {
       description: task.description,
       acceptanceCriteria: task.acceptanceCriteria,
       agentName: agent?.name ?? null,
+      referenceText: task.referenceText ?? null,
+      links: task.links ?? [],
       ...(extraContext ? { extraContext } : {}),
     }),
   });
@@ -182,6 +184,8 @@ async function handleExecution(taskId: string) {
         taskTitle: task.title,
         taskDescription: task.description ?? '',
         agentName: agent?.name ?? null,
+        referenceText: task.referenceText ?? null,
+        links: task.links ?? [],
         steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
           id: s.id,
           stepNumber: s.stepNumber,
