@@ -1,6 +1,6 @@
 # PROJECT.md — Saarthi Agentic SaaS Platform
 
-Last updated: 2026-04-25 (session notes from Apr 25–26)
+Last updated: 2026-04-26 (session notes from Apr 26)
 
 ---
 
@@ -123,7 +123,24 @@ Branching: `blocked` (clarification or failure), `cancelled`
 
 ---
 
-## 4. What Was Built & Fixed (Apr 25, 2026)
+## 4. What Was Built & Fixed (Apr 26, 2026)
+
+### Frontend — TaskDetailView (Apr 26)
+
+| # | Feature | Details |
+|---|---|---|
+| 1 | **Mark as Done button** | Green button in "Ready for your review" banner when `task.status === 'review'`. Calls `PATCH /api/v1/tasks/:taskId { status: 'done' }`, invalidates query on success. |
+| 2 | **Markdown step output rendering** | `agentOutput` in StepCard now rendered via react-markdown + remark-gfm (already installed). Removed `font-mono`. Email list format (`**From:**`, `**Subject:**`, `**Date:**`) auto-detected and rendered as structured cards. |
+| 3 | **Post-Action Receipt** | Shown below Agent's Plan when `task.status === 'review'` or `'done'`. Sections: What Happened (first sentence), What I Touched (tool icons: `GMAIL_*`→📧, `DRIVE_*`→📁, `CALENDAR_*`→📅, `ZOHO_*`→🏢, `WEB_SEARCH`→🔍), Results (email rows with +N more expand / react-markdown), Assumptions Made (heuristic: last paragraph containing "assumed/interpreted/treating as"), View raw toggle, Mark as Done button in footer. Replaces the previous Output section. |
+
+### Relay fixes (Apr 26, `/opt/agent-relay/src/`)
+
+| # | Fix | Details |
+|---|---|---|
+| 13 | **`patchSessionMcp` hash fix** | `config.patch` requires `baseHash` from `config.get`. `patchSessionMcp` now calls `config.get` first (5s timeout via `sendRequestAsync`), extracts hash, includes it in `config.patch`. Graceful degradation if `config.get` fails. |
+| 14 | **Planning promise timeout** | `POST /api/tasks/plan` promise had no timeout — if Gemini hung silently, the HTTP request stayed open forever. Added 90-second hard timeout: fires `[tasks/plan] ... timeout after 90s`, closes OpenClaw client, rejects with error → relay returns 502 → Lambda can mark task blocked instead of hanging indefinitely. |
+
+### What was already built (Apr 25, 2026)
 
 ### Bugs fixed
 

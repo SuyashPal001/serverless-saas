@@ -654,7 +654,7 @@ function TaskStatusBanner({ task, needsClarification, onMarkDone, isMarkingDone 
                 <p className="text-sm text-amber-400/90 font-medium">Plan ready — review and approve to start execution</p>
             </div>
         )
-    } else if (status === 'awaiting_clarification' || needsClarification) {
+    } else if (needsClarification) {
         content = (
             <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20">
                 <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -681,16 +681,6 @@ function TaskStatusBanner({ task, needsClarification, onMarkDone, isMarkingDone 
                         {isMarkingDone ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Mark as Done'}
                     </Button>
                 )}
-            </div>
-        )
-    } else if (status === 'blocked' && !needsClarification) {
-        content = (
-            <div className="flex items-start gap-3 px-4 py-2.5 rounded-xl bg-red-500/5 border border-red-500/20">
-                <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div>
-                    <p className="text-sm text-red-400/90 font-medium">Execution failed</p>
-                    {task.blockedReason && <p className="text-xs text-red-400/60 mt-0.5">{task.blockedReason}</p>}
-                </div>
             </div>
         )
     } else if (status === 'done') {
@@ -1253,10 +1243,7 @@ export function TaskDetailView() {
         patchTask.mutate({ acceptanceCriteria: updated })
     }
 
-    const needsClarification = task?.status === 'blocked' && (
-        (events?.find(e => e.eventType === 'clarification_requested') && !events?.find(e => e.eventType === 'clarification_answered')) ||
-        !!task.blockedReason?.startsWith('Agent needs clarification:')
-    )
+    const needsClarification = task?.status === 'blocked'
     const clarificationQuestions = needsClarification
         ? ((events?.find(e => e.eventType === 'clarification_requested')?.payload?.questions as string[] | undefined)?.filter(Boolean) ?? (
               task?.blockedReason?.startsWith('Agent needs clarification:')
