@@ -17,6 +17,7 @@ import type {
 } from "@/components/platform/notifications/types";
 import { useNotifications } from "@/lib/notifications-context";
 import { can } from "@/lib/permissions";
+import { toast } from "sonner";
 
 function relativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -100,9 +101,12 @@ export default function NotificationsPage() {
 
     const approveMutation = useMutation({
         mutationFn: (taskId: string) =>
-            api.patch(`/api/v1/tasks/${taskId}/approve`),
+            api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: true }),
         onSuccess: (_data, taskId) => {
-            router.push(`/${tenantSlug}/dashboard/board/${taskId}`);
+            router.push(`/${tenantSlug}/dashboard/tasks/${taskId}`);
+        },
+        onError: () => {
+            toast.error("Failed to approve plan. Please try again.");
         },
     });
 
