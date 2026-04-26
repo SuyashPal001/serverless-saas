@@ -234,7 +234,7 @@ export default function NotificationsPage() {
                                 </div>
                             </div>
 
-                            {n.messageType === 'task.awaiting_approval' && n.metadata?.taskId && (
+                            {n.messageType === 'task.awaiting_approval' && typeof n.metadata?.taskId === 'string' && (
                                 <div className="mt-2.5 flex justify-end">
                                     <Button
                                         size="sm"
