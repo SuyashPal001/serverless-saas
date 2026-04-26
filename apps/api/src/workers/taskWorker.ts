@@ -67,7 +67,7 @@ async function handlePlanning(taskId: string, extraContext?: string) {
   }
 
   const body = await response.json() as {
-    steps?: Array<{ title: string; description: string; toolName?: string }>;
+    steps?: Array<{ title: string; description: string; toolName?: string; confidenceScore?: number }>;
     clarificationNeeded?: boolean;
     questions?: string[];
   };
@@ -109,12 +109,18 @@ async function handlePlanning(taskId: string, extraContext?: string) {
       title: step.title,
       description: step.description,
       toolName: step.toolName ?? null,
+      confidenceScore: step.confidenceScore ?? null,
       status: 'pending' as const,
     }))
   );
 
+  const scores = steps.filter(s => s.confidenceScore != null).map(s => s.confidenceScore!);
+  const avgConfidence = scores.length > 0
+    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
+    : null;
+
   await db.update(agentTasks)
-    .set({ status: 'awaiting_approval', updatedAt: new Date() })
+    .set({ status: 'awaiting_approval', confidenceScore: avgConfidence, updatedAt: new Date() })
     .where(eq(agentTasks.id, task.id));
 
   await db.insert(taskEvents).values({
