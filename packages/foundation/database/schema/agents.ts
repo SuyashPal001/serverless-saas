@@ -1,5 +1,11 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index, customType } from 'drizzle-orm/pg-core';
 import { json, jsonb } from 'drizzle-orm/pg-core';
+
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() { return 'vector(768)'; },
+  toDriver(value: number[]): string { return `[${value.join(',')}]`; },
+  fromDriver(value: string): number[] { return value.slice(1, -1).split(',').map(Number); },
+});
 import { tenants } from './tenancy';
 import { users } from './auth';
 
@@ -95,6 +101,7 @@ export const agentTasks = pgTable('agent_tasks', {
   sortOrder: integer('sort_order').default(0),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
+  embedding: vector('embedding'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => ({

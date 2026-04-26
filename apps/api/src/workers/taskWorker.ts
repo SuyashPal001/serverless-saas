@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '@serverless-saas/database/schema';
 import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and, sql } from 'drizzle-orm';
 
 // Import schema from TypeScript source so esbuild bundles fresh — avoids stale dist/schema
 // causing db.query.agentTasks to be undefined at runtime.
@@ -11,11 +11,49 @@ const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '../lib/sqs';
 import { initRuntimeSecrets } from '../lib/secrets';
+import { getCacheClient } from '@serverless-saas/cache';
+import { embedQuery } from '@serverless-saas/ai';
 
 const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 
 let secretsInitialised = false;
+
+async function getPastSuccessfulPlans(tenantId: string, title: string, description: string | null | undefined, limit = 2): Promise<string | null> {
+  const queryText = [title, description].filter(Boolean).join(' ');
+  const embedding = await embedQuery(queryText);
+  const vectorStr = `[${embedding.join(',')}]`;
+
+  const result = await db.execute(sql`
+    SELECT id, title
+    FROM agent_tasks
+    WHERE tenant_id = ${tenantId}
+      AND status = 'done'
+      AND embedding IS NOT NULL
+      AND (1 - (embedding <=> ${vectorStr}::vector)) > 0.6
+    ORDER BY embedding <=> ${vectorStr}::vector
+    LIMIT ${limit}
+  `);
+
+  const rows = (result as any).rows as Array<{ id: string; title: string }>;
+  if (!rows || rows.length === 0) return null;
+
+  const sections: string[] = [];
+  for (const row of rows) {
+    const steps = await db.select({ title: taskSteps.title, description: taskSteps.description })
+      .from(taskSteps)
+      .where(and(eq(taskSteps.taskId, row.id), eq(taskSteps.status, 'done')))
+      .orderBy(asc(taskSteps.stepNumber));
+
+    if (steps.length > 0) {
+      const stepList = steps.map((s, i) => `${i + 1}. ${s.title}${s.description ? ': ' + s.description : ''}`).join('\n');
+      sections.push(`### ${row.title}\n${stepList}`);
+    }
+  }
+
+  if (sections.length === 0) return null;
+  return `## Similar past tasks\n${sections.join('\n\n')}`;
+}
 
 export const handler: SQSHandler = async (event) => {
   if (!secretsInitialised) {
@@ -44,6 +82,18 @@ async function handlePlanning(taskId: string, extraContext?: string) {
     ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
     : null;
 
+  let ragContext: string | null = null;
+  try {
+    ragContext = await getPastSuccessfulPlans(task.tenantId, task.title, task.description);
+    if (ragContext) {
+      console.log(`[handlePlanning] taskId=${taskId} RAG found similar past tasks, prepending context`);
+    }
+  } catch (ragErr) {
+    console.error('[handlePlanning] RAG lookup failed (non-fatal):', (ragErr as Error).message);
+  }
+
+  const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
+
   const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
     method: 'POST',
     headers: {
@@ -60,7 +110,7 @@ async function handlePlanning(taskId: string, extraContext?: string) {
       agentName: agent?.name ?? null,
       referenceText: task.referenceText ?? null,
       links: task.links ?? [],
-      ...(extraContext ? { extraContext } : {}),
+      ...(combinedExtraContext ? { extraContext: combinedExtraContext } : {}),
     }),
   });
 
@@ -169,6 +219,10 @@ async function handleExecution(taskId: string) {
     .where(eq(taskSteps.taskId, taskId))
     .orderBy(asc(taskSteps.stepNumber));
 
+  const watchdogKey = `task:watchdog:${taskId}`;
+  const cache = getCacheClient();
+  await cache.set(watchdogKey, JSON.stringify({ taskId, tenantId: task.tenantId, startedAt: Date.now() }), { ex: 600 });
+
   let response: Response;
   try {
     response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
@@ -198,6 +252,7 @@ async function handleExecution(taskId: string) {
   } catch (err) {
     const reason = `Execution failed: relay unreachable or timed out`;
     console.error('[taskWorker] relay call failed', { taskId, error: (err as Error).message });
+    await cache.del(watchdogKey);
     await db.update(agentTasks)
       .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
       .where(eq(agentTasks.id, taskId));
@@ -220,6 +275,7 @@ async function handleExecution(taskId: string) {
   if (!response.ok) {
     // Relay rejected the execution — mark task blocked directly without HTTP round-trip
     const reason = `Relay rejected execution: HTTP ${response.status}`;
+    await cache.del(watchdogKey);
     await db.update(agentTasks)
       .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
       .where(eq(agentTasks.id, taskId));

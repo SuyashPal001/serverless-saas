@@ -8,6 +8,7 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
+import { embedTexts } from '@serverless-saas/ai';
 import type { AppEnv } from '../types';
 export const tasksRoutes = new Hono<AppEnv>();
 
@@ -104,6 +105,15 @@ tasksRoutes.post('/', async (c) => {
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
     }
+
+    // Fire-and-forget: generate and store embedding for future RAG-injected planning
+    const embedText = [title, description].filter(Boolean).join(' ');
+    embedTexts([embedText], 'RETRIEVAL_DOCUMENT')
+      .then(([embedding]) => db.update(agentTasks)
+        .set({ embedding })
+        .where(eq(agentTasks.id, task.id))
+      )
+      .catch((err: unknown) => console.error('[tasks] embedding generation failed (non-fatal):', (err as Error).message));
 
     return c.json({ data: { task: { ...task, sortOrder: task.sortOrder ?? 0 }, steps: [] } }, 201);
 });

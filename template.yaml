@@ -186,6 +186,40 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
+          GCP_LOCATION: "us-central1"
+    Metadata:
+      BuildMethod: makefile
+
+  # ─────────────────────────────────────────────
+  # Watchdog Lambda — marks stalled in_progress tasks as blocked
+  # ─────────────────────────────────────────────
+  WatchdogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-task-watchdog-${EnvironmentName}"
+      Description: Task Watchdog — EventBridge schedule, marks stalled in_progress tasks blocked
+      CodeUri: apps/api/
+      Handler: watchdogHandler.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !Ref TaskWorkerRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: watchdog
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
+          SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+      Events:
+        WatchdogSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: !Sub "${ProjectName}-task-watchdog-${EnvironmentName}"
+            Description: Runs task watchdog every 5 minutes to detect stalled tasks
+            Enabled: true
     Metadata:
       BuildMethod: makefile
 

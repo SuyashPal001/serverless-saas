@@ -5,6 +5,7 @@ import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents, taskComments } from '@serverless-saas/database/schema/agents';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import { publishToQueue } from '../../lib/sqs';
+import { getCacheClient } from '@serverless-saas/cache';
 import type { AppEnv } from '../../types';
 
 // Auth: compare x-internal-service-key header to process.env.INTERNAL_SERVICE_KEY.
@@ -152,6 +153,9 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
 
   await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'done', agentOutput });
 
+  // Extend watchdog TTL — step completed, relay is alive
+  getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
+
   return c.json({ success: true });
 });
 
@@ -210,6 +214,9 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
 
   await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'failed' });
 
+  // Step failed → task blocked (terminal for this run) — clear watchdog
+  getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
+
   return c.json({ success: true });
 });
 
@@ -250,6 +257,9 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
   } catch (wsErr) {
     console.error('WS push failed (non-fatal):', wsErr);
   }
+
+  // Task completed — clear watchdog (terminal state)
+  getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
 
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (sqsUrl) {
@@ -305,6 +315,9 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
   } catch (wsErr) {
     console.error('WS push failed (non-fatal):', wsErr);
   }
+
+  // Task failed → blocked (terminal for this run) — clear watchdog
+  getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
 
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (sqsUrl) {
