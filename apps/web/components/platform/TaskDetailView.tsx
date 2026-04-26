@@ -350,6 +350,193 @@ function AgentOutputRenderer({ content }: { content: string }) {
     )
 }
 
+// --- Post-Action Receipt helpers ---
+
+function extractFirstSentence(text: string): string {
+    if (!text) return ''
+    const clean = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/^#+\s+/gm, '').trim()
+    const match = clean.match(/^[^.!?\n]+[.!?]/)
+    return match ? match[0].trim() : clean.split('\n')[0].trim()
+}
+
+function extractAssumptions(text: string): string | null {
+    const keywords = ['interpreted', 'assumed', 'treated as', 'assuming', 'assumption', 'i inferred', 'i treated']
+    const paragraphs = text.split(/\n\s*\n/)
+    const matched = paragraphs.filter(p => keywords.some(kw => p.toLowerCase().includes(kw)))
+    if (matched.length === 0) return null
+    return matched[matched.length - 1].replace(/\*\*/g, '').replace(/\*/g, '').trim()
+}
+
+function getToolInfo(toolName: string): { icon: string; label: string } {
+    if (/^GMAIL/.test(toolName)) return { icon: '📧', label: 'Gmail' }
+    if (/^DRIVE/.test(toolName)) return { icon: '📁', label: 'Google Drive' }
+    if (/^CALENDAR/.test(toolName)) return { icon: '📅', label: 'Google Calendar' }
+    if (/^ZOHO/.test(toolName)) return { icon: '🏢', label: 'Zoho CRM' }
+    if (toolName === 'WEB_SEARCH') return { icon: '🔍', label: 'Web' }
+    return { icon: '⚡', label: toolName }
+}
+
+function ReceiptResults({ steps }: { steps: Step[] }) {
+    const [showAll, setShowAll] = useState(false)
+    const allOutput = steps.map(s => s.agentOutput!).join('\n\n')
+    const emails = parseEmailEntries(allOutput)
+
+    if (emails) {
+        const LIMIT = 5
+        const visible = showAll ? emails : emails.slice(0, LIMIT)
+        const hiddenCount = emails.length - LIMIT
+        return (
+            <div>
+                <div className="divide-y divide-[#1a1a1a]">
+                    {visible.map((e, i) => (
+                        <div key={i} className="flex items-start gap-3 py-2.5 text-xs">
+                            <span className="flex-shrink-0 leading-none mt-0.5">📧</span>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span className="text-foreground/80 truncate max-w-[180px]">{e.from}</span>
+                                    <span className="text-muted-foreground/30">·</span>
+                                    <span className="text-foreground font-medium truncate">{e.subject}</span>
+                                    {e.date && (
+                                        <>
+                                            <span className="text-muted-foreground/30">·</span>
+                                            <span className="text-muted-foreground/60 flex-shrink-0">{e.date}</span>
+                                        </>
+                                    )}
+                                </div>
+                                {e.snippet && <p className="text-muted-foreground/50 mt-0.5 line-clamp-1 italic">{e.snippet}</p>}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {!showAll && hiddenCount > 0 && (
+                    <button onClick={() => setShowAll(true)} className="mt-2 text-xs text-primary hover:text-primary/80 transition-colors">
+                        + {hiddenCount} more
+                    </button>
+                )}
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-4">
+            {steps.map(step => (
+                <div key={step.id}>
+                    {steps.length > 1 && (
+                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground/40 font-semibold mb-1.5">{step.title}</p>
+                    )}
+                    <AgentOutputRenderer content={step.agentOutput!} />
+                </div>
+            ))}
+        </div>
+    )
+}
+
+function PostActionReceipt({ task, steps, onMarkDone, isMarkingDone }: {
+    task: Task
+    steps: Step[]
+    onMarkDone: () => void
+    isMarkingDone: boolean
+}) {
+    const [showRaw, setShowRaw] = useState(false)
+
+    const stepsWithOutput = steps.filter(s => s.status === 'done' && s.agentOutput)
+    const toolsTouched = [...new Set(steps.filter(s => s.toolName).map(s => s.toolName!))]
+    const summary = extractFirstSentence(stepsWithOutput[0]?.agentOutput ?? '')
+    const allOutputText = stepsWithOutput.map(s => s.agentOutput!).join('\n\n')
+    const assumptions = extractAssumptions(allOutputText)
+    const rawOutput = stepsWithOutput.map(s => `### ${s.title}\n\n${s.agentOutput}`).join('\n\n---\n\n')
+
+    return (
+        <div className="rounded-2xl border border-emerald-500/20 bg-[#080d08] overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-3.5 border-b border-emerald-500/15 bg-emerald-500/5 flex items-center gap-2.5">
+                <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <h2 className="text-sm font-semibold text-emerald-400">
+                    {task.status === 'done' ? 'Task Complete' : 'Ready for Review'}
+                </h2>
+            </div>
+
+            <div className="px-5 py-5 space-y-5">
+                {/* WHAT HAPPENED */}
+                <section>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What Happened</p>
+                    <p className="text-sm text-foreground/80 leading-relaxed">
+                        {summary || 'Agent completed execution — see results below.'}
+                    </p>
+                </section>
+
+                {/* WHAT I TOUCHED */}
+                {toolsTouched.length > 0 && (
+                    <section>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What I Touched</p>
+                        <div className="flex flex-col gap-1.5">
+                            {toolsTouched.map(tool => {
+                                const { icon, label } = getToolInfo(tool)
+                                return (
+                                    <div key={tool} className="flex items-center gap-2 text-xs text-foreground/70">
+                                        <span>{icon}</span>
+                                        <span className="font-medium">{label}</span>
+                                        <span className="text-muted-foreground/35">— via {tool}</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </section>
+                )}
+
+                {/* RESULTS */}
+                <section>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Results</p>
+                    {stepsWithOutput.length === 0 ? (
+                        <p className="text-sm text-muted-foreground/50 italic">No output recorded</p>
+                    ) : (
+                        <ReceiptResults steps={stepsWithOutput} />
+                    )}
+                </section>
+
+                {/* ASSUMPTIONS MADE */}
+                {assumptions && (
+                    <section>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Assumptions Made</p>
+                        <p className="text-sm text-amber-400/70 leading-relaxed italic">{assumptions}</p>
+                    </section>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-[#1a1a1a] bg-[#0d0d0d] flex items-center justify-between gap-3 flex-wrap">
+                <button
+                    onClick={() => setShowRaw(r => !r)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                    {showRaw ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    {showRaw ? 'Hide raw' : 'View raw'}
+                </button>
+                {task.status === 'review' && (
+                    <Button
+                        size="sm"
+                        className="h-7 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={onMarkDone}
+                        disabled={isMarkingDone}
+                    >
+                        {isMarkingDone && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />}
+                        Mark as Done →
+                    </Button>
+                )}
+            </div>
+
+            {/* Raw output panel */}
+            {showRaw && (
+                <div className="border-t border-[#1e1e1e]">
+                    <pre className="p-5 text-xs text-muted-foreground/60 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+                        {rawOutput || 'No output recorded'}
+                    </pre>
+                </div>
+            )}
+        </div>
+    )
+}
+
 function StepCard({ step, index }: { step: Step; index: number }) {
     const [insightsOpen, setInsightsOpen] = useState(false)
     const score = step.confidenceScore != null ? Number(step.confidenceScore) : null
@@ -1612,29 +1799,15 @@ export function TaskDetailView() {
                         )}
                     </div>
 
-                    {/* ── OUTPUT SECTION ── */}
-                    {steps.some(s => s.agentOutput) && (
+                    {/* ── POST-ACTION RECEIPT ── */}
+                    {(task.status === 'review' || task.status === 'done') && (
                         <div className="mb-8 pt-6 border-t border-[#1e1e1e]">
-                            <div className="flex items-center gap-2 mb-4">
-                                <Zap className="w-4 h-4 text-muted-foreground" />
-                                <h2 className="text-sm font-medium text-foreground">Output</h2>
-                                <span className="bg-[#1a1a1a] border border-[#2a2a2a] px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/80 font-medium">
-                                    {steps.filter(s => s.agentOutput).length} {steps.filter(s => s.agentOutput).length === 1 ? 'result' : 'results'}
-                                </span>
-                            </div>
-                            <div className="space-y-3">
-                                {steps.filter(s => s.agentOutput).map((step) => (
-                                    <div key={step.id} className="rounded-xl border border-[#1e1e1e] bg-[#0d0d0d] overflow-hidden">
-                                        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e1e1e] bg-[#111]">
-                                            <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                                            <span className="text-xs font-medium text-foreground/80 truncate">{step.title}</span>
-                                        </div>
-                                        <div className="px-4 py-3">
-                                            <AgentOutputRenderer content={step.agentOutput!} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <PostActionReceipt
+                                task={task}
+                                steps={steps}
+                                onMarkDone={() => patchTask.mutate({ status: 'done' })}
+                                isMarkingDone={patchTask.isPending}
+                            />
                         </div>
                     )}
 
