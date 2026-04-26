@@ -635,6 +635,52 @@ function StepCard({ step, index }: { step: Step; index: number }) {
     )
 }
 
+// ── Planning skeleton ─────────────────────────────────────────────────────────
+
+function PlanningStepSkeleton() {
+    return (
+        <div className="border rounded-xl p-4 mb-3 bg-[#111] border-[#1e1e1e] animate-pulse">
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                    {/* Step number circle */}
+                    <div className="w-6 h-6 rounded-full flex-shrink-0 mt-0.5 bg-[#1e1e1e]" />
+                    <div className="flex-1 min-w-0">
+                        {/* Title bar ~60% */}
+                        <div className="h-3.5 bg-[#1e1e1e] rounded w-3/5" />
+                        {/* Description bar ~85% */}
+                        <div className="h-3 bg-[#1e1e1e] rounded w-[85%] mt-2" />
+                        {/* Tool badge bar ~30% */}
+                        <div className="h-4 bg-[#1e1e1e] rounded-md w-[30%] mt-3" />
+                    </div>
+                </div>
+                {/* Status badge placeholder */}
+                <div className="h-4 w-12 bg-[#1e1e1e] rounded flex-shrink-0" />
+            </div>
+        </div>
+    )
+}
+
+function PlanningSkeletonCards() {
+    const [visibleCount, setVisibleCount] = useState(1)
+
+    useEffect(() => {
+        const t1 = setTimeout(() => setVisibleCount(2), 2500)
+        const t2 = setTimeout(() => setVisibleCount(3), 5000)
+        return () => {
+            clearTimeout(t1)
+            clearTimeout(t2)
+        }
+    }, [])
+
+    return (
+        <>
+            {Array.from({ length: visibleCount }).map((_, i) => (
+                <PlanningStepSkeleton key={i} />
+            ))}
+        </>
+    )
+}
+
 function TaskStatusBanner({ task, needsClarification, onMarkDone, isMarkingDone }: { task: Task; needsClarification: boolean; onMarkDone?: () => void; isMarkingDone?: boolean }) {
     const status = task.status as string
 
@@ -952,6 +998,12 @@ export function TaskDetailView() {
     })
 
     const { task, steps, events, agent, assignee } = data?.data ?? {}
+
+    // Fade-in when real steps first arrive (transition from skeleton → real cards)
+    const [stepsVisible, setStepsVisible] = useState(false)
+    useEffect(() => {
+        if (steps && steps.length > 0) setStepsVisible(true)
+    }, [steps?.length])
 
     const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
 
@@ -1755,13 +1807,9 @@ export function TaskDetailView() {
                             </div>
                         )}
 
-                        {/* Planning in progress (relay is working) */}
+                        {/* Planning in progress — streaming skeleton */}
                         {steps.length === 0 && task.status === 'planning' && (
-                            <div className="bg-[#111] border border-[#1e1e1e] rounded-xl p-8 flex flex-col items-center justify-center text-center">
-                                <Bot className="w-8 h-8 text-muted-foreground/30 mb-2" />
-                                <p className="text-sm text-muted-foreground">Agent is generating a plan...</p>
-                                <Loader2 className="w-4 h-4 mt-3 animate-spin text-muted-foreground/40" />
-                            </div>
+                            <PlanningSkeletonCards />
                         )}
 
                         {/* No plan yet — backlog */}
@@ -1805,7 +1853,7 @@ export function TaskDetailView() {
 
                         {/* Steps list */}
                         {steps.length > 0 && (
-                            <div>
+                            <div className={cn('transition-opacity duration-300', stepsVisible ? 'opacity-100' : 'opacity-0')}>
                                 {steps.map((step, i) => <StepCard key={step.id} step={step} index={i} />)}
 
                                 {/* Approve / Reject bar — only show when plan not yet approved and agent not executing */}
