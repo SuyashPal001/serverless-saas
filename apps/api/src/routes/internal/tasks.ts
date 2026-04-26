@@ -4,6 +4,7 @@ import { eq, and, asc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents, taskComments } from '@serverless-saas/database/schema/agents';
 import { pushWebSocketEvent } from '../../lib/websocket';
+import { publishToQueue } from '../../lib/sqs';
 import type { AppEnv } from '../../types';
 
 // Auth: compare x-internal-service-key header to process.env.INTERNAL_SERVICE_KEY.
@@ -250,6 +251,19 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
     console.error('WS push failed (non-fatal):', wsErr);
   }
 
+  const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+  if (sqsUrl) {
+    await publishToQueue(sqsUrl, {
+      type: 'notification.fire',
+      tenantId,
+      messageType: 'task.completed',
+      actorId: actorId,
+      actorType: 'agent',
+      recipientIds: [task.createdBy],
+      data: { taskId: task.id, taskTitle: task.title },
+    });
+  }
+
   return c.json({ success: true });
 });
 
@@ -292,6 +306,19 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
     console.error('WS push failed (non-fatal):', wsErr);
   }
 
+  const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+  if (sqsUrl) {
+    await publishToQueue(sqsUrl, {
+      type: 'notification.fire',
+      tenantId,
+      messageType: 'task.failed',
+      actorId: actorId,
+      actorType: 'agent',
+      recipientIds: [task.createdBy],
+      data: { taskId: task.id, taskTitle: task.title },
+    });
+  }
+
   return c.json({ success: true });
 });
 
@@ -330,6 +357,19 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
     eventType: 'clarification_requested',
     payload: { questions },
   });
+
+  const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+  if (sqsUrl) {
+    await publishToQueue(sqsUrl, {
+      type: 'notification.fire',
+      tenantId,
+      messageType: 'task.needs_clarification',
+      actorId: actorId,
+      actorType: 'agent',
+      recipientIds: [task.createdBy],
+      data: { taskId: task.id, taskTitle: task.title },
+    });
+  }
 
   return c.json({ success: true });
 });

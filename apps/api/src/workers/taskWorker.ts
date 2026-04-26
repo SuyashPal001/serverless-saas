@@ -9,6 +9,7 @@ import { eq, asc } from 'drizzle-orm';
 // causing db.query.agentTasks to be undefined at runtime.
 const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 import { pushWebSocketEvent } from '../lib/websocket';
+import { publishToQueue } from '../lib/sqs';
 import { initRuntimeSecrets } from '../lib/secrets';
 
 const RELAY_URL = process.env.RELAY_URL!;
@@ -130,6 +131,19 @@ async function handlePlanning(taskId: string, extraContext?: string) {
     taskId: task.id,
     status: 'awaiting_approval',
   });
+
+  const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+  if (sqsUrl) {
+    await publishToQueue(sqsUrl, {
+      type: 'notification.fire',
+      tenantId: task.tenantId,
+      messageType: 'task.awaiting_approval',
+      actorId: task.agentId ?? 'system',
+      actorType: 'agent',
+      recipientIds: [task.createdBy],
+      data: { taskId: task.id, taskTitle: task.title },
+    });
+  }
 }
 
 async function handleExecution(taskId: string) {
@@ -147,28 +161,51 @@ async function handleExecution(taskId: string) {
     .where(eq(taskSteps.taskId, taskId))
     .orderBy(asc(taskSteps.stepNumber));
 
-  const response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-service-key': INTERNAL_SERVICE_KEY(),
-    },
-    body: JSON.stringify({
+  let response: Response;
+  try {
+    response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY(),
+      },
+      body: JSON.stringify({
+        taskId: task.id,
+        agentId: task.agentId,
+        tenantId: task.tenantId,
+        taskTitle: task.title,
+        taskDescription: task.description ?? '',
+        agentName: agent?.name ?? null,
+        steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
+          id: s.id,
+          stepNumber: s.stepNumber,
+          title: s.title,
+          description: s.description,
+          toolName: s.toolName,
+        })),
+      }),
+    });
+  } catch (err) {
+    const reason = `Execution failed: relay unreachable or timed out`;
+    console.error('[taskWorker] relay call failed', { taskId, error: (err as Error).message });
+    await db.update(agentTasks)
+      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+      .where(eq(agentTasks.id, taskId));
+    await db.insert(taskEvents).values({
       taskId: task.id,
-      agentId: task.agentId,
       tenantId: task.tenantId,
-      taskTitle: task.title,
-      taskDescription: task.description ?? '',
-      agentName: agent?.name ?? null,
-      steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
-        id: s.id,
-        stepNumber: s.stepNumber,
-        title: s.title,
-        description: s.description,
-        toolName: s.toolName,
-      })),
-    }),
-  });
+      actorType: 'agent',
+      actorId: 'system',
+      eventType: 'status_changed',
+      payload: { from: task.status, to: 'blocked', reason },
+    });
+    await pushWebSocketEvent(task.tenantId, {
+      type: 'task.status.changed',
+      taskId: task.id,
+      status: 'blocked',
+    });
+    return;
+  }
 
   if (!response.ok) {
     // Relay rejected the execution — mark task blocked directly without HTTP round-trip
