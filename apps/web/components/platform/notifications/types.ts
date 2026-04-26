@@ -6,6 +6,7 @@ export interface Notification {
     read: boolean;
     readAt: string | null;
     createdAt: string;
+    metadata?: Record<string, unknown>;
 }
 
 export interface NotificationsInboxResponse {

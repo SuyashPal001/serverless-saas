@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Inbox, AlertCircle, CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
@@ -33,6 +33,7 @@ const PAGE_SIZE = 20;
 export default function NotificationsPage() {
     const params = useParams();
     const tenantSlug = params.tenant as string;
+    const router = useRouter();
     const { permissions = [] } = useTenant();
 
     // Notifications Context replaces the raw socket hook
@@ -97,9 +98,20 @@ export default function NotificationsPage() {
     const totalPages = Math.ceil((data?.total ?? 0) / (data?.limit ?? PAGE_SIZE)) || 1;
     const unreadCount = data?.unreadCount ?? 0;
 
+    const approveMutation = useMutation({
+        mutationFn: (taskId: string) =>
+            api.patch(`/api/v1/tasks/${taskId}/approve`),
+        onSuccess: (_data, taskId) => {
+            router.push(`/${tenantSlug}/dashboard/tasks/${taskId}`);
+        },
+    });
+
     const handleRowClick = (n: Notification) => {
         if (!n.read && canUpdate) {
             markReadMutation.mutate(n.id);
+        }
+        if (n.metadata?.taskId) {
+            router.push(`/${tenantSlug}/dashboard/tasks/${n.metadata.taskId}`);
         }
     };
 
@@ -222,7 +234,22 @@ export default function NotificationsPage() {
                                 </div>
                             </div>
 
-                            {!n.read && canUpdate && (
+                            {n.messageType === 'task.awaiting_approval' && n.metadata?.taskId && (
+                                <div className="mt-2.5 flex justify-end">
+                                    <Button
+                                        size="sm"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!n.read && canUpdate) markReadMutation.mutate(n.id);
+                                            approveMutation.mutate(n.metadata!.taskId as string);
+                                        }}
+                                        disabled={approveMutation.isPending}
+                                    >
+                                        Approve
+                                    </Button>
+                                </div>
+                            )}
+                            {n.messageType !== 'task.awaiting_approval' && !n.read && canUpdate && (
                                 <div className="absolute right-4 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Click to mark read</span>
                                 </div>
