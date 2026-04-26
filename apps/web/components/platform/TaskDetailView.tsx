@@ -889,11 +889,12 @@ function AcceptanceCriteriaEditor({ criteria, onChange }: {
     )
 }
 
-function FeedbackDialog({ open, onOpenChange, steps, onSubmitFeedback }: { open: boolean, onOpenChange: (v: boolean) => void, steps: Step[], onSubmitFeedback: (feedback: Record<string, string>) => void }) {
+function FeedbackDialog({ open, onOpenChange, steps, onSubmitFeedback }: { open: boolean, onOpenChange: (v: boolean) => void, steps: Step[], onSubmitFeedback: (feedback: Record<string, string>, generalInstruction: string) => void }) {
     const [feedback, setFeedback] = useState<Record<string, string>>({})
-    
+    const [generalInstruction, setGeneralInstruction] = useState('')
+
     const handleSubmit = () => {
-        onSubmitFeedback(feedback)
+        onSubmitFeedback(feedback, generalInstruction)
         onOpenChange(false)
     }
 
@@ -904,6 +905,16 @@ function FeedbackDialog({ open, onOpenChange, steps, onSubmitFeedback }: { open:
                     <DialogTitle>Request Changes</DialogTitle>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto space-y-4 p-1">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="feedback-general" className="text-sm font-medium">Overall instruction for Saarthi</Label>
+                        <Textarea
+                            id="feedback-general"
+                            placeholder="e.g. Only search emails from the last 7 days, focus on recruiters only"
+                            value={generalInstruction}
+                            onChange={(e) => setGeneralInstruction(e.target.value)}
+                            className="bg-[#1a1a1a] border-[#2a2a2a] rounded-lg text-sm p-2"
+                        />
+                    </div>
                     {steps.map(step => (
                         <div key={step.id} className="space-y-1.5">
                             <Label htmlFor={`feedback-${step.id}`} className="text-sm font-medium">
@@ -944,6 +955,10 @@ export function TaskDetailView() {
     const [activeTab, setActiveTab] = useState<'All' | 'Activity' | 'Events'>('All')
     const [feedbackOpen, setFeedbackOpen] = useState(false)
     const [clarificationAnswer, setClarificationAnswer] = useState('')
+    const [retryOpen1, setRetryOpen1] = useState(false)
+    const [retryInput1, setRetryInput1] = useState('')
+    const [retryOpen2, setRetryOpen2] = useState(false)
+    const [retryInput2, setRetryInput2] = useState('')
 
     // Inline edit states
     const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -1196,11 +1211,12 @@ export function TaskDetailView() {
     })
 
     const { mutate: approvePlan } = useMutation({
-        mutationFn: (payload: { approved: boolean; feedback?: Record<string, string> }) => {
+        mutationFn: (payload: { approved: boolean; feedback?: Record<string, string>; generalInstruction?: string }) => {
             const stepFeedback = payload.feedback ? Object.entries(payload.feedback)
                 .filter(([, text]) => text.trim())
                 .map(([stepId, feedback]) => ({ stepId, feedback })) : undefined;
-            return api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: payload.approved, stepFeedback })
+            const extraContext = payload.generalInstruction?.trim() || undefined;
+            return api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: payload.approved, stepFeedback, extraContext })
         },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['task', taskId] })
@@ -1749,9 +1765,31 @@ export function TaskDetailView() {
                                 {steps.length > 0 && <span className="bg-[#1a1a1a] border border-[#2a2a2a] px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/80 font-medium">{steps.length} steps</span>}
                             </div>
                             {task.status === 'blocked' && task.blockedReason?.includes('Planning failed') && (
-                                <Button variant="ghost" size="sm" className="text-xs h-7 gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => approvePlan({ approved: false })}>
-                                    <RefreshCw className="w-3.5 h-3.5" /> Retry
-                                </Button>
+                                retryOpen1 ? (
+                                    <div className="flex flex-col items-end gap-1">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={retryInput1}
+                                                onChange={(e) => setRetryInput1(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') { approvePlan({ approved: false, generalInstruction: retryInput1 }); setRetryOpen1(false); setRetryInput1('') } if (e.key === 'Escape') { setRetryOpen1(false); setRetryInput1('') } }}
+                                                placeholder="What should change? (optional but recommended)"
+                                                className="text-xs h-7 bg-[#1a1a1a] border border-[#2a2a2a] rounded px-2 text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-[#3a3a3a] w-64"
+                                            />
+                                            <Button variant="ghost" size="sm" className="text-xs h-7 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 px-2"
+                                                onClick={() => { approvePlan({ approved: false, generalInstruction: retryInput1 }); setRetryOpen1(false); setRetryInput1('') }}>
+                                                Confirm Retry
+                                            </Button>
+                                            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setRetryOpen1(false); setRetryInput1('') }}>Cancel</button>
+                                        </div>
+                                        {!retryInput1.trim() && <span className="text-[10px] text-amber-500/70">Retrying without feedback may produce the same plan.</span>}
+                                    </div>
+                                ) : (
+                                    <Button variant="ghost" size="sm" className="text-xs h-7 gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => setRetryOpen1(true)}>
+                                        <RefreshCw className="w-3.5 h-3.5" /> Retry
+                                    </Button>
+                                )
                             )}
                         </div>
 
@@ -1805,14 +1843,39 @@ export function TaskDetailView() {
                                                 <li className="flex items-start gap-2">• Clarify the **Task Description** to reduce ambiguity.</li>
                                             </ul>
                                         </div>
-                                        <div className="mt-5 flex items-center gap-3">
-                                            <Button 
-                                                size="sm" 
-                                                className="bg-red-600 hover:bg-red-700 text-white text-[11px] h-8 gap-2 px-4 shadow-lg shadow-red-900/20" 
-                                                onClick={() => approvePlan({ approved: false })}
-                                            >
-                                                <RefreshCw className="w-3 h-3" /> Retry Planning
-                                            </Button>
+                                        <div className="mt-5">
+                                            {retryOpen2 ? (
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            autoFocus
+                                                            value={retryInput2}
+                                                            onChange={(e) => setRetryInput2(e.target.value)}
+                                                            onKeyDown={(e) => { if (e.key === 'Enter') { approvePlan({ approved: false, generalInstruction: retryInput2 }); setRetryOpen2(false); setRetryInput2('') } if (e.key === 'Escape') { setRetryOpen2(false); setRetryInput2('') } }}
+                                                            placeholder="What should change? (optional but recommended)"
+                                                            className="text-xs h-8 bg-[#1a1a1a] border border-[#2a2a2a] rounded px-2 text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-[#3a3a3a] flex-1"
+                                                        />
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-red-600 hover:bg-red-700 text-white text-[11px] h-8 gap-2 px-4 shadow-lg shadow-red-900/20"
+                                                            onClick={() => { approvePlan({ approved: false, generalInstruction: retryInput2 }); setRetryOpen2(false); setRetryInput2('') }}
+                                                        >
+                                                            <RefreshCw className="w-3 h-3" /> Confirm Retry
+                                                        </Button>
+                                                        <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setRetryOpen2(false); setRetryInput2('') }}>Cancel</button>
+                                                    </div>
+                                                    {!retryInput2.trim() && <span className="text-[10px] text-amber-500/70">Retrying without feedback may produce the same plan.</span>}
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-red-600 hover:bg-red-700 text-white text-[11px] h-8 gap-2 px-4 shadow-lg shadow-red-900/20"
+                                                    onClick={() => setRetryOpen2(true)}
+                                                >
+                                                    <RefreshCw className="w-3 h-3" /> Retry Planning
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -2019,9 +2082,11 @@ export function TaskDetailView() {
                                                         : 'bg-[#161616] border border-[#1e1e1e]',
                                                 )}>
                                                     {c.authorType === 'agent' ? (
-                                                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
-                                                            {c.content}
-                                                        </ReactMarkdown>
+                                                        <div className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                {c.content}
+                                                            </ReactMarkdown>
+                                                        </div>
                                                     ) : (
                                                         c.content
                                                     )}
@@ -2396,7 +2461,7 @@ export function TaskDetailView() {
                 </div>
             </div>
             
-            <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} steps={steps} onSubmitFeedback={(feedback) => approvePlan({ approved: false, feedback })} />
+            <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} steps={steps} onSubmitFeedback={(feedback, generalInstruction) => approvePlan({ approved: false, feedback, generalInstruction })} />
         </div>
     )
 }
