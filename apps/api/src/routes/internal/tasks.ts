@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents, taskComments } from '@serverless-saas/database/schema/agents';
 import { pushWebSocketEvent } from '../../lib/websocket';
@@ -18,6 +18,31 @@ function isAuthorized(c: { req: { header: (name: string) => string | undefined }
 
 const internalTasksRoute = new Hono<AppEnv>();
 
+// GET /internal/tasks/:taskId/comments — fetch task comments ordered by createdAt
+internalTasksRoute.get('/:taskId/comments', async (c) => {
+  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const taskId = c.req.param('taskId');
+
+  const task = (await db.select({ id: agentTasks.id, tenantId: agentTasks.tenantId })
+    .from(agentTasks)
+    .where(eq(agentTasks.id, taskId))
+    .limit(1))[0];
+
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const comments = await db
+    .select()
+    .from(taskComments)
+    .where(and(
+      eq(taskComments.taskId, taskId),
+      eq(taskComments.tenantId, task.tenantId),
+    ))
+    .orderBy(asc(taskComments.createdAt));
+
+  return c.json({ data: comments });
+});
+
 // POST /internal/tasks/:taskId/steps/:stepId/start
 internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
   if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
@@ -34,15 +59,31 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
 
   const { tenantId } = step;
 
+  const task = (await db.select({ agentId: agentTasks.agentId })
+    .from(agentTasks)
+    .where(and(
+      eq(agentTasks.id, taskId),
+      eq(agentTasks.tenantId, tenantId),
+    ))
+    .limit(1))[0];
+
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const actorId = task.agentId ?? 'system';
+
   await db.update(taskSteps)
     .set({ status: 'running', startedAt: new Date(), updatedAt: new Date() })
     .where(eq(taskSteps.id, stepId));
+
+  await db.update(agentTasks)
+    .set({ status: 'in_progress', updatedAt: new Date() })
+    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
 
   await db.insert(taskEvents).values({
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'status_changed',
     payload: { stepId, stepStatus: 'running' },
   });
@@ -75,6 +116,18 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   if (!step) return c.json({ error: 'Step not found' }, 404);
 
   const { tenantId } = step;
+
+  const task = (await db.select({ agentId: agentTasks.agentId })
+    .from(agentTasks)
+    .where(and(
+      eq(agentTasks.id, taskId),
+      eq(agentTasks.tenantId, tenantId),
+    ))
+    .limit(1))[0];
+
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const actorId = task.agentId ?? 'system';
   const { agentOutput, toolResult } = parsed.data;
 
   await db.update(taskSteps)
@@ -91,7 +144,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'step_completed',
     payload: { stepId },
   });
@@ -124,17 +177,34 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
 
   const { tenantId } = step;
 
+  const task = (await db.select({ agentId: agentTasks.agentId })
+    .from(agentTasks)
+    .where(and(
+      eq(agentTasks.id, taskId),
+      eq(agentTasks.tenantId, tenantId),
+    ))
+    .limit(1))[0];
+
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const actorId = task.agentId ?? 'system';
+  const { error: failError } = parsed.data;
+
   await db.update(taskSteps)
     .set({ status: 'failed', updatedAt: new Date() })
     .where(eq(taskSteps.id, stepId));
+
+  await db.update(agentTasks)
+    .set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() })
+    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
 
   await db.insert(taskEvents).values({
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'step_failed',
-    payload: { stepId, error: parsed.data.error },
+    payload: { stepId, error: failError },
   });
 
   await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'failed' });
@@ -148,25 +218,37 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
 
   const taskId = c.req.param('taskId');
 
+  const bodySchema = z.object({
+    summary: z.string().optional(),
+  });
+
+  const parsed = bodySchema.safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
+
   const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
   if (!task) return c.json({ error: 'Task not found' }, 404);
 
   const { tenantId } = task;
+  const actorId = task.agentId ?? 'system';
 
   await db.update(agentTasks)
-    .set({ status: 'review', updatedAt: new Date() })
-    .where(eq(agentTasks.id, taskId));
+    .set({ status: 'review', completedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
 
   await db.insert(taskEvents).values({
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'status_changed',
-    payload: { from: task.status, to: 'review' },
+    payload: { from: task.status, to: 'review', summary: parsed.data.summary ?? null },
   });
 
-  await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'review' });
+  try {
+    await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'review' });
+  } catch (wsErr) {
+    console.error('WS push failed (non-fatal):', wsErr);
+  }
 
   return c.json({ success: true });
 });
@@ -178,7 +260,7 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
   const taskId = c.req.param('taskId');
 
   const bodySchema = z.object({
-    reason: z.string().min(1),
+    error: z.string().min(1),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -188,21 +270,27 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
   if (!task) return c.json({ error: 'Task not found' }, 404);
 
   const { tenantId } = task;
+  const actorId = task.agentId ?? 'system';
+  const { error: failError } = parsed.data;
 
   await db.update(agentTasks)
-    .set({ status: 'blocked', blockedReason: parsed.data.reason, updatedAt: new Date() })
-    .where(eq(agentTasks.id, taskId));
+    .set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() })
+    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
 
   await db.insert(taskEvents).values({
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'status_changed',
-    payload: { from: task.status, to: 'blocked', reason: parsed.data.reason },
+    payload: { from: task.status, to: 'blocked', error: failError },
   });
 
-  await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'blocked' });
+  try {
+    await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'blocked' });
+  } catch (wsErr) {
+    console.error('WS push failed (non-fatal):', wsErr);
+  }
 
   return c.json({ success: true });
 });
@@ -214,7 +302,7 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
   const taskId = c.req.param('taskId');
 
   const bodySchema = z.object({
-    question: z.string().min(1),
+    questions: z.array(z.string().min(1)).min(1),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -224,22 +312,24 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
   if (!task) return c.json({ error: 'Task not found' }, 404);
 
   const { tenantId } = task;
+  const actorId = task.agentId ?? 'system';
+  const { questions } = parsed.data;
 
-  // Store the question in blockedReason — schema has no separate clarification_question column
+  const numbered = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+  const blockedReason = `Agent needs clarification:\n${numbered}`;
+
   await db.update(agentTasks)
-    .set({ status: 'blocked', blockedReason: parsed.data.question, updatedAt: new Date() })
-    .where(eq(agentTasks.id, taskId));
+    .set({ status: 'blocked', blockedReason, updatedAt: new Date() })
+    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
 
   await db.insert(taskEvents).values({
     taskId,
     tenantId,
     actorType: 'agent',
-    actorId: 'system',
+    actorId,
     eventType: 'clarification_requested',
-    payload: { question: parsed.data.question },
+    payload: { questions },
   });
-
-  await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'awaiting_clarification' });
 
   return c.json({ success: true });
 });
