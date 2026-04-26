@@ -103,6 +103,7 @@ export default function NotificationsPage() {
         mutationFn: (taskId: string) =>
             api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: true }),
         onSuccess: (_data, taskId) => {
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] });
             router.push(`/${tenantSlug}/dashboard/board/${taskId}`);
         },
         onError: () => {
