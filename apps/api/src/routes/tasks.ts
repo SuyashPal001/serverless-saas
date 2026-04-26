@@ -218,6 +218,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             stepId: z.string().uuid(),
             feedback: z.string(),
         })).optional(),
+        extraContext: z.string().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -238,7 +239,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         return c.json({ error: 'Task plan cannot be reviewed in its current state' }, 400);
     }
 
-    const { approved, stepFeedback } = result.data;
+    const { approved, stepFeedback, extraContext } = result.data;
 
     if (!approved) {
         if (stepFeedback && stepFeedback.length > 0) {
@@ -263,10 +264,15 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             .from(taskSteps)
             .where(and(eq(taskSteps.taskId, taskId), eq(taskSteps.status, 'pending')));
 
-        const feedbackContext = pendingSteps
+        const stepFeedbackContext = pendingSteps
             .filter(s => s.humanFeedback)
             .map(s => `- Step "${s.title}": ${s.humanFeedback}`)
             .join('\n');
+
+        const parts: string[] = [];
+        if (extraContext?.trim()) parts.push(`General instruction: ${extraContext.trim()}`);
+        if (stepFeedbackContext) parts.push(stepFeedbackContext);
+        const fullFeedbackContext = parts.join('\n');
 
         await db.delete(taskSteps).where(and(
             eq(taskSteps.taskId, taskId),
@@ -276,7 +282,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
             type: 'replan_task',
             taskId,
-            ...(feedbackContext ? { extraContext: feedbackContext } : {}),
+            ...(fullFeedbackContext ? { extraContext: fullFeedbackContext } : {}),
         });
 
         const [updatedTask] = await db.update(agentTasks)
