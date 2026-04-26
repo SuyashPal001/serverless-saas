@@ -421,9 +421,6 @@ function ReceiptResults({ steps }: { steps: Step[] }) {
         <div className="space-y-4">
             {steps.map(step => (
                 <div key={step.id}>
-                    {steps.length > 1 && (
-                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground/40 font-semibold mb-1.5">{step.title}</p>
-                    )}
                     <AgentOutputRenderer content={step.agentOutput!} />
                 </div>
             ))}
@@ -895,6 +892,9 @@ function FeedbackDialog({ open, onOpenChange, steps, onSubmitFeedback }: { open:
     )
 }
 
+// Statuses at which task execution has ended — polling should stop
+const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled']
+
 // --- MAIN COMPONENT ---
 export function TaskDetailView() {
     const params = useParams()
@@ -924,6 +924,7 @@ export function TaskDetailView() {
     const attachFileInputRef = useRef<HTMLInputElement>(null)
     const newLinkInputRef = useRef<HTMLInputElement>(null)
     const referenceTextRef = useRef<HTMLTextAreaElement>(null)
+    const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     // Edit mode
     const [isEditing, setIsEditing] = useState(false)
@@ -1014,6 +1015,51 @@ export function TaskDetailView() {
             console.log('[TaskDetail mount] task.status:', task?.status)
         }
     }, [task?.id])
+
+    // Fix 1: Auto-reload while in_progress. WebSocket (useTaskStream) is the fast path;
+    // this 5-second interval is the fallback. When the WS fires task.status.changed the
+    // status in the cache updates, this effect re-runs, clears the interval, and (if the
+    // new status is terminal) triggers a full refetch to pull fresh step output.
+    useEffect(() => {
+        // Clear any existing interval whenever status changes
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+        }
+
+        // If we just reached a terminal state (possibly via WS), do a full refetch so
+        // steps and events are up to date (WS only patches the task.status field).
+        if (task?.status && STOP_POLLING_STATUSES.includes(task.status)) {
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            return
+        }
+
+        if (!task?.id || task.status !== 'in_progress') return
+
+        pollingIntervalRef.current = setInterval(async () => {
+            try {
+                const fresh = await api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`)
+                const newStatus = fresh?.data?.task?.status
+                queryClient.setQueryData(['task', taskId], fresh)
+                if (newStatus && STOP_POLLING_STATUSES.includes(newStatus)) {
+                    if (pollingIntervalRef.current) {
+                        clearInterval(pollingIntervalRef.current)
+                        pollingIntervalRef.current = null
+                    }
+                }
+            } catch {
+                // ignore transient fetch errors — will retry on next tick
+            }
+        }, 5000)
+
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current)
+                pollingIntervalRef.current = null
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [task?.status, task?.id, taskId])
 
     const voteMutation = useMutation({
         mutationFn: (type: 'up' | 'down') => api.post(`/api/v1/tasks/${taskId}/vote`, { type }),
@@ -1642,6 +1688,8 @@ export function TaskDetailView() {
                     <AcceptanceCriteriaEditor criteria={localCriteria} onChange={handleCriteriaChange} />
 
                     {/* ── AGENT PLANNING SECTION ── */}
+                    {/* Fix 2: hide during review/done — PostActionReceipt takes over */}
+                    {!['review', 'done'].includes(task.status) && (
                     <div className="mb-8 pt-6 border-t border-[#1e1e1e]">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
@@ -1798,6 +1846,7 @@ export function TaskDetailView() {
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* ── POST-ACTION RECEIPT ── */}
                     {(task.status === 'review' || task.status === 'done') && (
