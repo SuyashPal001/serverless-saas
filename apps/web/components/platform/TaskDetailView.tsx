@@ -999,10 +999,22 @@ export function TaskDetailView() {
 
     const { task, steps, events, agent, assignee } = data?.data ?? {}
 
-    // Fade-in when real steps first arrive (transition from skeleton → real cards)
-    const [stepsVisible, setStepsVisible] = useState(false)
+    // Only fade-in when transitioning from planning → real steps.
+    // All other cases (navigating to an existing task) show steps immediately.
+    const enteredFromPlanning = useRef(false)
+    const [stepsVisible, setStepsVisible] = useState(true)
+
     useEffect(() => {
-        if (steps && steps.length > 0) setStepsVisible(true)
+        if (task?.status === 'planning') {
+            enteredFromPlanning.current = true
+            setStepsVisible(false)
+        }
+    }, [task?.status])
+
+    useEffect(() => {
+        if (enteredFromPlanning.current && steps && steps.length > 0) {
+            setStepsVisible(true)
+        }
     }, [steps?.length])
 
     const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
