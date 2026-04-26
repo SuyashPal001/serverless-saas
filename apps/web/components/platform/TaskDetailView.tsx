@@ -1821,7 +1821,15 @@ export function TaskDetailView() {
 
                         {/* Planning in progress — streaming skeleton */}
                         {steps.length === 0 && task.status === 'planning' && (
-                            <PlanningSkeletonCards />
+                            <>
+                                {events?.some((e: TaskEvent) => e.eventType === 'plan_rejected') && (
+                                    <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15 text-xs text-amber-400/70">
+                                        <RefreshCw className="w-3 h-3 shrink-0" />
+                                        Saarthi is replanning based on your feedback...
+                                    </div>
+                                )}
+                                <PlanningSkeletonCards />
+                            </>
                         )}
 
                         {/* No plan yet — backlog */}

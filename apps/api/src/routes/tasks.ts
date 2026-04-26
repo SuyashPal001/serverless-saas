@@ -258,12 +258,26 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             payload: { stepFeedback: stepFeedback ?? [] },
         });
 
+        // Collect feedback from pending steps before deleting them
+        const pendingSteps = await db.select()
+            .from(taskSteps)
+            .where(and(eq(taskSteps.taskId, taskId), eq(taskSteps.status, 'pending')));
+
+        const feedbackContext = pendingSteps
+            .filter(s => s.humanFeedback)
+            .map(s => `- Step "${s.title}": ${s.humanFeedback}`)
+            .join('\n');
+
         await db.delete(taskSteps).where(and(
             eq(taskSteps.taskId, taskId),
             eq(taskSteps.status, 'pending'),
         ));
 
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'replan_task', taskId });
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
+            type: 'replan_task',
+            taskId,
+            ...(feedbackContext ? { extraContext: feedbackContext } : {}),
+        });
 
         const [updatedTask] = await db.update(agentTasks)
             .set({ status: 'planning', updatedAt: new Date() })
