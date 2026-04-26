@@ -1,6 +1,6 @@
 # PROJECT.md — Saarthi Agentic SaaS Platform
 
-Last updated: 2026-04-26 (session notes from Apr 26)
+Last updated: 2026-04-26 (session notes from Apr 26 — second session)
 
 ---
 
@@ -123,7 +123,58 @@ Branching: `blocked` (clarification or failure), `cancelled`
 
 ---
 
-## 4. What Was Built & Fixed (Apr 26, 2026)
+## 4. What Was Built & Fixed
+
+### Session 2 — Apr 26, 2026 (this session)
+
+#### Notification system wired to task lifecycle (commit `b6313a6`)
+
+| # | Change | File |
+|---|---|---|
+| 1 | **`publishToQueue` calls on task status transitions** | `apps/api/src/routes/internal/tasks.ts` |
+| | `task.completed` fires when relay calls `/internal/tasks/{id}/complete` (→ `review`) | |
+| | `task.failed` fires when relay calls `/internal/tasks/{id}/fail` (→ `blocked`) | |
+| | `task.needs_clarification` fires when relay calls `/internal/tasks/{id}/clarify` (→ `blocked`) | |
+| 2 | **`task.awaiting_approval` notification** fires after planning succeeds | `apps/api/src/workers/taskWorker.ts` |
+| 3 | **`handleExecution` try/catch** — relay network errors now mark task `blocked` instead of leaving it `in_progress` forever | `apps/api/src/workers/taskWorker.ts` |
+| 4 | **`SQS_PROCESSING_QUEUE_URL` added** to `TaskWorkerFunction` env vars | `template.yaml` |
+
+**Payload shape:** `{ type: 'notification.fire', tenantId, messageType, actorId, actorType: 'agent', recipientIds: [task.createdBy], data: { taskId, taskTitle } }`
+
+**Status:** Code committed + pushed to `develop`. Lambda **not yet deployed** — needs `sam build && sam deploy --config-env dev`.
+
+#### Notification workflow seeds (run manually in DB)
+
+4 message types seeded in Neon DB via raw SQL `DO $$ ... $$` block:
+
+| `messageType` | Subject | Body |
+|---|---|---|
+| `task.awaiting_approval` | Plan ready for review | Saarthi has finished planning {{taskTitle}}. Review and approve the plan. |
+| `task.completed` | Task complete | Saarthi has completed {{taskTitle}}. Review the results. |
+| `task.needs_clarification` | Saarthi needs clarification | Saarthi has a question before continuing with {{taskTitle}}. |
+| `task.failed` | Task failed | Saarthi encountered an error while working on {{taskTitle}}. |
+
+- Templates: `tenant_id = NULL` (system-level, shared across tenants)
+- Workflows + steps: one per existing tenant per message type (idempotent, `WHERE NOT EXISTS` guards)
+- Channel: `in_app` only
+- `{{taskTitle}}` interpolated from `data.taskTitle` at delivery time
+
+#### Infrastructure audit findings (read-only, no changes)
+
+- **Notifications:** Full pipeline exists (workflows → steps → jobs → delivery log → inbox → WS push). SNS topic exists but unused. Long delays (>900s) silently dropped — EventBridge pickup not implemented.
+- **Scheduling:** None. No cron, no `aws_scheduler_schedule`, no `scheduledAt` field on tasks. All execution is event-driven.
+- **Multi-step:** No max step limit. Each step gets its own fresh Gemini session. If relay crashes mid-execution, task stays `in_progress` (watchdog gap — partially addressed by the try/catch fix above).
+
+#### End-to-end verification (Apr 26)
+
+Task "Find job emails in Gmail" executed successfully:
+- Planning: `clarificationNeeded=false`, 1-step plan (`GMAIL_SEARCH_EMAILS`), ~4s
+- Execution: Gmail tool called, 3 real email results returned, task → `review`
+- Relay logs clean, no errors
+
+---
+
+### Session 1 — Apr 26, 2026
 
 ### Frontend — TaskDetailView (Apr 26)
 
@@ -159,32 +210,34 @@ Branching: `blocked` (clarification or failure), `cancelled`
 | 11 | Approve/Reject bar only showed for `backlog` status | `apps/web/components/platform/TaskDetailView.tsx:1504` | Condition changed to `status === 'backlog' || status === 'awaiting_approval'` |
 | 12 | No `awaiting_approval` banner in task detail | `apps/web/components/platform/TaskDetailView.tsx` | Added amber banner: "Plan ready — review and approve to start execution" |
 
-### Known issue (not yet fixed)
-- `GET /internal/tasks/{taskId}/comments` returns **401** for all task IDs — the relay sends `x-internal-service-key` but the Lambda internal route is validating a different header or key value. Comments never load into planning prompts.
-
 ---
 
-## 5. Current State (Apr 25, 2026)
+## 5. Current State (Apr 26, 2026 — updated)
 
-### Working end-to-end
+### Working end-to-end ✅
 - Task creation, board view (all columns including `awaiting_approval`)
 - Planning via OpenClaw/Gemini — fresh session key per attempt, no cross-task contamination
 - Clarification flow: blocked → yellow box → user answers → replanned → awaiting_approval
 - Plan approval: Approve/Request Changes buttons in task detail
-- Execution start: steps sent to OpenClaw after approval
+- **Full execution loop verified** — steps execute, Gmail MCP tool calls succeed, task → `review`
+- Post-action receipt UI (shows results, tools used, markdown output)
+- Auto-reload polling during `in_progress` (5s interval, stops at `review`/`done`/`blocked`/`cancelled`)
+- Phase-based layout: plan view during `awaiting_approval`/`in_progress`, receipt view during `review`/`done`
 - MCP tool calls reaching MCP server correctly (Gmail, Drive, Zoho, Jira all wired)
 - RAG pipeline (retrieve_documents tool, pgvector on Neon, relevance gate)
 - Full dashboard: members, roles, billing, API keys, audit log, integrations, agents
+- Notification infrastructure wired (DB seeded, code committed)
 
-### What needs reconnecting
-- **Gmail OAuth**: `No active gmail integration for tenant b132c22f-...` — reconnect from `/dashboard/integrations` before Gmail tasks can execute
+### Pending deploy
+- **Lambda deploy needed** for notification fires to go live: `sam build && sam deploy --config-env dev`
+- Until deployed: task lifecycle events fire to SQS but Lambda still runs old build without `publishToQueue` calls
 
 ### What's pending / not yet built
-- Step completion callbacks from relay → Lambda (`/internal/tasks/{id}/steps/{stepId}/complete`) need the internal endpoint auth fixed (comments 401 is likely the same root cause)
-- Task `REVIEW` and `DONE` transitions after execution completes
-- In-app notifications for task status changes
-- Recurring / scheduled tasks
-- Latency improvement: collapse relay + OpenClaw + MCP to a single GCP process (cut 3 Lambda hops)
+- Recurring / scheduled tasks (no infrastructure exists — would need EventBridge + schema changes)
+- Max step limit enforcement (currently unbounded — Gemini decides step count)
+- Task watchdog: if relay crashes mid-execution, task stays `in_progress` until manual intervention
+- Long delay notification steps (>900s) silently dropped — EventBridge pickup not implemented
+- New tenant onboarding: auto-create notification workflows for new tenants (currently manual SQL seed needed)
 
 ---
 
@@ -326,7 +379,7 @@ The relay calls these endpoints to report step progress back to Lambda. All requ
 | `POST /api/v1/internal/tasks/{id}/fail` | Task-level failure |
 | `POST /api/v1/internal/tasks/{id}/clarify` | Step needs user input (`question`) |
 | `POST /api/v1/internal/tasks/{id}/comments` | Relay posts agent comment |
-| `GET /api/v1/internal/tasks/{id}/comments` | Relay fetches task comment history (currently 401 — auth mismatch) |
+| `GET /api/v1/internal/tasks/{id}/comments` | Relay fetches task comment history |
 
 ---
 
