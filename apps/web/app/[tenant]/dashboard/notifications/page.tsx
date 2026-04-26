@@ -103,7 +103,7 @@ export default function NotificationsPage() {
         mutationFn: (taskId: string) =>
             api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: true }),
         onSuccess: (_data, taskId) => {
-            router.push(`/${tenantSlug}/dashboard/tasks/${taskId}`);
+            router.push(`/${tenantSlug}/dashboard/board/${taskId}`);
         },
         onError: () => {
             toast.error("Failed to approve plan. Please try again.");
