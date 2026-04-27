@@ -123,6 +123,7 @@ export const taskSteps = pgTable('task_steps', {
   estimatedHours: decimal('estimated_hours', { precision: 4, scale: 2 }),
   confidenceScore: decimal('confidence_score', { precision: 3, scale: 2 }),
   humanFeedback: text('human_feedback'),
+  feedbackHistory: jsonb('feedback_history').$type<Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>>().notNull().default([]),
   agentOutput: text('agent_output'),
   toolArgs: jsonb('tool_args'),
   toolResult: jsonb('tool_result'),

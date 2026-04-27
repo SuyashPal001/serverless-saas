@@ -85,6 +85,7 @@ type Step = {
     status: 'pending' | 'running' | 'done' | 'skipped' | 'failed'
     humanFeedback?: string | null
     agentOutput?: string | null
+    liveText?: string
     feedbackHistory?: { date: string; content: string }[] | null
 }
 
@@ -534,6 +535,24 @@ function PostActionReceipt({ task, steps, onMarkDone, isMarkingDone }: {
     )
 }
 
+function LiveOutputArea({ text }: { text: string }) {
+    const ref = useRef<HTMLDivElement>(null)
+    useEffect(() => {
+        if (ref.current) {
+            ref.current.scrollTop = ref.current.scrollHeight
+        }
+    }, [text])
+
+    return (
+        <div
+            ref={ref}
+            className="mt-3 ml-9 max-h-48 overflow-y-auto rounded-lg bg-black/70 border border-[#2a2a2a] p-3 font-mono text-xs text-emerald-300/70 whitespace-pre-wrap leading-relaxed"
+        >
+            {text}
+        </div>
+    )
+}
+
 function StepCard({ step, index }: { step: Step; index: number }) {
     const [insightsOpen, setInsightsOpen] = useState(false)
     const score = step.confidenceScore != null ? Number(step.confidenceScore) : null
@@ -612,6 +631,11 @@ function StepCard({ step, index }: { step: Step; index: number }) {
                     </button>
                 </div>
             </div>
+
+            {/* Live streaming output while the step is running */}
+            {isRunning && step.liveText && (
+                <LiveOutputArea text={step.liveText} />
+            )}
 
             {/* Human feedback / agent output (Inline) */}
             {(step.humanFeedback || step.agentOutput) && (

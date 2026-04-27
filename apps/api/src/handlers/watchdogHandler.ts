@@ -47,10 +47,11 @@ export const handler: ScheduledHandler = async () => {
 
   console.log(`[watchdog] ${stalled.length} stalled task(s): ${stalled.map(t => t.id).join(', ')}`);
 
-  const reason = 'Task stalled: relay did not report progress within 10 minutes';
+  const reason = 'Task timed out. The agent may have crashed. Please retry.';
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
 
   for (const task of stalled) {
+    console.log('[Watchdog] Stalled task:', task.id, task.tenantId);
     await db.update(agentTasks)
       .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
       .where(eq(agentTasks.id, task.id));

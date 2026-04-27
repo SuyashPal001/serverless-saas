@@ -95,6 +95,33 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
   return c.json({ success: true });
 });
 
+// POST /internal/tasks/:taskId/steps/:stepId/delta — relay fires this on every streaming token
+internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
+  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+
+  const taskId = c.req.param('taskId');
+  const stepId = c.req.param('stepId');
+
+  const bodySchema = z.object({
+    delta: z.string(),
+    text: z.string(),
+    tenantId: z.string().uuid(),
+  });
+
+  const parsed = bodySchema.safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
+
+  await pushWebSocketEvent(parsed.data.tenantId, {
+    type: 'task.step.delta',
+    taskId,
+    stepId,
+    delta: parsed.data.delta,
+    text: parsed.data.text,
+  });
+
+  return c.json({ success: true });
+});
+
 // POST /internal/tasks/:taskId/steps/:stepId/complete
 internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);

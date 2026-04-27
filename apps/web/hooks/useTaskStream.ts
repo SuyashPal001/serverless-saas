@@ -18,6 +18,14 @@ interface TaskStatusChangedEvent {
   status: string;
 }
 
+interface TaskStepDeltaEvent {
+  type: 'task.step.delta';
+  taskId: string;
+  stepId: string;
+  delta: string;
+  text: string;
+}
+
 interface TaskCommentAddedEvent {
   type: 'task.comment.added';
   taskId: string;
@@ -34,7 +42,7 @@ interface TaskCommentAddedEvent {
   };
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent;
+type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -84,7 +92,26 @@ export function useTaskStream(taskId: string | undefined) {
 
             if ('taskId' in message && message.taskId !== taskId) return;
 
-            if (message.type === 'task.step.updated') {
+            if (message.type === 'task.step.delta') {
+              const ev = message as TaskStepDeltaEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.steps) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      steps: old.data.steps.map((s: any) =>
+                        s.id === ev.stepId
+                          ? { ...s, liveText: ev.text }
+                          : s
+                      ),
+                    },
+                  };
+                }
+              );
+            } else if (message.type === 'task.step.updated') {
               const ev = message as TaskStepUpdatedEvent;
               queryClient.setQueryData(
                 ['task', taskId],

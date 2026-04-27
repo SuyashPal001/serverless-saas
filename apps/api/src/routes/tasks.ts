@@ -279,6 +279,26 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             .map(s => `- Step "${s.title}": ${s.humanFeedback}`)
             .join('\n');
 
+        // Write feedbackHistory to each step before hard delete, then build carry-forward map
+        const feedbackHistoryMap: Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> = {};
+        const stepsWithFeedback = pendingSteps.filter(s => s.humanFeedback);
+        if (stepsWithFeedback.length > 0) {
+            const replannedAt = new Date().toISOString();
+            await Promise.all(stepsWithFeedback.map(async (s) => {
+                const existingHistory = (s.feedbackHistory as Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>) ?? [];
+                const entry = {
+                    round: existingHistory.length + 1,
+                    feedback: s.humanFeedback!,
+                    generalInstruction: extraContext?.trim() ?? null,
+                    replannedAt,
+                };
+                await db.update(taskSteps)
+                    .set({ feedbackHistory: sql`COALESCE(${taskSteps.feedbackHistory}, '[]'::jsonb) || ${JSON.stringify([entry])}::jsonb` })
+                    .where(eq(taskSteps.id, s.id));
+                feedbackHistoryMap[s.title] = [...existingHistory, entry];
+            }));
+        }
+
         const parts: string[] = [];
         if (extraContext?.trim()) parts.push(`General instruction: ${extraContext.trim()}`);
         if (stepFeedbackContext) parts.push(stepFeedbackContext);
@@ -290,6 +310,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
                 type: 'replan_task',
                 taskId,
                 ...(fullFeedbackContext ? { extraContext: fullFeedbackContext } : {}),
+                ...(Object.keys(feedbackHistoryMap).length > 0 ? { feedbackHistoryMap } : {}),
             });
         } catch (sqsErr) {
             console.error('[SQS] replan_task publish failed for task', taskId, sqsErr);

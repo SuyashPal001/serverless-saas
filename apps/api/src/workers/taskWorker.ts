@@ -46,13 +46,13 @@ async function getPastSuccessfulPlans(tenantId: string, title: string, descripti
       .orderBy(asc(taskSteps.stepNumber));
 
     if (steps.length > 0) {
-      const stepList = steps.map((s, i) => `${i + 1}. ${s.title}${s.description ? ': ' + s.description : ''}`).join('\n');
-      sections.push(`### ${row.title}\n${stepList}`);
+      const stepList = steps.map((s, i) => `${i + 1}. ${s.title}${s.description ? ' — ' + s.description : ''}`).join('\n');
+      sections.push(`Past task: "${row.title}"\nSteps taken:\n${stepList}`);
     }
   }
 
   if (sections.length === 0) return null;
-  return `## Similar past tasks\n${sections.join('\n\n')}`;
+  return `---\nContext: Here is how this workspace previously handled similar requests. Use as reference only — adapt to current task.\n\n${sections.join('\n\n')}\n---`;
 }
 
 export const handler: SQSHandler = async (event) => {
@@ -65,14 +65,14 @@ export const handler: SQSHandler = async (event) => {
     const { type, taskId } = message;
 
     if (type === 'plan_task' || type === 'replan_task') {
-      await handlePlanning(taskId, message.extraContext as string | undefined);
+      await handlePlanning(taskId, message.extraContext as string | undefined, message.feedbackHistoryMap as Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> | undefined);
     } else if (type === 'execute_task') {
       await handleExecution(taskId);
     }
   }
 };
 
-async function handlePlanning(taskId: string, extraContext?: string) {
+async function handlePlanning(taskId: string, extraContext?: string, feedbackHistoryMap?: Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>>) {
   const task = await db.query.agentTasks.findFirst({
     where: eq(agentTasks.id, taskId),
   });
@@ -163,6 +163,7 @@ async function handlePlanning(taskId: string, extraContext?: string) {
       toolName: step.toolName ?? null,
       confidenceScore: step.confidenceScore ?? null,
       status: 'pending' as const,
+      ...(feedbackHistoryMap?.[step.title] ? { feedbackHistory: feedbackHistoryMap[step.title] } : {}),
     }))
   );
 
