@@ -95,7 +95,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
   return c.json({ success: true });
 });
 
-// POST /internal/tasks/:taskId/steps/:stepId/delta — relay fires this on every streaming token
+// POST /internal/tasks/:taskId/steps/:stepId/delta — relay fires streaming tokens and tool events
 internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
   if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
 
@@ -103,21 +103,56 @@ internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
   const stepId = c.req.param('stepId');
 
   const bodySchema = z.object({
-    delta: z.string(),
-    text: z.string(),
     tenantId: z.string().uuid(),
+    type: z.enum(['task.step.delta', 'task.step.tool_call', 'task.step.tool_result', 'task.step.thinking']).optional(),
+    // delta fields
+    delta: z.string().optional(),
+    text: z.string().optional(),
+    // tool_call fields
+    toolName: z.string().optional(),
+    toolInput: z.string().optional(),
+    // tool_result fields
+    durationMs: z.number().optional(),
+    resultSummary: z.string().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
-  await pushWebSocketEvent(parsed.data.tenantId, {
-    type: 'task.step.delta',
-    taskId,
-    stepId,
-    delta: parsed.data.delta,
-    text: parsed.data.text,
-  });
+  const { tenantId, type: eventType = 'task.step.delta' } = parsed.data;
+
+  if (eventType === 'task.step.tool_call') {
+    await pushWebSocketEvent(tenantId, {
+      type: 'task.step.tool_call',
+      taskId,
+      stepId,
+      toolName: parsed.data.toolName,
+      toolInput: parsed.data.toolInput,
+    });
+  } else if (eventType === 'task.step.tool_result') {
+    await pushWebSocketEvent(tenantId, {
+      type: 'task.step.tool_result',
+      taskId,
+      stepId,
+      toolName: parsed.data.toolName,
+      durationMs: parsed.data.durationMs,
+      resultSummary: parsed.data.resultSummary,
+    });
+  } else if (eventType === 'task.step.thinking') {
+    await pushWebSocketEvent(tenantId, {
+      type: 'task.step.thinking',
+      taskId,
+      stepId,
+    });
+  } else {
+    await pushWebSocketEvent(tenantId, {
+      type: 'task.step.delta',
+      taskId,
+      stepId,
+      delta: parsed.data.delta ?? '',
+      text: parsed.data.text ?? '',
+    });
+  }
 
   return c.json({ success: true });
 });

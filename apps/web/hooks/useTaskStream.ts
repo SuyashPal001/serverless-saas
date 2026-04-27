@@ -26,6 +26,29 @@ interface TaskStepDeltaEvent {
   text: string;
 }
 
+interface TaskStepToolCallEvent {
+  type: 'task.step.tool_call';
+  taskId: string;
+  stepId: string;
+  toolName: string;
+  toolInput?: string;
+}
+
+interface TaskStepToolResultEvent {
+  type: 'task.step.tool_result';
+  taskId: string;
+  stepId: string;
+  toolName: string;
+  durationMs?: number;
+  resultSummary?: string;
+}
+
+interface TaskStepThinkingEvent {
+  type: 'task.step.thinking';
+  taskId: string;
+  stepId: string;
+}
+
 interface TaskCommentAddedEvent {
   type: 'task.comment.added';
   taskId: string;
@@ -42,7 +65,7 @@ interface TaskCommentAddedEvent {
   };
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent;
+type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -106,6 +129,70 @@ export function useTaskStream(taskId: string | undefined) {
                         s.id === ev.stepId
                           ? { ...s, liveText: ev.text }
                           : s
+                      ),
+                    },
+                  };
+                }
+              );
+            } else if (message.type === 'task.step.tool_call') {
+              const ev = message as TaskStepToolCallEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.steps) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      steps: old.data.steps.map((s: any) =>
+                        s.id === ev.stepId
+                          ? { ...s, liveActivity: [...(s.liveActivity ?? []), { type: 'tool_call', toolName: ev.toolName, toolInput: ev.toolInput, startedAt: Date.now() }] }
+                          : s
+                      ),
+                    },
+                  };
+                }
+              );
+            } else if (message.type === 'task.step.tool_result') {
+              const ev = message as TaskStepToolResultEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.steps) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      steps: old.data.steps.map((s: any) => {
+                        if (s.id !== ev.stepId) return s;
+                        const existing: any[] = s.liveActivity ?? [];
+                        // Update the last unresolved tool_call matching this tool name
+                        let matched = false;
+                        const updated = [...existing].reverse().map((item: any) => {
+                          if (!matched && item.type === 'tool_call' && item.toolName === ev.toolName && !item.completed) {
+                            matched = true;
+                            return { ...item, completed: true, durationMs: ev.durationMs, resultSummary: ev.resultSummary };
+                          }
+                          return item;
+                        }).reverse();
+                        return { ...s, liveActivity: updated };
+                      }),
+                    },
+                  };
+                }
+              );
+            } else if (message.type === 'task.step.thinking') {
+              const ev = message as TaskStepThinkingEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.steps) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      steps: old.data.steps.map((s: any) =>
+                        s.id === ev.stepId ? { ...s, agentThinking: true } : s
                       ),
                     },
                   };

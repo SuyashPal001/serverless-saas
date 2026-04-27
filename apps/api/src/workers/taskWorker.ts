@@ -28,7 +28,7 @@ async function getPastSuccessfulPlans(tenantId: string, title: string, descripti
     SELECT id, title
     FROM agent_tasks
     WHERE tenant_id = ${tenantId}
-      AND status = 'done'
+      AND status IN ('done', 'review')
       AND embedding IS NOT NULL
       AND (1 - (embedding <=> ${vectorStr}::vector)) > 0.6
     ORDER BY embedding <=> ${vectorStr}::vector
