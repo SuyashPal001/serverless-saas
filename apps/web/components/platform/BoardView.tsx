@@ -33,7 +33,9 @@ import { Label } from '@/components/ui/label'
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
@@ -910,7 +912,7 @@ export function BoardView() {
     const [createOpen, setCreateOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState<Task['status'] | 'all'>('all')
-    const [agentFilter, setAgentFilter] = useState<string>('all')
+    const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
 
     const { data, isLoading, isError, error } = useQuery<TasksResponse>({
         queryKey: ['tasks'],
@@ -1006,9 +1008,16 @@ export function BoardView() {
 
     const filteredTasks = tasks
         .filter(task => {
-            if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+            if (searchQuery) {
+              const q = searchQuery.toLowerCase()
+              const matchesTitle = task.title.toLowerCase().includes(q)
+              const taskNum = taskNumberMap.get(task.id)
+              const matchesId = taskNum ? `task-${taskNum}`.includes(q) : false
+              const matchesDescription = task.description?.toLowerCase().includes(q) ?? false
+              if (!matchesTitle && !matchesId && !matchesDescription) return false
+            }
             if (statusFilter !== 'all' && task.status !== statusFilter) return false
-            if (agentFilter !== 'all' && task.agentId !== agentFilter) return false
+            if (assigneeFilter !== 'all' && task.agentId !== assigneeFilter && task.assigneeId !== assigneeFilter) return false
             return true
         })
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
@@ -1108,17 +1117,32 @@ export function BoardView() {
                         </SelectContent>
                     </Select>
 
-                    <Select value={agentFilter} onValueChange={setAgentFilter}>
+                    <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
                         <SelectTrigger className="h-8 w-[160px] text-sm">
-                            <SelectValue placeholder="All Agents" />
+                            <SelectValue placeholder="All Assignees" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All Agents</SelectItem>
-                            {agents.map(agent => (
-                                <SelectItem key={agent.id} value={agent.id}>
-                                    {agent.name}
-                                </SelectItem>
-                            ))}
+                            <SelectItem value="all">All Assignees</SelectItem>
+                            {members && members.length > 0 && (
+                                <SelectGroup>
+                                    <SelectLabel>Members</SelectLabel>
+                                    {members.map(member => (
+                                        <SelectItem key={member.userId} value={member.userId}>
+                                            {member.userName || member.userEmail}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                            )}
+                            {agents.filter(a => a.status === 'active').length > 0 && (
+                                <SelectGroup>
+                                    <SelectLabel>Agents</SelectLabel>
+                                    {agents.filter(a => a.status === 'active').map(agent => (
+                                        <SelectItem key={agent.id} value={agent.id}>
+                                            {agent.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                            )}
                         </SelectContent>
                     </Select>
                 </div>
