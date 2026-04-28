@@ -80,6 +80,7 @@ type Step = {
     description?: string | null
     toolName?: string | null
     reasoning?: string | null
+    summary?: string | null
     estimatedHours?: string | number | null
     confidenceScore?: string | number | null
     status: 'pending' | 'running' | 'done' | 'skipped' | 'failed'
@@ -432,7 +433,7 @@ function ReceiptResults({ steps }: { steps: Step[] }) {
         <div className="space-y-4">
             {steps.map(step => (
                 <div key={step.id}>
-                    <AgentOutputRenderer content={step.agentOutput!} />
+                    <AgentOutputRenderer content={step.summary || step.agentOutput!} />
                 </div>
             ))}
         </div>
@@ -447,12 +448,12 @@ function PostActionReceipt({ task, steps, onMarkDone, isMarkingDone }: {
 }) {
     const [showRaw, setShowRaw] = useState(false)
 
-    const stepsWithOutput = steps.filter(s => s.status === 'done' && s.agentOutput)
+    const stepsWithOutput = steps.filter(s => s.status === 'done' && (s.summary || s.agentOutput))
     const toolsTouched = [...new Set(steps.filter(s => s.toolName).map(s => s.toolName!))]
-    const summary = extractFirstSentence(stepsWithOutput[0]?.agentOutput ?? '')
-    const allOutputText = stepsWithOutput.map(s => s.agentOutput!).join('\n\n')
+    const summary = extractFirstSentence(stepsWithOutput[0]?.summary || stepsWithOutput[0]?.agentOutput || '')
+    const allOutputText = stepsWithOutput.map(s => s.summary || s.agentOutput || '').join('\n\n')
     const assumptions = extractAssumptions(allOutputText)
-    const rawOutput = stepsWithOutput.map(s => `### ${s.title}\n\n${s.agentOutput}`).join('\n\n---\n\n')
+    const rawOutput = stepsWithOutput.map(s => `### ${s.title}\n\n${s.summary || s.agentOutput || ''}`).join('\n\n---\n\n')
 
     return (
         <div className="rounded-2xl border border-emerald-500/20 bg-[#080d08] overflow-hidden">
@@ -687,10 +688,10 @@ function StepCard({ step, index }: { step: Step; index: number }) {
                             <span className="font-bold text-amber-500/50 mr-1 not-italic tracking-tighter uppercase text-[9px]">Feedback:</span> {step.humanFeedback}
                         </div>
                     )}
-                    {step.agentOutput && (
+                    {(step.summary || step.agentOutput) && (
                         <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg">
                             <span className="block font-bold text-emerald-500/50 tracking-tighter uppercase text-[9px] mb-1.5">Result</span>
-                            <AgentOutputRenderer content={step.agentOutput} />
+                            <AgentOutputRenderer content={step.summary || step.agentOutput!} />
                         </div>
                     )}
                 </div>
