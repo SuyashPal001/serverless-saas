@@ -93,13 +93,21 @@ export function useTaskStream(taskId: string | undefined) {
 
         socket.onopen = () => {
           if (!isMounted) return;
+          const wasReconnect = retryCountRef.current > 0;
           retryCountRef.current = 0;
+
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = setInterval(() => {
             if (socket.readyState === WebSocket.OPEN) {
               socket.send(JSON.stringify({ action: 'ping' }));
             }
           }, 5 * 60 * 1000);
+
+          // BUG-10: On reconnect, force a full refetch of the task so we catch up on
+          // any status or step changes that arrived while the socket was down.
+          if (wasReconnect && taskId) {
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+          }
         };
 
         socket.onmessage = (event) => {
@@ -237,8 +245,10 @@ export function useTaskStream(taskId: string | undefined) {
           if (!isMounted) return;
           if (retryCountRef.current < maxRetries) {
             retryCountRef.current++;
+            // BUG-10: Exponential backoff — 1s, 2s, 4s, 8s, 16s, 30s cap.
+            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 30_000);
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = setTimeout(connect, 3000);
+            reconnectTimeoutRef.current = setTimeout(connect, delay);
           }
         };
 

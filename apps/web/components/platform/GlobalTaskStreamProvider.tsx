@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -22,16 +22,27 @@ import { api } from '@/lib/api';
  * Step-level streaming events (delta, tool_call, tool_result, thinking,
  * step.updated) are NOT handled here — high-frequency and only relevant
  * while TaskDetailView is mounted.
+ *
+ * BUG-10: Reconnect behaviour
+ *   - Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap, max 6 retries.
+ *   - On successful reconnect: invalidates ['tasks'] and ['task'] prefix so the
+ *     board and any open detail view catch up on events missed during the gap.
+ *   - Shows a subtle "Reconnecting…" badge while disconnected (only after the
+ *     first successful connection, so it never flashes on initial page load).
  */
 export function GlobalTaskStreamProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
-  const maxRetries = 5;
+  const maxRetries = 6;
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Track last known status per task so toasts are transition-aware
   const taskStatusMap = useRef<Map<string, string>>(new Map());
+  // Only show the reconnecting badge after the first successful connection —
+  // prevents a flash on initial load when the socket hasn't opened yet.
+  const hasConnectedRef = useRef(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,13 +65,24 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
 
         socket.onopen = () => {
           if (!isMounted) return;
+          const wasReconnect = retryCountRef.current > 0;
           retryCountRef.current = 0;
+          hasConnectedRef.current = true;
+          setIsReconnecting(false);
+
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = setInterval(() => {
             if (socket.readyState === WebSocket.OPEN) {
               socket.send(JSON.stringify({ action: 'ping' }));
             }
           }, 5 * 60 * 1000);
+
+          // BUG-10: On reconnect, invalidate board and all open detail caches so the
+          // UI catches up on any task.status.changed events missed during the gap.
+          if (wasReconnect) {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+            queryClient.invalidateQueries({ queryKey: ['task'] });
+          }
         };
 
         socket.onmessage = (event) => {
@@ -141,8 +163,13 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
           if (!isMounted) return;
           if (retryCountRef.current < maxRetries) {
             retryCountRef.current++;
+            // BUG-10: Exponential backoff — 1s, 2s, 4s, 8s, 16s, 30s cap.
+            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 30_000);
+            if (hasConnectedRef.current) {
+              setIsReconnecting(true);
+            }
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = setTimeout(connect, 3000);
+            reconnectTimeoutRef.current = setTimeout(connect, delay);
           }
         };
 
@@ -168,5 +195,17 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
     };
   }, [queryClient]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* BUG-10: Subtle reconnecting badge — only shown after the first successful
+          connection drops, never on initial page load. */}
+      {isReconnecting && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-xs text-yellow-600 dark:text-yellow-400">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500" />
+          Reconnecting…
+        </div>
+      )}
+    </>
+  );
 }

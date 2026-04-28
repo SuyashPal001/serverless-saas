@@ -319,10 +319,18 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
 
         // Delete pending steps only after a successful publish — if publish fails above,
         // steps are preserved so the user can retry without losing the plan.
-        await db.delete(taskSteps).where(and(
-            eq(taskSteps.taskId, taskId),
-            eq(taskSteps.status, 'pending'),
-        ));
+        // BUG-5: Wrap in try/catch. If delete throws after SQS publish succeeded, the
+        // replan_task message is already queued and the worker's idempotent delete (BUG-3)
+        // will clean up on arrival. Failing the API request here would give the user a
+        // confusing 500 despite the replan being successfully enqueued.
+        try {
+            await db.delete(taskSteps).where(and(
+                eq(taskSteps.taskId, taskId),
+                eq(taskSteps.status, 'pending'),
+            ));
+        } catch (deleteErr) {
+            console.error('[replan] step delete failed after SQS publish (non-fatal, worker will clean up):', deleteErr);
+        }
 
         const [updatedTask] = await db.update(agentTasks)
             .set({ status: 'planning', updatedAt: new Date() })
