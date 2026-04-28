@@ -10,6 +10,7 @@ import { agents } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { eq, isNull, and } from 'drizzle-orm';
+import { provisionNotificationWorkflows } from '@serverless-saas/database/seeds/notification-workflows';
 import type { AppEnv } from '../types';
 
 const onboardingSchema = z.object({

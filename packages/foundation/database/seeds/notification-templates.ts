@@ -77,6 +77,30 @@ const TEMPLATES: Array<{
             subject: 'Security Alert',
             body: 'A cross-tenant access attempt was blocked',
         },
+        {
+            name: 'task.awaiting_approval',
+            channel: 'in_app',
+            subject: 'Plan ready for review',
+            body: 'Saarthi has finished planning {{taskTitle}}. Review and approve the plan.',
+        },
+        {
+            name: 'task.completed',
+            channel: 'in_app',
+            subject: 'Task complete',
+            body: 'Saarthi has completed {{taskTitle}}. Review the results.',
+        },
+        {
+            name: 'task.needs_clarification',
+            channel: 'in_app',
+            subject: 'Saarthi needs clarification',
+            body: 'Saarthi has a question before continuing with {{taskTitle}}.',
+        },
+        {
+            name: 'task.failed',
+            channel: 'in_app',
+            subject: 'Task failed',
+            body: 'Saarthi encountered an error while working on {{taskTitle}}.',
+        },
     ];
 
 export async function seedNotificationTemplates(db: typeof DB) {

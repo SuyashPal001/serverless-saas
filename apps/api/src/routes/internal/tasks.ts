@@ -475,15 +475,19 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
 
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (sqsUrl) {
-    await publishToQueue(sqsUrl, {
-      type: 'notification.fire',
-      tenantId,
-      messageType: 'task.needs_clarification',
-      actorId: actorId,
-      actorType: 'agent',
-      recipientIds: [task.createdBy],
-      data: { taskId: task.id, taskTitle: task.title },
-    });
+    try {
+      await publishToQueue(sqsUrl, {
+        type: 'notification.fire',
+        tenantId,
+        messageType: 'task.needs_clarification',
+        actorId: actorId,
+        actorType: 'agent',
+        recipientIds: [task.createdBy],
+        data: { taskId: task.id, taskTitle: task.title },
+      });
+    } catch (sqsErr) {
+      console.error('[task/clarify] notification publish failed (non-fatal):', (sqsErr as Error).message);
+    }
   }
 
   return c.json({ success: true });
