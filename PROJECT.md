@@ -1,6 +1,6 @@
 # PROJECT.md — Saarthi Agentic SaaS Platform
 
-Last updated: 2026-04-26 (session notes from Apr 26 — second session)
+Last updated: 2026-04-28 (task lifecycle hardening — full audit + bug fixes)
 
 ---
 
@@ -125,6 +125,45 @@ Branching: `blocked` (clarification or failure), `cancelled`
 
 ## 4. What Was Built & Fixed
 
+### Session — Apr 28, 2026 — Task lifecycle hardening
+
+Full audit of the task lifecycle end-to-end, then fixes applied in two commits (`27e85a0`, `3cb9921`).
+
+#### Audit findings & fixes
+
+| Bug | Severity | File | Fix |
+|---|---|---|---|
+| **BUG-1+2** `handlePlanning` no try/catch + no fetch timeout | Critical | `taskWorker.ts` | Wrapped entire planning body in try/catch. On any error: marks task `blocked` with `blockedReason`, pushes WS event, returns cleanly (SQS acks). Added `AbortSignal.timeout(55_000)` to relay fetch — prevents Lambda timeout from leaving task stuck in `planning` forever. |
+| **BUG-3** SQS retry creates duplicate steps | Critical | `taskWorker.ts` | Delete all `pending` steps for the task at the start of `handlePlanning` before calling relay — makes `plan_task` and `replan_task` fully idempotent on retry. |
+| **BUG-4** `response.json()` unguarded | Medium | `taskWorker.ts` | Wrapped in inner try/catch; malformed Gemini response throws into the outer catch and marks task `blocked` instead of triggering SQS retry loop. |
+| **BUG-5** Delete in replan route not guarded after SQS publish | Medium | `tasks.ts` | Wrapped `db.delete(taskSteps)` in try/catch after the SQS publish. If delete throws, logs it and continues — `replan_task` is already queued and BUG-3 handles cleanup in the worker. |
+| **BUG-6** Double-approve race → task runs twice | Critical | `tasks.ts` | Added `eq(agentTasks.status, 'awaiting_approval')` to the `db.update` WHERE clause. Second concurrent approve sees 0 rows updated → returns 409. `execute_task` is never double-published. |
+| **BUG-7** No WS push on `ready` transition | Low | `tasks.ts` | Added `pushWebSocketEvent({ status: 'ready' })` after successful SQS publish in approve route — board updates immediately after approval. |
+| **BUG-8** Watchdog TTL not refreshed on step start | Medium | `internal/tasks.ts` | Added `getCacheClient().expire(watchdog key, 600)` in `/steps/:stepId/start`. Long-running steps no longer trigger false-positive watchdog fires. |
+| **BUG-9** Step complete DB write failure → step stuck in `running` | Medium | `internal/tasks.ts` | Wrapped `db.update(taskSteps)` in try/catch in `/steps/:stepId/complete`. On failure: sets `Retry-After: 2` header, returns 503 so relay can retry. |
+| **BUG-10** WS drop freezes UI with no recovery | Low | `GlobalTaskStreamProvider.tsx`, `useTaskStream.ts` | Exponential backoff reconnect (1s → 2s → 4s → 8s → 16s → 30s cap, max 6 retries). On reconnect: invalidates `['tasks']` + `['task']` prefix (GlobalTaskStreamProvider) and `['task', taskId]` (useTaskStream) to catch up on missed events. Subtle bottom-right "Reconnecting…" badge shown only after first connection drops — never flashes on initial load. |
+| **BUG-11** `publishToQueue` in `/complete` + `/fail` throws 500 after terminal DB write | Medium | `internal/tasks.ts` | Wrapped both `publishToQueue` calls in try/catch + log. Notification failure is non-fatal — task is already in terminal state; a naked throw would cause relay to retry `/complete` or `/fail` sending duplicate notifications. |
+| **BUG-12** `/complete` has no status guard → `blocked → review` transition possible | Medium | `internal/tasks.ts` | Added `eq(agentTasks.status, 'in_progress')` to WHERE clause + `.returning()`. Returns 409 if 0 rows updated — prevents watchdog-blocked task from being silently overwritten to `review`. |
+| **BUG-13** Replan: relay down leaves task in ghost `planning` state | Critical | (analysis only) | Confirmed **covered by BUG-1**: handlePlanning catch block marks task `blocked` (not `planning`). Task ends with 0 steps but is actionable — user can clarify or replan again. |
+| **BUG-15+16** Watchdog marks task blocked with no status guard → double-recovery | Critical + Medium | `watchdogHandler.ts` | Added `eq(agentTasks.status, 'in_progress')` to `db.update` WHERE + `.returning()`. If 0 rows updated (agent finished or two watchdog runs overlap) → `continue` — skips event insert, WS push, SQS notification entirely. |
+
+#### Files changed
+
+| File | Bugs fixed |
+|---|---|
+| `apps/api/src/workers/taskWorker.ts` | BUG-1, 2, 3, 4 |
+| `apps/api/src/routes/tasks.ts` | BUG-5, 6, 7 |
+| `apps/api/src/routes/internal/tasks.ts` | BUG-8, 9, 11, 12 |
+| `apps/api/src/handlers/watchdogHandler.ts` | BUG-15, 16 |
+| `apps/web/components/platform/GlobalTaskStreamProvider.tsx` | BUG-10 |
+| `apps/web/hooks/useTaskStream.ts` | BUG-10 |
+
+**No migrations. No schema changes. No schema-breaking API changes.**
+
+**Deploy needed:** `sam build && sam deploy --config-env dev` (API + worker Lambdas). `./deploy.sh` for frontend.
+
+---
+
 ### Session 2 — Apr 26, 2026 (this session)
 
 #### Notification system wired to task lifecycle (commit `b6313a6`)
@@ -212,13 +251,13 @@ Task "Find job emails in Gmail" executed successfully:
 
 ---
 
-## 5. Current State (Apr 26, 2026 — updated)
+## 5. Current State (Apr 28, 2026 — updated)
 
 ### Working end-to-end ✅
 - Task creation, board view (all columns including `awaiting_approval`)
 - Planning via OpenClaw/Gemini — fresh session key per attempt, no cross-task contamination
 - Clarification flow: blocked → yellow box → user answers → replanned → awaiting_approval
-- Plan approval: Approve/Request Changes buttons in task detail
+- Plan approval: Approve/Request Changes buttons in task detail — **double-approve safe (BUG-6)**
 - **Full execution loop verified** — steps execute, Gmail MCP tool calls succeed, task → `review`
 - Post-action receipt UI (shows results, tools used, markdown output)
 - Auto-reload polling during `in_progress` (5s interval, stops at `review`/`done`/`blocked`/`cancelled`)
@@ -227,17 +266,19 @@ Task "Find job emails in Gmail" executed successfully:
 - RAG pipeline (retrieve_documents tool, pgvector on Neon, relevance gate)
 - Full dashboard: members, roles, billing, API keys, audit log, integrations, agents
 - Notification infrastructure wired (DB seeded, code committed)
+- **Task lifecycle hardened** — all critical and medium bugs from Apr 28 audit fixed (see Section 4)
+- **WebSocket reconnect** — exponential backoff, missed-event catchup on reconnect, reconnecting badge
 
 ### Pending deploy
-- **Lambda deploy needed** for notification fires to go live: `sam build && sam deploy --config-env dev`
-- Until deployed: task lifecycle events fire to SQS but Lambda still runs old build without `publishToQueue` calls
+- **Lambda deploy needed** for all Apr 28 fixes to go live: `sam build && sam deploy --config-env dev`
+- **Frontend deploy needed** for WS reconnect + reconnecting badge: `./deploy.sh`
 
 ### What's pending / not yet built
 - Recurring / scheduled tasks (no infrastructure exists — would need EventBridge + schema changes)
 - Max step limit enforcement (currently unbounded — Gemini decides step count)
-- Task watchdog: if relay crashes mid-execution, task stays `in_progress` until manual intervention
 - Long delay notification steps (>900s) silently dropped — EventBridge pickup not implemented
 - New tenant onboarding: auto-create notification workflows for new tenants (currently manual SQL seed needed)
+- Agent hallucination of unconnected integrations — see `docs/bugfix-notes.md` for planned fix
 
 ---
 
