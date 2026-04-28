@@ -172,6 +172,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   const bodySchema = z.object({
     agentOutput: z.string().optional(),
     toolResult: z.record(z.unknown()).optional(),
+    reasoning: z.string().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -197,7 +198,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   if (!task) return c.json({ error: 'Task not found' }, 404);
 
   const actorId = task.agentId ?? 'system';
-  const { agentOutput, toolResult } = parsed.data;
+  const { agentOutput, toolResult, reasoning } = parsed.data;
 
   // BUG-9: Wrap the DB write in try/catch and return 503 so the relay can retry.
   // Without this, a transient DB error returns an unhandled 500 with no Retry-After
@@ -208,6 +209,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
         status: 'done',
         agentOutput: agentOutput ?? null,
         toolResult: toolResult ?? null,
+        reasoning: reasoning ?? null,
         completedAt: new Date(),
         updatedAt: new Date(),
       })
