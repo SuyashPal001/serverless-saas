@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner"
 import { NotificationsProvider } from "@/components/platform/NotificationsProvider"
+import { GlobalTaskStreamProvider } from "@/components/platform/GlobalTaskStreamProvider"
 import { SidebarProvider } from "@/components/platform/SidebarContext"
 import { SidebarContent } from "@/components/platform/SidebarContent"
 
@@ -14,10 +15,12 @@ export default async function DashboardLayout({
 
     return (
         <NotificationsProvider>
-            <SidebarProvider>
-                <SidebarContent>{children}</SidebarContent>
-                <Toaster position="bottom-right" richColors theme="dark" />
-            </SidebarProvider>
+            <GlobalTaskStreamProvider>
+                <SidebarProvider>
+                    <SidebarContent>{children}</SidebarContent>
+                    <Toaster position="bottom-right" richColors theme="dark" />
+                </SidebarProvider>
+            </GlobalTaskStreamProvider>
         </NotificationsProvider>
     );
 }

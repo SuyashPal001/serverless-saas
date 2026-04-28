@@ -1,0 +1,172 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
+
+/**
+ * GlobalTaskStreamProvider
+ *
+ * Opens a single tenant-scoped WebSocket connection for the lifetime of the
+ * dashboard layout (survives navigation between board ↔ detail views).
+ *
+ * Handles:
+ *   task.status.changed  — updates ['tasks'] board cache + ['task', taskId]
+ *                          detail cache, fires toasts, invalidates on
+ *                          awaiting_approval so steps are fetched immediately.
+ *   task.step.created    — appends new step to ['task', taskId] detail cache
+ *                          so steps animate in even if user navigated away
+ *                          and back during planning.
+ *
+ * Step-level streaming events (delta, tool_call, tool_result, thinking,
+ * step.updated) are NOT handled here — high-frequency and only relevant
+ * while TaskDetailView is mounted.
+ */
+export function GlobalTaskStreamProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const wsRef = useRef<WebSocket | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 5;
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Track last known status per task so toasts are transition-aware
+  const taskStatusMap = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const connect = async () => {
+      if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
+
+      try {
+        const response = await api.get<{ token: string }>('/api/v1/auth/ws-token');
+        const token = response.token;
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+
+        if (!wsUrl) {
+          console.error('[GlobalTaskStream] NEXT_PUBLIC_WS_URL is not defined');
+          return;
+        }
+
+        const socket = new WebSocket(`${wsUrl}?token=${token}`);
+        wsRef.current = socket;
+
+        socket.onopen = () => {
+          if (!isMounted) return;
+          retryCountRef.current = 0;
+          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ action: 'ping' }));
+            }
+          }, 5 * 60 * 1000);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data) as { type: string; [key: string]: unknown };
+            if (message.type === 'pong') return;
+
+            if (message.type === 'task.status.changed') {
+              const taskId = message.taskId as string;
+              const status = message.status as string;
+              if (!taskId || !status) return;
+
+              const prevStatus = taskStatusMap.current.get(taskId);
+              taskStatusMap.current.set(taskId, status);
+
+              // Update detail cache
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.task) return old;
+                return {
+                  ...old,
+                  data: { ...old.data, task: { ...old.data.task, status } },
+                };
+              });
+
+              // Update board list cache
+              queryClient.setQueryData(['tasks'], (old: any) => {
+                if (!old?.data) return old;
+                return {
+                  ...old,
+                  data: old.data.map((t: any) => (t.id === taskId ? { ...t, status } : t)),
+                };
+              });
+
+              if (status === 'awaiting_approval') {
+                // Steps just landed in DB — invalidate so detail cache gets them
+                queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+                toast('Plan ready for review', {
+                  description: 'Your agent has prepared a plan. Review and approve to start execution.',
+                });
+              } else if (status === 'review') {
+                toast.success('Task complete', {
+                  description: 'The agent finished. Review the results.',
+                });
+              } else if (status === 'blocked' && prevStatus === 'in_progress') {
+                toast.error('Task is blocked', {
+                  description: 'The agent encountered an issue during execution.',
+                });
+              }
+            } else if (message.type === 'task.step.created') {
+              const taskId = message.taskId as string;
+              const step = message.step as {
+                id: string;
+                stepNumber: number;
+                title: string;
+                description: string | null;
+                toolName: string | null;
+                confidenceScore: string | null;
+                status: 'pending';
+              };
+              if (!taskId || !step?.id) return;
+
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data) return old;
+                const existing: any[] = old.data.steps ?? [];
+                if (existing.some((s: any) => s.id === step.id)) return old;
+                return {
+                  ...old,
+                  data: { ...old.data, steps: [...existing, step] },
+                };
+              });
+            }
+          } catch {
+            // ignore malformed messages
+          }
+        };
+
+        socket.onclose = () => {
+          if (!isMounted) return;
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current++;
+            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = setTimeout(connect, 3000);
+          }
+        };
+
+        socket.onerror = () => {
+          if (!isMounted) return;
+          socket.close();
+        };
+      } catch (error) {
+        console.error('[GlobalTaskStream] Connection failed:', error);
+      }
+    };
+
+    connect();
+
+    return () => {
+      isMounted = false;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+    };
+  }, [queryClient]);
+
+  return <>{children}</>;
+}

@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '@serverless-saas/database/schema';
 import { agentTasks, taskEvents } from '@serverless-saas/database/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '../lib/sqs';
@@ -52,9 +52,24 @@ export const handler: ScheduledHandler = async () => {
 
   for (const task of stalled) {
     console.log('[Watchdog] Stalled task:', task.id, task.tenantId);
-    await db.update(agentTasks)
+
+    // BUG-15+16: Add status predicate so the update is a no-op if:
+    // (a) two watchdog invocations overlap and one already wrote 'blocked', or
+    // (b) the agent finished just before the watchdog fired and set the task to
+    //     'review'/'done'. In either case skip all notifications — another process
+    //     already handled this task.
+    const [updated] = await db.update(agentTasks)
       .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
-      .where(eq(agentTasks.id, task.id));
+      .where(and(
+        eq(agentTasks.id, task.id),
+        eq(agentTasks.status, 'in_progress'),
+      ))
+      .returning({ id: agentTasks.id });
+
+    if (!updated) {
+      console.log(`[watchdog] taskId=${task.id} no longer in_progress — skipping notification`);
+      continue;
+    }
 
     await db.insert(taskEvents).values({
       taskId: task.id,

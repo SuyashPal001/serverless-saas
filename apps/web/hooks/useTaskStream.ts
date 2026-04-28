@@ -12,12 +12,6 @@ interface TaskStepUpdatedEvent {
   agentOutput?: string;
 }
 
-interface TaskStatusChangedEvent {
-  type: 'task.status.changed';
-  taskId: string;
-  status: string;
-}
-
 interface TaskStepDeltaEvent {
   type: 'task.step.delta';
   taskId: string;
@@ -65,7 +59,7 @@ interface TaskCommentAddedEvent {
   };
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskStatusChangedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent;
+type TaskWsEvent = TaskStepUpdatedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -231,34 +225,6 @@ export function useTaskStream(taskId: string | undefined) {
                   const existing: any[] = old?.data ?? [];
                   if (existing.some((c: any) => c.id === ev.comment.id)) return old;
                   return { ...old, data: [...existing, ev.comment] };
-                }
-              );
-            } else if (message.type === 'task.status.changed') {
-              const ev = message as TaskStatusChangedEvent;
-              queryClient.setQueryData(
-                ['task', taskId],
-                (old: any) => {
-                  if (!old?.data?.task) return old;
-                  return {
-                    ...old,
-                    data: {
-                      ...old.data,
-                      task: { ...old.data.task, status: ev.status },
-                    },
-                  };
-                }
-              );
-              // Reflect the new status in the board list cache as well
-              queryClient.setQueryData(
-                ['tasks'],
-                (old: any) => {
-                  if (!old?.data) return old;
-                  return {
-                    ...old,
-                    data: old.data.map((t: any) =>
-                      t.id === taskId ? { ...t, status: ev.status } : t
-                    ),
-                  };
                 }
               );
             }

@@ -78,57 +78,150 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
   });
   if (!task) throw new Error(`Task not found: ${taskId}`);
 
-  const agent = task.agentId
-    ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
-    : null;
-
-  let ragContext: string | null = null;
   try {
-    ragContext = await getPastSuccessfulPlans(task.tenantId, task.title, task.description);
-    if (ragContext) {
-      console.log(`[handlePlanning] taskId=${taskId} RAG found similar past tasks, prepending context`);
+    // BUG-3: Delete existing pending steps before relay call — makes retry idempotent.
+    // If a prior SQS attempt inserted steps but failed before updating task status,
+    // retrying without this delete would append a second set of steps on top of the first.
+    await db.delete(taskSteps)
+      .where(and(
+        eq(taskSteps.taskId, task.id),
+        eq(taskSteps.status, 'pending'),
+      ));
+
+    const agent = task.agentId
+      ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
+      : null;
+
+    let ragContext: string | null = null;
+    try {
+      ragContext = await getPastSuccessfulPlans(task.tenantId, task.title, task.description);
+      if (ragContext) {
+        console.log(`[handlePlanning] taskId=${taskId} RAG found similar past tasks, prepending context`);
+      }
+    } catch (ragErr) {
+      console.error('[handlePlanning] RAG lookup failed (non-fatal):', (ragErr as Error).message);
     }
-  } catch (ragErr) {
-    console.error('[handlePlanning] RAG lookup failed (non-fatal):', (ragErr as Error).message);
-  }
 
-  const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
+    const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
 
-  const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-service-key': INTERNAL_SERVICE_KEY(),
-    },
-    body: JSON.stringify({
-      taskId: task.id,
-      agentId: task.agentId,
-      tenantId: task.tenantId,
-      title: task.title,
-      description: task.description,
-      acceptanceCriteria: task.acceptanceCriteria,
-      agentName: agent?.name ?? null,
-      referenceText: task.referenceText ?? null,
-      links: task.links ?? [],
-      ...(combinedExtraContext ? { extraContext: combinedExtraContext } : {}),
-    }),
-  });
+    // BUG-1+2: AbortSignal.timeout(55_000) prevents the Lambda from hanging
+    // indefinitely on a slow/unresponsive relay. Without it, Node's default fetch
+    // has no timeout; a hung relay would exhaust the Lambda timeout and leave the
+    // task permanently stuck in 'planning' with no user-visible error.
+    const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY(),
+      },
+      body: JSON.stringify({
+        taskId: task.id,
+        agentId: task.agentId,
+        tenantId: task.tenantId,
+        title: task.title,
+        description: task.description,
+        acceptanceCriteria: task.acceptanceCriteria,
+        agentName: agent?.name ?? null,
+        referenceText: task.referenceText ?? null,
+        links: task.links ?? [],
+        ...(combinedExtraContext ? { extraContext: combinedExtraContext } : {}),
+      }),
+      signal: AbortSignal.timeout(55_000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Relay planning failed: ${response.status}`);
-  }
+    if (!response.ok) {
+      throw new Error(`Relay planning failed: ${response.status}`);
+    }
 
-  const body = await response.json() as {
-    steps?: Array<{ title: string; description: string; toolName?: string; confidenceScore?: number }>;
-    clarificationNeeded?: boolean;
-    questions?: string[];
-  };
+    // BUG-4: Guard against malformed JSON — relay or Gemini can return HTTP 200
+    // with a truncated/non-JSON body. Without this, response.json() throws and
+    // the error propagates to the SQS handler, triggering unbounded retries.
+    let body: {
+      steps?: Array<{ title: string; description: string; toolName?: string; confidenceScore?: number }>;
+      clarificationNeeded?: boolean;
+      questions?: string[];
+    };
+    try {
+      body = await response.json();
+    } catch (jsonErr) {
+      throw new Error(`Relay returned malformed JSON: ${(jsonErr as Error).message}`);
+    }
 
-  if (body.clarificationNeeded) {
-    const questions = body.questions ?? [];
-    const reason = `Agent needs clarification:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+    if (body.clarificationNeeded) {
+      const questions = body.questions ?? [];
+      const reason = `Agent needs clarification:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+      await db.update(agentTasks)
+        .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+        .where(eq(agentTasks.id, task.id));
+
+      await db.insert(taskEvents).values({
+        taskId: task.id,
+        tenantId: task.tenantId,
+        actorType: 'agent',
+        actorId: task.agentId ?? 'system',
+        eventType: 'clarification_requested',
+        payload: { questions },
+      });
+
+      await pushWebSocketEvent(task.tenantId, {
+        type: 'task.status.changed',
+        taskId: task.id,
+        status: 'blocked',
+      });
+      return;
+    }
+
+    const { steps } = body;
+    if (!steps || steps.length === 0) {
+      throw new Error('Relay returned no steps and no clarification');
+    }
+
+    const insertedSteps = await db.insert(taskSteps).values(
+      steps.map((step, index) => ({
+        taskId: task.id,
+        tenantId: task.tenantId,
+        stepNumber: index + 1,
+        title: step.title,
+        description: step.description,
+        toolName: step.toolName ?? null,
+        confidenceScore: step.confidenceScore ?? null,
+        status: 'pending' as const,
+        ...(feedbackHistoryMap?.[step.title] ? { feedbackHistory: feedbackHistoryMap[step.title] } : {}),
+      }))
+    ).returning({
+      id: taskSteps.id,
+      stepNumber: taskSteps.stepNumber,
+      title: taskSteps.title,
+      description: taskSteps.description,
+      toolName: taskSteps.toolName,
+      confidenceScore: taskSteps.confidenceScore,
+    });
+
+    // Stream steps to frontend one-by-one so the UI can animate them in during planning
+    for (const step of insertedSteps) {
+      await pushWebSocketEvent(task.tenantId, {
+        type: 'task.step.created',
+        taskId: task.id,
+        step: {
+          id: step.id,
+          stepNumber: step.stepNumber,
+          title: step.title,
+          description: step.description ?? null,
+          toolName: step.toolName ?? null,
+          confidenceScore: step.confidenceScore ?? null,
+          status: 'pending',
+        },
+      });
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    const scores = steps.filter(s => s.confidenceScore != null).map(s => s.confidenceScore!);
+    const avgConfidence = scores.length > 0
+      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
+      : null;
+
     await db.update(agentTasks)
-      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+      .set({ status: 'awaiting_approval', confidenceScore: avgConfidence, updatedAt: new Date() })
       .where(eq(agentTasks.id, task.id));
 
     await db.insert(taskEvents).values({
@@ -136,72 +229,55 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
       tenantId: task.tenantId,
       actorType: 'agent',
       actorId: task.agentId ?? 'system',
-      eventType: 'clarification_requested',
-      payload: { questions },
+      eventType: 'plan_proposed',
+      payload: { stepCount: steps.length },
     });
 
     await pushWebSocketEvent(task.tenantId, {
       type: 'task.status.changed',
       taskId: task.id,
-      status: 'blocked',
+      status: 'awaiting_approval',
     });
-    return;
-  }
 
-  const { steps } = body;
-  if (!steps || steps.length === 0) {
-    throw new Error('Relay returned no steps and no clarification');
-  }
-
-  await db.insert(taskSteps).values(
-    steps.map((step, index) => ({
-      taskId: task.id,
-      tenantId: task.tenantId,
-      stepNumber: index + 1,
-      title: step.title,
-      description: step.description,
-      toolName: step.toolName ?? null,
-      confidenceScore: step.confidenceScore ?? null,
-      status: 'pending' as const,
-      ...(feedbackHistoryMap?.[step.title] ? { feedbackHistory: feedbackHistoryMap[step.title] } : {}),
-    }))
-  );
-
-  const scores = steps.filter(s => s.confidenceScore != null).map(s => s.confidenceScore!);
-  const avgConfidence = scores.length > 0
-    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
-    : null;
-
-  await db.update(agentTasks)
-    .set({ status: 'awaiting_approval', confidenceScore: avgConfidence, updatedAt: new Date() })
-    .where(eq(agentTasks.id, task.id));
-
-  await db.insert(taskEvents).values({
-    taskId: task.id,
-    tenantId: task.tenantId,
-    actorType: 'agent',
-    actorId: task.agentId ?? 'system',
-    eventType: 'plan_proposed',
-    payload: { stepCount: steps.length },
-  });
-
-  await pushWebSocketEvent(task.tenantId, {
-    type: 'task.status.changed',
-    taskId: task.id,
-    status: 'awaiting_approval',
-  });
-
-  const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
-  if (sqsUrl) {
-    await publishToQueue(sqsUrl, {
-      type: 'notification.fire',
-      tenantId: task.tenantId,
-      messageType: 'task.awaiting_approval',
-      actorId: task.agentId ?? 'system',
-      actorType: 'agent',
-      recipientIds: [task.createdBy],
-      data: { taskId: task.id, taskTitle: task.title },
-    });
+    const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+    if (sqsUrl) {
+      await publishToQueue(sqsUrl, {
+        type: 'notification.fire',
+        tenantId: task.tenantId,
+        messageType: 'task.awaiting_approval',
+        actorId: task.agentId ?? 'system',
+        actorType: 'agent',
+        recipientIds: [task.createdBy],
+        data: { taskId: task.id, taskTitle: task.title },
+      });
+    }
+  } catch (err) {
+    // BUG-1: Any relay/DB/JSON error marks the task blocked rather than rethrowing to
+    // SQS. Rethrowing would cause unbounded retries ending in DLQ, leaving the task
+    // permanently stuck in 'planning' with no user-visible feedback.
+    const reason = `Planning failed: ${(err as Error).message}`;
+    console.error('[handlePlanning] fatal error', { taskId, error: (err as Error).message });
+    try {
+      await db.update(agentTasks)
+        .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+        .where(eq(agentTasks.id, taskId));
+      await db.insert(taskEvents).values({
+        taskId: task.id,
+        tenantId: task.tenantId,
+        actorType: 'agent',
+        actorId: task.agentId ?? 'system',
+        eventType: 'status_changed',
+        payload: { from: task.status, to: 'blocked', reason },
+      });
+      await pushWebSocketEvent(task.tenantId, {
+        type: 'task.status.changed',
+        taskId: task.id,
+        status: 'blocked',
+      });
+    } catch (recoveryErr) {
+      console.error('[handlePlanning] recovery write failed', { taskId, error: (recoveryErr as Error).message });
+    }
+    // Do not rethrow — let SQS ack the message cleanly.
   }
 }
 

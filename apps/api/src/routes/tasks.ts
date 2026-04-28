@@ -333,6 +333,10 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
     }
 
     // approved === true
+    // BUG-6: Add status predicate to make the update atomic with the guard above.
+    // Without it, two concurrent double-click requests both pass the guard and both
+    // publish execute_task, running the task twice. With it, the second concurrent
+    // request updates 0 rows and gets a 409.
     const [updatedTask] = await db.update(agentTasks)
         .set({
             status: 'ready',
@@ -340,8 +344,16 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             planApprovedBy: userId,
             updatedAt: new Date(),
         })
-        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+        .where(and(
+            eq(agentTasks.id, taskId),
+            eq(agentTasks.tenantId, tenantId),
+            eq(agentTasks.status, 'awaiting_approval'),
+        ))
         .returning();
+
+    if (!updatedTask) {
+        return c.json({ error: 'Task plan cannot be reviewed in its current state' }, 409);
+    }
 
     await db.insert(taskEvents).values({
         taskId,
@@ -361,6 +373,14 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             .set({ status: 'blocked', blockedReason: 'Failed to queue task for execution. Please retry.', updatedAt: new Date() })
             .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
         return c.json({ error: 'Failed to queue task for execution. Please retry.' }, 502);
+    }
+
+    // BUG-7: Push WS event for the 'ready' transition so the board updates immediately
+    // after approval — without this the UI is stale until the worker fires 'in_progress'.
+    try {
+        await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'ready' });
+    } catch (wsErr) {
+        console.error('WS push failed (non-fatal):', wsErr);
     }
 
     return c.json({ data: { task: updatedTask } });

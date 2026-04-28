@@ -92,6 +92,11 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
 
   await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'running' });
 
+  // BUG-8: Refresh watchdog TTL on step start, not just on step complete.
+  // A step that takes longer than the initial 600s TTL would trigger a false-positive
+  // watchdog fire even if the agent is actively running.
+  getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
+
   return c.json({ success: true });
 });
 
@@ -194,15 +199,24 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   const actorId = task.agentId ?? 'system';
   const { agentOutput, toolResult } = parsed.data;
 
-  await db.update(taskSteps)
-    .set({
-      status: 'done',
-      agentOutput: agentOutput ?? null,
-      toolResult: toolResult ?? null,
-      completedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(taskSteps.id, stepId));
+  // BUG-9: Wrap the DB write in try/catch and return 503 so the relay can retry.
+  // Without this, a transient DB error returns an unhandled 500 with no Retry-After
+  // hint, leaving the step stuck in 'running' with no recovery path.
+  try {
+    await db.update(taskSteps)
+      .set({
+        status: 'done',
+        agentOutput: agentOutput ?? null,
+        toolResult: toolResult ?? null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(taskSteps.id, stepId));
+  } catch (dbErr) {
+    console.error('[step/complete] DB write failed', { taskId, stepId, error: (dbErr as Error).message });
+    c.header('Retry-After', '2');
+    return c.json({ error: 'Step completion write failed, please retry' }, 503);
+  }
 
   await db.insert(taskEvents).values({
     taskId,
@@ -301,9 +315,22 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
   const { tenantId } = task;
   const actorId = task.agentId ?? 'system';
 
-  await db.update(agentTasks)
+  // BUG-12: Add status predicate to prevent the illegal blocked → review transition.
+  // Without it, if the watchdog fires and marks the task 'blocked' while the agent
+  // is still running, the agent's subsequent /complete call overwrites it to 'review',
+  // creating inconsistent state (user received a failure notification but task shows done).
+  const [updatedTask] = await db.update(agentTasks)
     .set({ status: 'review', completedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
+    .where(and(
+      eq(agentTasks.id, taskId),
+      eq(agentTasks.tenantId, tenantId),
+      eq(agentTasks.status, 'in_progress'),
+    ))
+    .returning({ id: agentTasks.id });
+
+  if (!updatedTask) {
+    return c.json({ error: 'Task is not in a completable state' }, 409);
+  }
 
   await db.insert(taskEvents).values({
     taskId,
@@ -323,17 +350,24 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
   // Task completed — clear watchdog (terminal state)
   getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
 
+  // BUG-11: Wrap publishToQueue in try/catch — the task is already in terminal state
+  // ('review'). If the notification publish throws and we don't catch it, the Lambda
+  // returns 500 to the relay, which may retry /complete and send a duplicate notification.
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (sqsUrl) {
-    await publishToQueue(sqsUrl, {
-      type: 'notification.fire',
-      tenantId,
-      messageType: 'task.completed',
-      actorId: actorId,
-      actorType: 'agent',
-      recipientIds: [task.createdBy],
-      data: { taskId: task.id, taskTitle: task.title },
-    });
+    try {
+      await publishToQueue(sqsUrl, {
+        type: 'notification.fire',
+        tenantId,
+        messageType: 'task.completed',
+        actorId: actorId,
+        actorType: 'agent',
+        recipientIds: [task.createdBy],
+        data: { taskId: task.id, taskTitle: task.title },
+      });
+    } catch (sqsErr) {
+      console.error('[task/complete] notification publish failed (non-fatal):', (sqsErr as Error).message);
+    }
   }
 
   return c.json({ success: true });
@@ -381,17 +415,23 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
   // Task failed → blocked (terminal for this run) — clear watchdog
   getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
 
+  // BUG-11: Same as /complete — wrap publishToQueue so a notification failure doesn't
+  // return 500 to the relay after the DB is already in terminal state.
   const sqsUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (sqsUrl) {
-    await publishToQueue(sqsUrl, {
-      type: 'notification.fire',
-      tenantId,
-      messageType: 'task.failed',
-      actorId: actorId,
-      actorType: 'agent',
-      recipientIds: [task.createdBy],
-      data: { taskId: task.id, taskTitle: task.title },
-    });
+    try {
+      await publishToQueue(sqsUrl, {
+        type: 'notification.fire',
+        tenantId,
+        messageType: 'task.failed',
+        actorId: actorId,
+        actorType: 'agent',
+        recipientIds: [task.createdBy],
+        data: { taskId: task.id, taskTitle: task.title },
+      });
+    } catch (sqsErr) {
+      console.error('[task/fail] notification publish failed (non-fatal):', (sqsErr as Error).message);
+    }
   }
 
   return c.json({ success: true });

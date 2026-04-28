@@ -1948,8 +1948,8 @@ export function TaskDetailView() {
                             </div>
                         )}
 
-                        {/* Planning in progress — streaming skeleton */}
-                        {steps.length === 0 && task.status === 'planning' && (
+                        {/* Planning in progress — indicator (shown until status leaves planning) */}
+                        {task.status === 'planning' && (
                             <>
                                 {events?.some((e: TaskEvent) => e.eventType === 'plan_rejected') && (
                                     <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15 text-xs text-amber-400/70">
@@ -1957,7 +1957,12 @@ export function TaskDetailView() {
                                         Saarthi is replanning based on your feedback...
                                     </div>
                                 )}
-                                <PlanningSkeletonCards />
+                                {steps.length === 0 && (
+                                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#111] border border-[#1e1e1e]">
+                                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/50 shrink-0" />
+                                        <span className="text-sm text-muted-foreground/60">Agent is planning...</span>
+                                    </div>
+                                )}
                             </>
                         )}
 
@@ -2003,7 +2008,17 @@ export function TaskDetailView() {
                         {/* Steps list */}
                         {steps.length > 0 && (
                             <div className={cn('transition-opacity duration-300', stepsVisible ? 'opacity-100' : 'opacity-0')}>
-                                {steps.map((step, i) => <StepCard key={step.id} step={step} index={i} />)}
+                                {task.status === 'planning' && (
+                                    <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-[#111] border border-[#1e1e1e]">
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50 shrink-0" />
+                                        <span className="text-xs text-muted-foreground/60">Still planning — more steps may arrive</span>
+                                    </div>
+                                )}
+                                {steps.map((step, i) => (
+                                    <div key={step.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <StepCard step={step} index={i} />
+                                    </div>
+                                ))}
 
                                 {/* Approve / Reject bar — only show when plan not yet approved and agent not executing */}
                                 {(!task.planApprovedAt) && (task.status === 'backlog' || task.status === 'awaiting_approval') && (

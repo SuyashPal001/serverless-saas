@@ -38,7 +38,7 @@ export default function NotificationsPage() {
     const { permissions = [] } = useTenant();
 
     // Notifications Context replaces the raw socket hook
-    const { markAllRead: clearSidebarBadge } = useNotifications();
+    const { markAllRead: clearSidebarBadge, setUnreadCount } = useNotifications();
     const canUpdate = can(permissions, "notifications", "update");
 
     const queryClient = useQueryClient();
@@ -81,17 +81,19 @@ export default function NotificationsPage() {
                     };
                 }
             );
+            setUnreadCount((prev) => Math.max(0, prev - 1));
         },
     });
 
     // Mark all as read
     const markAllMutation = useMutation({
-        mutationFn: () => api.patch(`/api/v1/notifications/inbox/read-all`),
+        mutationFn: () => api.post(`/api/v1/notifications/inbox/read-all`),
         onSuccess: () => {
             setPage(1);
             queryClient.invalidateQueries({
                 queryKey: ["notifications-inbox", tenantSlug, page],
             });
+            clearSidebarBadge();
         },
     });
 
