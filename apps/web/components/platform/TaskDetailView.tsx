@@ -1421,7 +1421,7 @@ export function TaskDetailView() {
                     <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
                         <Link href={`/${tenantSlug}/dashboard/board`} className="hover:text-foreground">Board</Link>
                         <ChevronRight className="w-3 h-3 text-muted-foreground/40 mx-0.5" />
-                        <span>Work Items</span>
+                        <Link href={`/${tenantSlug}/dashboard/board`} className="hover:text-foreground">Work Items</Link>
                         <ChevronRight className="w-3 h-3 text-muted-foreground/40 mx-0.5" />
                         <span className="text-foreground">TASK-{task.id.slice(0,6).toUpperCase()}</span>
                     </div>

@@ -939,8 +939,9 @@ export function BoardView() {
             }
             toast.error('Failed to move task')
         },
-        onSettled: () => {
+        onSettled: (_, __, variables) => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            queryClient.invalidateQueries({ queryKey: ['task', variables.taskId] })
         }
     })
 
@@ -1006,7 +1007,13 @@ export function BoardView() {
 
     const filteredTasks = tasks
         .filter(task => {
-            if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase()
+                const matchesTitle = task.title.toLowerCase().includes(q)
+                const matchesId = `task-${task.id.slice(0,6)}`.toLowerCase().includes(q)
+                const matchesDescription = task.description?.toLowerCase().includes(q) ?? false
+                if (!matchesTitle && !matchesId && !matchesDescription) return false
+            }
             if (statusFilter !== 'all' && task.status !== statusFilter) return false
             if (agentFilter !== 'all' && task.agentId !== agentFilter) return false
             return true
