@@ -103,9 +103,9 @@ interface TaskSidebarProps {
     assigneeOptions: Array<{ type: 'agent' | 'member'; id: string; name: string }>
     selectedAssignee: { type: 'agent' | 'member'; id: string; name: string } | null
     isUploadingAttachment: boolean
-    attachFileInputRef: React.RefObject<HTMLInputElement>
-    newLinkInputRef: React.RefObject<HTMLInputElement>
-    referenceTextRef: React.RefObject<HTMLTextAreaElement>
+    attachFileInputRef: React.RefObject<HTMLInputElement | null>
+    newLinkInputRef: React.RefObject<HTMLInputElement | null>
+    referenceTextRef: React.RefObject<HTMLTextAreaElement | null>
     taskOperations: {
         approvePlan: (opts?: { approved: boolean }) => Promise<void>
         deleteTask: () => Promise<void>

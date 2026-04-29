@@ -273,16 +273,15 @@ export function TaskDetailView() {
 
     // ── Task operations ───────────────────────────────────────────────────────
     const taskOperations = useMemo(() => ({
-        approvePlan: async (opts?: { approved: boolean; feedback?: Record<string, string>; generalInstruction?: string }) =>
-            approvePlanMutation.mutateAsync(opts ?? { approved: true }),
-        rejectPlan: async () => approvePlanMutation.mutateAsync({ approved: false }),
-        generatePlan: async () => generatePlanMutation.mutateAsync(),
-        sendClarification: async (answer: string) => clarifyMutation.mutateAsync(answer),
-        markDone: async () => patchTask.mutateAsync({ status: 'done' }),
-        updateTitle: async (title: string) => patchTask.mutateAsync({ title }),
-        updateDescription: async (desc: string) => patchTask.mutateAsync({ description: desc || null }),
-        deleteTask: async () => deleteTaskMutation.mutateAsync(),
-        vote: async (direction: 'up' | 'down') => voteMutation.mutateAsync(direction),
+        approvePlan: async (opts?: { approved: boolean; feedback?: Record<string, string>; generalInstruction?: string }) => { await approvePlanMutation.mutateAsync(opts ?? { approved: true }) },
+        rejectPlan: async () => { await approvePlanMutation.mutateAsync({ approved: false }) },
+        generatePlan: async () => { await generatePlanMutation.mutateAsync() },
+        sendClarification: async (answer: string) => { await clarifyMutation.mutateAsync(answer) },
+        markDone: async () => { await patchTask.mutateAsync({ status: 'done' }) },
+        updateTitle: async (title: string) => { await patchTask.mutateAsync({ title }) },
+        updateDescription: async (desc: string) => { await patchTask.mutateAsync({ description: desc || null }) },
+        deleteTask: async () => { await deleteTaskMutation.mutateAsync() },
+        vote: async (direction: 'up' | 'down') => { await voteMutation.mutateAsync(direction) },
         addLink: (url: string) => patchTask.mutate({ links: [...(task?.links ?? []), url] }),
         removeLink: (url: string) => patchTask.mutate({ links: (task?.links ?? []).filter(l => l !== url) }),
         addAttachment: handleAttachmentUpload,
