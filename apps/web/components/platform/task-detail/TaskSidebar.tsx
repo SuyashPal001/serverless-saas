@@ -465,7 +465,7 @@ export function TaskSidebar({
             </div>
 
             <div className="space-y-1.5">
-                {task.status === 'backlog' && steps.length > 0 && (
+                {task.status === 'awaiting_approval' && (
                     <button
                         onClick={() => taskOperations.approvePlan({ approved: true })}
                         className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"

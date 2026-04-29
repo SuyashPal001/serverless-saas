@@ -225,6 +225,21 @@ export function useTaskStream(taskId: string | undefined) {
                   };
                 }
               );
+            } else if (message.type === 'task.status.changed') {
+              const ev = message as { type: 'task.status.changed'; taskId: string; status: string };
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.task) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      task: { ...old.data.task, status: ev.status },
+                    },
+                  };
+                }
+              );
             } else if (message.type === 'task.comment.added') {
               const ev = message as TaskCommentAddedEvent;
               queryClient.setQueryData(

@@ -90,7 +90,8 @@ export function TaskDetailView() {
             return
         }
 
-        if (!task?.id || task.status !== 'in_progress') return
+        if (!task?.id) return
+        if (task.status !== 'in_progress' && task.status !== 'ready') return
 
         pollingIntervalRef.current = setInterval(async () => {
             try {
