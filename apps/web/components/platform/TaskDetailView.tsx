@@ -349,7 +349,7 @@ export function TaskDetailView() {
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
-        <div className="flex flex-col h-[calc(100vh-60px)] overflow-hidden bg-background">
+        <div className="flex flex-col h-full overflow-hidden bg-background">
             <input
                 type="file"
                 ref={attachFileInputRef}
@@ -365,6 +365,7 @@ export function TaskDetailView() {
                     task={task}
                     steps={steps}
                     events={events}
+                    taskId={taskId}
                     taskOperations={taskOperations}
                     editState={editState}
                 />
@@ -381,7 +382,6 @@ export function TaskDetailView() {
                     referenceTextRef={referenceTextRef}
                 />
             </div>
-            <ActivityFeed taskId={taskId} events={events} />
         </div>
     )
 }

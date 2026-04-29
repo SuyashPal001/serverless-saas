@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react'
 import { Link2, Paperclip, FileText, CheckSquare, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ExecutionConsole } from './ExecutionConsole'
+import { ActivityFeed } from './ActivityFeed'
 import type { Task, Step, TaskEvent, AcceptanceCriterion } from '@/types/task'
 
 interface TaskMainContentProps {
     task: Task
     steps: Step[]
     events: TaskEvent[]
+    taskId: string
     taskOperations: {
         approvePlan: (opts?: { approved: boolean; generalInstruction?: string }) => Promise<void>
         rejectPlan: () => Promise<void>
@@ -31,7 +33,7 @@ interface TaskMainContentProps {
     }
 }
 
-export function TaskMainContent({ task, steps, events, taskOperations, editState }: TaskMainContentProps) {
+export function TaskMainContent({ task, steps, events, taskId, taskOperations, editState }: TaskMainContentProps) {
     const { isEditing } = editState
     const [editingTitle, setEditingTitle] = useState(task.title)
     const [editingDescription, setEditingDescription] = useState(task.description || '')
@@ -161,6 +163,7 @@ export function TaskMainContent({ task, steps, events, taskOperations, editState
                     markDone: taskOperations.markDone,
                 }}
             />
+            <ActivityFeed taskId={taskId} events={events} />
         </div>
     )
 }
