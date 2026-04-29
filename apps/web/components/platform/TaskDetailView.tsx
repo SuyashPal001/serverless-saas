@@ -48,6 +48,11 @@ export function TaskDetailView() {
     const newLinkInputRef = useRef<HTMLInputElement>(null)
     const referenceTextRef = useRef<HTMLTextAreaElement>(null)
     const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const previousStepsRef = useRef<Record<string, {
+        liveActivity?: any[]
+        liveText?: string
+        agentThinking?: boolean
+    }>>({})
 
     // ── Queries ───────────────────────────────────────────────────────────────
     const { data: agentsData } = useQuery<AgentsResponse>({
@@ -70,6 +75,20 @@ export function TaskDetailView() {
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
         refetchInterval: 30000,
+        select: (data) => {
+            if (!data?.data?.steps) return data
+            const merged = data.data.steps.map((step: any) => {
+                const prev = previousStepsRef.current[step.id]
+                if (!prev) return step
+                return {
+                    ...step,
+                    liveActivity: prev.liveActivity ?? step.liveActivity,
+                    liveText: prev.liveText ?? step.liveText,
+                    agentThinking: prev.agentThinking ?? step.agentThinking,
+                }
+            })
+            return { ...data, data: { ...data.data, steps: merged } }
+        },
     })
 
     const task = data?.data?.task
@@ -135,6 +154,22 @@ export function TaskDetailView() {
         setDraftEstimatedHours(task.estimatedHours != null ? String(task.estimatedHours) : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task?.id])
+
+    // ── Live fields ref sync — preserve WS-written fields across server refetches ─
+    useEffect(() => {
+        if (!steps) return
+        steps.forEach((step: any) => {
+            if (['done', 'failed', 'skipped'].includes(step.status)) {
+                delete previousStepsRef.current[step.id]
+            } else if (step.liveActivity || step.liveText || step.agentThinking) {
+                previousStepsRef.current[step.id] = {
+                    liveActivity: step.liveActivity,
+                    liveText: step.liveText,
+                    agentThinking: step.agentThinking,
+                }
+            }
+        })
+    }, [steps])
 
     // ── Derived assignee ──────────────────────────────────────────────────────
     const selectedAssignee = useMemo((): Assignee | null => {
