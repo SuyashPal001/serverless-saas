@@ -97,6 +97,27 @@ function StepInsightsModal({
     step: Step
 }) {
     if (!step) return null
+
+    // Parse agentOutput JSON — fall back gracefully if null or malformed
+    let parsed: {
+        reasoning?: string
+        toolRationale?: string
+        results?: Array<{ title?: string; url?: string; description?: string }>
+        summary?: string
+    } | null = null
+    if (step.agentOutput) {
+        try {
+            parsed = JSON.parse(step.agentOutput)
+        } catch {
+            // agentOutput is plain text — sections below use their fallbacks
+        }
+    }
+
+    const reasoning = parsed?.reasoning || step.reasoning || null
+    const toolRationale = parsed?.toolRationale || null
+    const summary = parsed?.summary || null
+    const results = parsed?.results && parsed.results.length > 0 ? parsed.results : null
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl bg-[#0f0f0f] border border-[#1e1e1e] shadow-2xl p-0 overflow-hidden">
@@ -114,7 +135,7 @@ function StepInsightsModal({
                             <Target className="w-3 h-3 text-primary" /> Reasoning & Strategic Context
                         </h4>
                         <div className="bg-[#161616] p-4 rounded-xl border border-[#1e1e1e] text-sm text-foreground/80 leading-relaxed italic">
-                            &ldquo;{step.reasoning || 'No detailed reasoning provided for this specific step yet.'}&rdquo;
+                            &ldquo;{reasoning || 'No detailed reasoning provided for this specific step yet.'}&rdquo;
                         </div>
                     </section>
                     {step.toolName && (
@@ -128,8 +149,45 @@ function StepInsightsModal({
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-mono text-primary font-medium">{step.toolName}</p>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">This tool was chosen to maximize execution precision based on your specific requirements.</p>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        {toolRationale || 'This tool was chosen to maximize execution precision based on your specific requirements.'}
+                                    </p>
                                 </div>
+                            </div>
+                        </section>
+                    )}
+                    {summary && (
+                        <section>
+                            <h4 className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <MessageSquare className="w-3 h-3 text-primary" /> Summary
+                            </h4>
+                            <div className="bg-[#161616] p-4 rounded-xl border border-[#1e1e1e] text-sm text-foreground/80 leading-relaxed">
+                                {summary}
+                            </div>
+                        </section>
+                    )}
+                    {results && (
+                        <section>
+                            <h4 className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <Check className="w-3 h-3 text-primary" /> Results
+                            </h4>
+                            <div className="space-y-2">
+                                {results.map((r, i) => (
+                                    <div key={i} className="rounded-lg border border-[#1e1e1e] bg-[#161616] px-3 py-2.5 text-xs space-y-1">
+                                        {r.title && <p className="text-foreground font-medium">{r.title}</p>}
+                                        {r.url && (
+                                            <a
+                                                href={r.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block text-primary hover:underline truncate"
+                                            >
+                                                {r.url}
+                                            </a>
+                                        )}
+                                        {r.description && <p className="text-muted-foreground/70 leading-relaxed">{r.description}</p>}
+                                    </div>
+                                ))}
                             </div>
                         </section>
                     )}
