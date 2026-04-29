@@ -171,6 +171,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
 
   const bodySchema = z.object({
     agentOutput: z.string().optional(),
+    summary: z.string().optional(),
     toolResult: z.record(z.unknown()).optional(),
     reasoning: z.string().optional(),
   });
@@ -198,7 +199,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   if (!task) return c.json({ error: 'Task not found' }, 404);
 
   const actorId = task.agentId ?? 'system';
-  const { agentOutput, toolResult, reasoning } = parsed.data;
+  const { agentOutput, summary, toolResult, reasoning } = parsed.data;
 
   // BUG-9: Wrap the DB write in try/catch and return 503 so the relay can retry.
   // Without this, a transient DB error returns an unhandled 500 with no Retry-After
@@ -208,6 +209,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
       .set({
         status: 'done',
         agentOutput: agentOutput ?? null,
+        summary: summary ?? null,
         toolResult: toolResult ?? null,
         reasoning: reasoning ?? null,
         completedAt: new Date(),
@@ -229,7 +231,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
     payload: { stepId },
   });
 
-  await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'done', agentOutput });
+  await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'done', agentOutput, summary });
 
   // Extend watchdog TTL — step completed, relay is alive
   getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
@@ -274,7 +276,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
   const { error: failError } = parsed.data;
 
   await db.update(taskSteps)
-    .set({ status: 'failed', updatedAt: new Date() })
+    .set({ status: 'failed', agentOutput: failError, updatedAt: new Date() })
     .where(eq(taskSteps.id, stepId));
 
   await db.update(agentTasks)

@@ -1123,10 +1123,10 @@ export function BoardView() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Assignees</SelectItem>
-                            {members && members.length > 0 && (
+                            {members.filter(m => m.userId).length > 0 && (
                                 <SelectGroup>
                                     <SelectLabel>Members</SelectLabel>
-                                    {members.map(member => (
+                                    {members.filter(m => m.userId).map(member => (
                                         <SelectItem key={member.userId} value={member.userId}>
                                             {member.userName || member.userEmail}
                                         </SelectItem>

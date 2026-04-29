@@ -125,6 +125,7 @@ export const taskSteps = pgTable('task_steps', {
   humanFeedback: text('human_feedback'),
   feedbackHistory: jsonb('feedback_history').$type<Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>>().notNull().default([]),
   agentOutput: text('agent_output'),
+  summary: text('summary'),
   toolArgs: jsonb('tool_args'),
   toolResult: jsonb('tool_result'),
   startedAt: timestamp('started_at'),
