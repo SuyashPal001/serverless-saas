@@ -333,7 +333,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         }
 
         const [updatedTask] = await db.update(agentTasks)
-            .set({ status: 'planning', updatedAt: new Date() })
+            .set({ status: 'planning', planApprovedAt: null, updatedAt: new Date() })
             .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
             .returning();
 
@@ -505,7 +505,7 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
     });
 
     const [updatedTask] = await db.update(agentTasks)
-        .set({ status: 'planning', blockedReason: null, updatedAt: new Date() })
+        .set({ status: 'planning', blockedReason: null, planApprovedAt: null, updatedAt: new Date() })
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
 

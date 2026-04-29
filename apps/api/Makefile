@@ -27,3 +27,8 @@ build-TaskWorkerFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/api/src/workers/taskWorker.ts \
 	  --outfile=$(ARTIFACTS_DIR)/taskWorker.js \
 	  $(ESBUILD_FLAGS)
+
+build-WatchdogFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/api/src/handlers/watchdogHandler.ts \
+	  --outfile=$(ARTIFACTS_DIR)/watchdogHandler.js \
+	  $(ESBUILD_FLAGS)
