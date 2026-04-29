@@ -1,10 +1,12 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
-import type { Task, TaskEvent } from '@/types/task'
+import type { Task, Step, TaskEvent } from '@/types/task'
+import { StepCard } from '../StepCard'
 
 interface PlanningPhaseProps {
     task: Task
+    steps: Step[]
     events: TaskEvent[]
 }
 
@@ -26,7 +28,7 @@ function PlanningStepSkeleton() {
     )
 }
 
-export function PlanningPhase({ task: _task, events }: PlanningPhaseProps) {
+export function PlanningPhase({ task: _task, steps, events }: PlanningPhaseProps) {
     const isRevising = events.some(
         e => e.eventType === 'plan_rejected' || e.eventType === 'clarification_answered',
     )
@@ -43,9 +45,20 @@ export function PlanningPhase({ task: _task, events }: PlanningPhaseProps) {
                     <span className="text-sm text-muted-foreground/60">Saarthi is planning...</span>
                 </div>
             )}
-            {Array.from({ length: 4 }).map((_, i) => (
-                <PlanningStepSkeleton key={i} />
-            ))}
+            {steps.length === 0 ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                    <PlanningStepSkeleton key={i} />
+                ))
+            ) : (
+                <>
+                    {steps.map((step, i) => (
+                        <div key={step.id} className="animate-in fade-in duration-500">
+                            <StepCard step={step} index={i} />
+                        </div>
+                    ))}
+                    <PlanningStepSkeleton />
+                </>
+            )}
         </div>
     )
 }

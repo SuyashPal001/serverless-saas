@@ -43,6 +43,26 @@ interface TaskStepThinkingEvent {
   stepId: string;
 }
 
+interface TaskStepCreatedEvent {
+  type: 'task.step.created';
+  taskId: string;
+  step: {
+    id: string;
+    stepNumber: number;
+    title: string;
+    description: string | null;
+    toolName: string | null;
+    confidenceScore: number | null;
+    status: 'pending';
+  };
+}
+
+interface TaskStatusChangedEvent {
+  type: 'task.status.changed';
+  taskId: string;
+  status: string;
+}
+
 interface TaskCommentAddedEvent {
   type: 'task.comment.added';
   taskId: string;
@@ -59,7 +79,7 @@ interface TaskCommentAddedEvent {
   };
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent;
+type TaskWsEvent = TaskStepUpdatedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent | TaskStatusChangedEvent | TaskStepCreatedEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -200,6 +220,24 @@ export function useTaskStream(taskId: string | undefined) {
                   };
                 }
               );
+            } else if (message.type === 'task.step.created') {
+              const ev = message as TaskStepCreatedEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data?.steps) return old;
+                  // Deduplication: polling and WS may both fire for the same step
+                  const exists = old.data.steps.some((s: any) => s.id === ev.step.id);
+                  if (exists) return old;
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      steps: [...old.data.steps, ev.step],
+                    },
+                  };
+                }
+              );
             } else if (message.type === 'task.step.updated') {
               const ev = message as TaskStepUpdatedEvent;
               queryClient.setQueryData(
@@ -226,7 +264,7 @@ export function useTaskStream(taskId: string | undefined) {
                 }
               );
             } else if (message.type === 'task.status.changed') {
-              const ev = message as { type: 'task.status.changed'; taskId: string; status: string };
+              const ev = message as TaskStatusChangedEvent;
               queryClient.setQueryData(
                 ['task', taskId],
                 (old: any) => {

@@ -30,7 +30,7 @@ export function ExecutionConsole({ task, steps, events, taskOperations }: Execut
         case 'no_plan':
             return <NoPlanPhase task={task} onGeneratePlan={taskOperations.generatePlan} />
         case 'planning':
-            return <PlanningPhase task={task} events={events} />
+            return <PlanningPhase task={task} steps={steps} events={events} />
         case 'planning_failed':
             return (
                 <PlanningFailedPhase
