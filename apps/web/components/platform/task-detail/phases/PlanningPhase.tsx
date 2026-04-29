@@ -10,17 +10,17 @@ interface PlanningPhaseProps {
 
 function PlanningStepSkeleton() {
     return (
-        <div className="border rounded-xl p-4 mb-3 bg-[#111] border-[#1e1e1e] animate-pulse">
+        <div className="border border-border bg-card rounded-xl p-4 mb-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className="w-6 h-6 rounded-full flex-shrink-0 mt-0.5 bg-[#1e1e1e]" />
-                    <div className="flex-1 min-w-0">
-                        <div className="h-3.5 bg-[#1e1e1e] rounded w-3/5" />
-                        <div className="h-3 bg-[#1e1e1e] rounded w-[85%] mt-2" />
-                        <div className="h-4 bg-[#1e1e1e] rounded-md w-[30%] mt-3" />
+                    <div className="w-10 h-10 rounded-full flex-shrink-0 mt-0.5 bg-muted/60 animate-pulse" />
+                    <div className="flex-1 min-w-0 space-y-2">
+                        <div className="h-3 rounded bg-muted/60 animate-pulse w-3/4" />
+                        <div className="h-3 rounded bg-muted/60 animate-pulse w-full" />
+                        <div className="h-3 rounded bg-muted/60 animate-pulse w-1/2" />
                     </div>
                 </div>
-                <div className="h-4 w-12 bg-[#1e1e1e] rounded flex-shrink-0" />
+                <div className="h-3 w-12 bg-muted/60 animate-pulse rounded flex-shrink-0" />
             </div>
         </div>
     )
