@@ -137,7 +137,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
     // with a truncated/non-JSON body. Without this, response.json() throws and
     // the error propagates to the SQS handler, triggering unbounded retries.
     let body: {
-      steps?: Array<{ title: string; description: string; toolName?: string; confidenceScore?: number }>;
+      steps?: Array<{ title: string; description: string; toolName?: string; confidenceScore?: number; reasoning?: string }>;
       clarificationNeeded?: boolean;
       questions?: string[];
     };
@@ -184,6 +184,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
         title: step.title,
         description: step.description,
         toolName: step.toolName ?? null,
+        reasoning: step.reasoning ?? null,
         confidenceScore: step.confidenceScore ?? null,
         status: 'pending' as const,
         ...(feedbackHistoryMap?.[step.title] ? { feedbackHistory: feedbackHistoryMap[step.title] } : {}),
@@ -194,6 +195,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
       title: taskSteps.title,
       description: taskSteps.description,
       toolName: taskSteps.toolName,
+      reasoning: taskSteps.reasoning,
       confidenceScore: taskSteps.confidenceScore,
     });
 
@@ -208,6 +210,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
           title: step.title,
           description: step.description ?? null,
           toolName: step.toolName ?? null,
+          reasoning: step.reasoning ?? null,
           confidenceScore: step.confidenceScore ?? null,
           status: 'pending',
         },
