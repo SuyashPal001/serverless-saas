@@ -95,15 +95,16 @@ export function useTaskStream(taskId: string | undefined) {
   const maxRetries = 5;
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const MAX_RETRIES = 5;
+  const RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000];
 
   useEffect(() => {
     if (!taskId) return;
     let isMounted = true;
 
     const connect = async () => {
-      if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
-        return;
-      }
+      if (!isMounted) return;
 
       try {
         const response = await api.get<{ token: string }>('/api/v1/auth/ws-token');
@@ -120,6 +121,7 @@ export function useTaskStream(taskId: string | undefined) {
 
         socket.onopen = () => {
           if (!isMounted) return;
+          console.log('[WS] connected', taskId)
           const wasReconnect = retryCountRef.current > 0;
           retryCountRef.current = 0;
 
@@ -146,6 +148,7 @@ export function useTaskStream(taskId: string | undefined) {
 
             if (message.type === 'task.step.delta') {
               const ev = message as TaskStepDeltaEvent;
+              console.log('[WS] delta received', ev.stepId, ev.text?.slice(0, 50))
               queryClient.setQueryData(
                 ['task', taskId],
                 (old: any) => {
@@ -165,6 +168,7 @@ export function useTaskStream(taskId: string | undefined) {
               );
             } else if (message.type === 'task.step.tool_call') {
               const ev = message as TaskStepToolCallEvent;
+              console.log('[WS] tool_call received', ev.stepId, ev.toolName)
               queryClient.setQueryData(
                 ['task', taskId],
                 (old: any) => {
@@ -330,6 +334,7 @@ export function useTaskStream(taskId: string | undefined) {
 
         socket.onclose = () => {
           if (!isMounted) return;
+          console.log('[WS] closed', taskId)
           if (retryCountRef.current < maxRetries) {
             retryCountRef.current++;
             // BUG-10: Exponential backoff — 1s, 2s, 4s, 8s, 16s, 30s cap.
@@ -341,10 +346,17 @@ export function useTaskStream(taskId: string | undefined) {
 
         socket.onerror = () => {
           if (!isMounted) return;
+          console.log('[WS] error', taskId)
           socket.close();
         };
       } catch (error) {
-        console.error('[useTaskStream] Connection failed:', error);
+        console.error('[useTaskStream] Connection failed:', error)
+        const delay = RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)]
+        retryCountRef.current += 1
+        if (retryCountRef.current <= MAX_RETRIES) {
+          console.log(`[useTaskStream] Retrying in ${delay}ms...`)
+          retryTimeoutRef.current = setTimeout(connect, delay)
+        }
       }
     };
 
@@ -357,6 +369,7 @@ export function useTaskStream(taskId: string | undefined) {
         wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
   }, [taskId, queryClient]);
