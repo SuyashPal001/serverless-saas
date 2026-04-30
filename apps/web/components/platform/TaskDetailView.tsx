@@ -241,6 +241,15 @@ export function TaskDetailView() {
             return api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: payload.approved, stepFeedback, extraContext })
         },
         onSuccess: (_, variables) => {
+            if (!variables.approved) {
+                queryClient.setQueryData(['task', taskId], (old: any) => {
+                    if (!old?.data) return old
+                    return {
+                        ...old,
+                        data: { ...old.data, steps: [], task: { ...old.data.task, status: 'planning' } },
+                    }
+                })
+            }
             queryClient.invalidateQueries({ queryKey: ['task', taskId] })
             toast.success(variables.approved ? 'Plan approved' : 'Feedback sent, agent is replanning.')
         },
@@ -250,7 +259,16 @@ export function TaskDetailView() {
     const clarifyMutation = useMutation({
         mutationFn: (answer: string) => api.post(`/api/v1/tasks/${taskId}/clarify`, { answer }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            // Clear steps immediately — the backend has not yet deleted old steps when this
+            // fires, so invalidateQueries would refetch stale steps and undo the WS-driven
+            // status=planning clear. New steps arrive via task.step.created WS events.
+            queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data) return old
+                return {
+                    ...old,
+                    data: { ...old.data, steps: [], task: { ...old.data.task, status: 'planning' } },
+                }
+            })
             toast.success('Answer sent — agent is planning')
         },
         onError: (err: Error) => toast.error(err.message || 'Failed to send answer'),
