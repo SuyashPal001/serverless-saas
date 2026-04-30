@@ -74,7 +74,6 @@ export function TaskDetailView() {
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
-        refetchInterval: 30000,
     })
 
     const task = data?.data?.task
@@ -309,7 +308,7 @@ export function TaskDetailView() {
     // ── Task operations ───────────────────────────────────────────────────────
     const taskOperations = useMemo(() => ({
         approvePlan: async (opts?: { approved: boolean; feedback?: Record<string, string>; generalInstruction?: string }) => { await approvePlanMutation.mutateAsync(opts ?? { approved: true }) },
-        rejectPlan: async () => { await approvePlanMutation.mutateAsync({ approved: false }) },
+        rejectPlan: async (feedback?: string) => { await approvePlanMutation.mutateAsync({ approved: false, generalInstruction: feedback?.trim() || undefined }) },
         generatePlan: async () => { await generatePlanMutation.mutateAsync() },
         sendClarification: async (answer: string) => { await clarifyMutation.mutateAsync(answer) },
         markDone: async () => { await patchTask.mutateAsync({ status: 'done' }) },

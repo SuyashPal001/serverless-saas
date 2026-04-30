@@ -16,7 +16,7 @@ interface ExecutionConsoleProps {
     events: TaskEvent[]
     taskOperations: {
         approvePlan: (opts?: { approved: boolean; generalInstruction?: string }) => Promise<void>
-        rejectPlan: () => Promise<void>
+        rejectPlan: (feedback?: string) => Promise<void>
         generatePlan: () => Promise<void>
         sendClarification: (answer: string) => Promise<void>
         markDone: () => Promise<void>
@@ -54,7 +54,7 @@ export function ExecutionConsole({ task, steps, events, taskOperations }: Execut
                     task={task}
                     steps={steps}
                     onApprovePlan={() => taskOperations.approvePlan({ approved: true })}
-                    onRejectPlan={taskOperations.rejectPlan}
+                    onRejectPlan={(feedback) => taskOperations.rejectPlan(feedback)}
                 />
             )
         case 'execution':

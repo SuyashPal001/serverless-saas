@@ -588,3 +588,91 @@ Files created or materially modified in this refactor.
 | `apps/web/components/platform/task-detail/phases/ExecutionPhase.tsx` | 53 | Execution progress: status badge, progress bar, live step cards |
 | `apps/web/components/platform/task-detail/phases/ReviewPhase.tsx` | 256 | Receipt: what happened, tools touched, results, assumptions, raw toggle, Mark as Done |
 | `apps/web/components/platform/task-detail/agenttaskview.md` | — | This document |
+
+---
+
+## Section 9 — Session fixes (2026-04-29)
+
+### 9.1 — task.step.created WS handler (useTaskStream.ts)
+
+**Problem:** The backend (`taskWorker.ts`) streams plan steps one by one via `task.step.created` events at 100 ms intervals after the relay returns the full plan. The frontend had no handler for this event type, so all streamed steps were silently ignored.
+
+**Effect:** During planning, only skeleton cards showed (never real steps animating in). After planning completed, `PlanReviewPhase` rendered with an empty steps array for up to 30 seconds until the polling interval fired.
+
+**Fix:** Added `TaskStepCreatedEvent` interface and handler to `useTaskStream.ts`. The handler appends the new step to `old.data.steps` in the React Query cache with a deduplication check (`exists` guard) to prevent duplicates when both WS and the 30 s poll fire for the same step.
+
+---
+
+### 9.2 — PlanningPhase animated step reveal (PlanningPhase.tsx + ExecutionConsole.tsx)
+
+**Problem:** `PlanningPhase` always showed 4 static skeleton cards regardless of whether steps had arrived via WS.
+
+**Fix:**
+- Added `steps: Step[]` prop to `PlanningPhase`.
+- If `steps.length === 0`: renders 4 skeleton cards (agent still thinking).
+- If `steps.length > 0`: renders arrived steps with `animate-in fade-in duration-500` + 1 trailing skeleton to indicate more are coming.
+- `ExecutionConsole.tsx` updated to pass `steps` to `PlanningPhase`.
+
+When `task.status.changed: awaiting_approval` fires, `ExecutionConsole` switches to `PlanReviewPhase` automatically — no extra logic in `PlanningPhase`.
+
+---
+
+### 9.3 — Structured output rendering in StepCard.tsx
+
+**Problem:** `agentOutput` is a JSON string (`{ summary, results[], reasoning, toolRationale }`). The card was passing it raw to `AgentOutputRenderer` (markdown renderer), producing unreadable JSON-as-text in the result section.
+
+**Fix:**
+- `parsedOutput` parsed once at `StepCard` level via IIFE with try/catch. Includes `reasoning`, `toolRationale`, `results[]` (with `company` field), `summary`.
+- `resultsExpanded` local state for collapsible sources list.
+- Result block now has two branches:
+  - **Case 1 (`!step.summary && parsedOutput?.summary`):** renders `parsedOutput.summary` via `renderInlineMarkdown`, plus collapsible sources list (`parsedOutput.results`).
+  - **Case 2 (fallback):** existing `AgentOutputRenderer` with `step.summary || step.agentOutput` — unchanged.
+- `StepInsightsModal` updated to receive `parsedOutput` as a prop (no longer parses internally — eliminates double-parse).
+- Added `extractDomain(url)` and `renderInlineMarkdown(text)` helpers (inline bold, code, links, bare URLs).
+- `step.summary` always takes priority — if present, Case 1 never activates.
+
+**Preserved:** `parseEmailEntries` and `AgentOutputRenderer` are untouched fallback path.
+
+---
+
+### 9.4 — Planning-time reasoning saved per step (taskWorker.ts)
+
+**Problem:** `StepInsightsModal` showed "No detailed reasoning provided" for all pending steps. The `reasoning` DB column and `Step.reasoning` frontend type both existed but the relay response type and the insert object never included it.
+
+**Fix (taskWorker.ts only — no frontend changes):**
+1. Added `reasoning?: string` to the relay response body type (step array, line ~140).
+2. Added `reasoning: step.reasoning ?? null` to the `db.insert(taskSteps)` object.
+3. Added `reasoning: taskSteps.reasoning` to the `.returning()` call.
+4. Added `reasoning: step.reasoning ?? null` to the `task.step.created` WS event payload.
+
+When the relay starts returning `reasoning` per step, it will be saved to DB and sent to the frontend immediately via the streaming WS event. The modal already reads `step.reasoning` as a fallback — no frontend change needed.
+
+---
+
+### 9.5 — LiveActivityFeed wiped by 5-second polling (TaskDetailView.tsx)
+
+**Problem:** `LiveActivityFeed` in `StepCard` requires `isRunning && (step.liveActivity?.length || step.agentThinking || step.liveText)`. These three fields are synthetic — written by WS events into the React Query cache but never persisted to DB. The `TaskDetailView` polling `useEffect` calls `queryClient.setQueryData(['task', taskId], fresh)` every 5 seconds with the raw API response, which wipes all three fields. The feed appeared invisible during execution.
+
+**Fix (TaskDetailView.tsx — polling useEffect untouched):**
+- Added `previousStepsRef: useRef<Record<string, { liveActivity?, liveText?, agentThinking? }>>({})` in the refs block.
+- Added `select` function to the `useQuery(['task', taskId])` call. On every cache read (including after every `setQueryData` from the 5 s poll), `select` merges `previousStepsRef.current[step.id]` live fields back into the server-returned step.
+- Added a combined `useEffect([steps])` that:
+  - Writes to `previousStepsRef.current[step.id]` whenever a step has live fields.
+  - Deletes `previousStepsRef.current[step.id]` when a step reaches `done`, `failed`, or `skipped` — prevents stale live data bleeding into future runs.
+
+**Why `select` works here:** TanStack Query applies `select` to the raw cache data on every re-render triggered by `setQueryData`, whether that call came from a WS handler or the polling useEffect. So the merge runs automatically after every poll.
+
+---
+
+### Updated WebSocket cache write table
+
+| WS event type | Cache mutation | Notes |
+|---|---|---|
+| `task.step.delta` | Sets `step.liveText = ev.text` | — |
+| `task.step.tool_call` | Appends to `step.liveActivity` | — |
+| `task.step.tool_result` | Marks last open tool_call completed | — |
+| `task.step.thinking` | Sets `step.agentThinking = true` | — |
+| `task.step.updated` | Sets status, agentOutput, startedAt/completedAt | — |
+| `task.step.created` | Appends new step to steps array (with dedup) | **Added 2026-04-29** |
+| `task.status.changed` | Sets `task.status` | — |
+| `task.comment.added` | Appends to `['task-comments', taskId]` | — |

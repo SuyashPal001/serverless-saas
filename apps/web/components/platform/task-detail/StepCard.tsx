@@ -354,7 +354,7 @@ export function StepCard({ step, index }: { step: Step; index: number }) {
                 </div>
             </div>
 
-            {isRunning && (step.liveActivity?.length || step.agentThinking || step.liveText) ? (
+{isRunning && (step.liveActivity?.length || step.agentThinking || step.liveText) ? (
                 <LiveActivityFeed
                     activity={step.liveActivity ?? []}
                     thinking={step.agentThinking ?? false}

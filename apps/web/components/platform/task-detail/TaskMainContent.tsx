@@ -98,30 +98,30 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
             <div className="flex items-center gap-2 mb-6">
                 <button
                     onClick={taskOperations.focusLinkInput}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#333] px-2.5 py-1.5 rounded-md transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[#1a1a1a] border border-[#1e1e1e] px-2.5 py-1 rounded-md transition-colors"
                 >
-                    <Link2 className="w-3 h-3" /> Add Link
+                    <Link2 className="w-3.5 h-3.5" /> Add Link
                 </button>
                 <button
                     onClick={taskOperations.triggerAttachFile}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#333] px-2.5 py-1.5 rounded-md transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[#1a1a1a] border border-[#1e1e1e] px-2.5 py-1 rounded-md transition-colors"
                 >
-                    <Paperclip className="w-3 h-3" /> Attach File
+                    <Paperclip className="w-3.5 h-3.5" /> Attach File
                 </button>
                 <button
                     onClick={taskOperations.focusReferenceInput}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#333] px-2.5 py-1.5 rounded-md transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[#1a1a1a] border border-[#1e1e1e] px-2.5 py-1 rounded-md transition-colors"
                 >
-                    <FileText className="w-3 h-3" /> Reference
+                    <FileText className="w-3.5 h-3.5" /> Reference
                 </button>
             </div>
 
             {/* Definition of Done / Acceptance Criteria */}
             {criteria.length > 0 && (
-                <div className="mb-6 border border-[#1e1e1e] rounded-lg p-4 bg-[#0d0d0d]">
+                <div className="mb-6 border border-[#1e1e1e] rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-3">
                         <h2 className="text-sm font-medium text-foreground">Definition of Done</h2>
-                        <span className="text-[10px] text-muted-foreground/60 bg-[#1a1a1a] px-1.5 py-0.5 rounded border border-[#2a2a2a]">
+                        <span className="text-[10px] text-muted-foreground/60 bg-[#1a1a1a] px-1.5 py-0.5 rounded border border-[#1e1e1e]">
                             {criteria.filter(c => c.checked).length}/{criteria.length}
                         </span>
                     </div>
