@@ -73,8 +73,15 @@ export function renderInlineMarkdown(text: string): ReactNode {
 
 export function parseAgentOutput(raw: string | null): ParsedOutput | null {
     if (!raw) return null
+    let cleaned = raw.trim()
+    if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replace(/^```(?:json)?\n?/, '')
+            .replace(/\n?```$/, '')
+            .trim()
+    }
     try {
-        return JSON.parse(raw) as ParsedOutput
+        return JSON.parse(cleaned) as ParsedOutput
     } catch {
         return null
     }
