@@ -480,7 +480,7 @@ export function TaskSidebar({
                         className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"
                     >
                         <Play className="w-4 h-4 text-primary" />
-                        <span className="text-primary/90 font-medium">Start Task</span>
+                        <span className="text-primary/90 font-medium">Approve</span>
                     </button>
                 )}
                 {task.status !== 'done' && task.status !== 'cancelled' && (
