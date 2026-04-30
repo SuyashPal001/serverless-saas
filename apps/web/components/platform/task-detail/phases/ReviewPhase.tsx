@@ -217,7 +217,11 @@ export function ReviewPhase({ task, steps, onMarkDone }: ReviewPhaseProps) {
 
     const stepsWithOutput = steps.filter(s => s.status === 'done' && (s.summary || s.agentOutput))
     const toolsTouched = [...new Set(steps.filter(s => s.toolName).map(s => s.toolName!))]
-    const summary = extractFirstSentence(stepsWithOutput[0]?.summary || stepsWithOutput[0]?.agentOutput || '')
+    const firstStep = stepsWithOutput[0]
+    const summaryText = firstStep?.summary
+        || parseAgentOutput(firstStep?.agentOutput ?? null)?.summary
+        || null
+    const summary = summaryText ? extractFirstSentence(summaryText) : null
     const allOutputText = stepsWithOutput.map(s => s.summary || s.agentOutput || '').join('\n\n')
     const assumptions = extractAssumptions(allOutputText)
     const rawOutput = stepsWithOutput.map(s => `### ${s.title}\n\n${s.summary || s.agentOutput || ''}`).join('\n\n---\n\n')
@@ -234,12 +238,12 @@ export function ReviewPhase({ task, steps, onMarkDone }: ReviewPhaseProps) {
 
             <div className="px-5 py-5 space-y-5">
                 {/* What Happened */}
-                <section>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What Happened</p>
-                    <p className="text-sm text-foreground/80 leading-relaxed">
-                        {summary || 'Agent completed execution — see results below.'}
-                    </p>
-                </section>
+                {summary && (
+                    <section>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What Happened</p>
+                        <p className="text-sm text-foreground/80 leading-relaxed">{summary}</p>
+                    </section>
+                )}
 
                 {/* What I Touched */}
                 {toolsTouched.length > 0 && (
