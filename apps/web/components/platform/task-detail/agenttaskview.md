@@ -45,7 +45,7 @@ TaskDetailView  (apps/web/components/platform/TaskDetailView.tsx, 388 lines)
 Owns:
 - `useQuery(['task', taskId])` — refetchInterval 30 000 ms
 - `useQuery(['agents'])` and `useQuery(['members'])` — for assignee dropdown
-- `useTaskStream(taskId)` — WebSocket, returns void, writes directly to cache
+- `useTaskStream(taskId)` — intentional no-op stub; all WebSocket handling is in `GlobalTaskStreamProvider`
 - Polling `useEffect` — 5 s interval when `task.status === 'in_progress'`
 - Draft sync `useEffect` — resets all draft values when `task.id` changes
 - All `useMutation` calls: `patchTask`, `voteMutation`, `deleteTaskMutation`,
@@ -354,27 +354,47 @@ task, steps, events → passed as props to TaskHeader, TaskMainContent, TaskSide
 assigneeOptions, selectedAssignee → passed as props to TaskSidebar
 ```
 
-### WebSocket cache updates (useTaskStream)
+### WebSocket architecture
 
-`useTaskStream(taskId)` opens a WebSocket. All incoming events call
-`queryClient.setQueryData(['task', taskId], updater)` directly:
+**Single connection, owned by `GlobalTaskStreamProvider`.**
 
-| WS event type | Cache mutation |
-|---|---|
-| `task.step.delta` | Finds step by id, sets `step.liveText = ev.text` |
-| `task.step.tool_call` | Appends tool call entry to `step.liveActivity` |
-| `task.step.tool_result` | Marks last unresolved matching tool call as completed |
-| `task.step.thinking` | Sets `step.agentThinking = true` on matching step |
-| `task.step.updated` | Sets step status, agentOutput, startedAt/completedAt |
-| `task.comment.added` | Appends to `['task-comments', taskId]` cache (different key) |
+`GlobalTaskStreamProvider` (dashboard layout) opens one AWS API Gateway WebSocket
+connection (`NEXT_PUBLIC_WS_URL = wss://6s57mritv6.execute-api.ap-south-1.amazonaws.com/dev`)
+for the lifetime of the dashboard session. Auth: short-lived HS256 JWT (`ws-token`)
+fetched from `GET /api/v1/auth/ws-token` and passed as `?token=` query param.
 
-Because `useTaskStream` writes directly to `['task', taskId]`, every component
-subscribed to that key re-renders automatically via TanStack Query's cache subscription.
-There is no prop drilling of WebSocket data — the query cache is the shared store.
+On `$connect`, the API Gateway Lambda handler calls `cache.sadd(ws:tenant:{id}:user:{uid}, connectionId)`
+— a Redis **Set** per user per tenant, not a single-value key. Multiple browser tabs each
+register their own `connectionId` and all receive every event.
 
-On reconnect (after disconnect), the hook calls
-`queryClient.invalidateQueries({ queryKey: ['task', taskId] })` to catch up on any
-missed updates.
+`useTaskStream` is an **intentional no-op stub** — it exists only to preserve the call
+signature in `TaskDetailView` so that file needs no changes. All event handling lives
+exclusively in `GlobalTaskStreamProvider`.
+
+**Why the prior two-connection design caused bugs:** both hooks fetched a `ws-token` and
+connected to the same API Gateway URL. Both `connectionId`s were registered via `sadd`.
+The fan-out loop in `pushWebSocketEvent` sent every event to both connections, causing
+duplicate `queryClient.setQueryData` calls and double toast notifications.
+
+**Cache writes per event type:**
+
+| WS event type | Cache mutation | Notes |
+|---|---|---|
+| `task.step.delta` | Sets `step.liveText = ev.text` | — |
+| `task.step.tool_call` | Appends to `step.liveActivity` | — |
+| `task.step.tool_result` | Marks last open tool_call completed | — |
+| `task.step.thinking` | Sets `step.agentThinking = true` | — |
+| `task.step.updated` | Sets status, agentOutput, startedAt/completedAt; clears liveText/liveActivity/agentThinking on `done`/`failed`/`skipped` | — |
+| `task.step.created` | Appends new step to steps array (with dedup) | — |
+| `task.status.changed` | Sets `task.status`; invalidates `['task', taskId]` on `awaiting_approval` | — |
+| `task.clarification.requested` | Sets `task.status = 'blocked'`, appends event | — |
+| `task.comment.added` | Appends to `['task-comments', taskId]` | different key |
+
+Every cache write triggers automatic re-renders of all components subscribed to that key
+via TanStack Query. No prop drilling of WebSocket data.
+
+On reconnect after a disconnect, `GlobalTaskStreamProvider` invalidates both `['tasks']`
+and `['task']` prefix queries to catch up on missed events.
 
 ### Query key ownership
 
@@ -493,17 +513,18 @@ conditionally rendered inside a child.
 
 ### TaskSidebar is not an independent query
 
-See Section 3. Any query key other than `['task', taskId]` is invisible to
-`useTaskStream`. The sidebar must receive `task` as a prop or its status/priority/assignee
-display will never update during agent execution.
+See Section 3. `GlobalTaskStreamProvider` writes all step/task events to `['task', taskId]`.
+Any component using a different query key would never receive those updates. The sidebar
+must receive `task` as a prop from the orchestrator's single query, or its
+status/priority/assignee display will never update during agent execution.
 
 ### ActivityFeed is the only independent query
 
 Comments are a separate resource (`/api/v1/tasks/{id}/comments`) with a separate query
-key (`['task-comments', taskId]`). `useTaskStream` routes `task.comment.added` events
-to this key, not to `['task', taskId]`. ActivityFeed owns both the read query and the
-`addComment` mutation with its optimistic update. No other component needs comment data.
-This is the correct boundary: comments are a self-contained concern.
+key (`['task-comments', taskId]`). `GlobalTaskStreamProvider` routes `task.comment.added`
+events to this key, not to `['task', taskId]`. ActivityFeed owns both the read query and
+the `addComment` mutation with its optimistic update. No other component needs comment
+data. This is the correct boundary: comments are a self-contained concern.
 
 ### planApprovedAt is not used in render conditions
 
@@ -593,13 +614,13 @@ Files created or materially modified in this refactor.
 
 ## Section 9 — Session fixes (2026-04-29)
 
-### 9.1 — task.step.created WS handler (useTaskStream.ts)
+### 9.1 — task.step.created WS handler (GlobalTaskStreamProvider.tsx)
 
 **Problem:** The backend (`taskWorker.ts`) streams plan steps one by one via `task.step.created` events at 100 ms intervals after the relay returns the full plan. The frontend had no handler for this event type, so all streamed steps were silently ignored.
 
 **Effect:** During planning, only skeleton cards showed (never real steps animating in). After planning completed, `PlanReviewPhase` rendered with an empty steps array for up to 30 seconds until the polling interval fired.
 
-**Fix:** Added `TaskStepCreatedEvent` interface and handler to `useTaskStream.ts`. The handler appends the new step to `old.data.steps` in the React Query cache with a deduplication check (`exists` guard) to prevent duplicates when both WS and the 30 s poll fire for the same step.
+**Fix:** Added `task.step.created` handler to `GlobalTaskStreamProvider.tsx`. The handler appends the new step to `old.data.steps` in the React Query cache with a deduplication check (`exists` guard) to prevent duplicates when both WS and the 30 s poll fire for the same step.
 
 ---
 
@@ -664,7 +685,7 @@ When the relay starts returning `reasoning` per step, it will be saved to DB and
 
 ---
 
-### Updated WebSocket cache write table
+### Updated WebSocket cache write table (all handled by GlobalTaskStreamProvider)
 
 | WS event type | Cache mutation | Notes |
 |---|---|---|
@@ -672,7 +693,8 @@ When the relay starts returning `reasoning` per step, it will be saved to DB and
 | `task.step.tool_call` | Appends to `step.liveActivity` | — |
 | `task.step.tool_result` | Marks last open tool_call completed | — |
 | `task.step.thinking` | Sets `step.agentThinking = true` | — |
-| `task.step.updated` | Sets status, agentOutput, startedAt/completedAt | — |
+| `task.step.updated` | Sets status, agentOutput, startedAt/completedAt; clears liveText/liveActivity/agentThinking on terminal status | **live field clear added 2026-04-30** |
 | `task.step.created` | Appends new step to steps array (with dedup) | **Added 2026-04-29** |
-| `task.status.changed` | Sets `task.status` | — |
+| `task.status.changed` | Sets `task.status`; invalidates detail cache on `awaiting_approval` | — |
+| `task.clarification.requested` | Sets `task.status = 'blocked'`, appends event | — |
 | `task.comment.added` | Appends to `['task-comments', taskId]` | — |
