@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '../RichTextEditor'
 import type { TaskComment, TaskEvent } from '@/types/task'
+import { parseAgentOutput, renderInlineMarkdown, extractDomain } from './outputHelpers'
 
 function formatRelativeTime(dateString: string): string {
     const date = new Date(dateString)
@@ -181,11 +182,46 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
                                             : 'bg-[#161616] border border-[#1e1e1e]',
                                     )}>
                                         {c.authorType === 'agent' ? (
-                                            <div className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                    {c.content}
-                                                </ReactMarkdown>
-                                            </div>
+                                            (() => {
+                                                const parsed = parseAgentOutput(c.content)
+                                                if (parsed?.summary || parsed?.results) {
+                                                    return (
+                                                        <div className="space-y-2">
+                                                            {parsed.summary && (
+                                                                <p className="text-sm text-foreground/80 leading-relaxed">
+                                                                    {renderInlineMarkdown(parsed.summary)}
+                                                                </p>
+                                                            )}
+                                                            {parsed.results && parsed.results.length > 0 && (
+                                                                <div className="mt-2 space-y-1.5">
+                                                                    {parsed.results.map((r, i) => (
+                                                                        <div key={i} className="text-xs text-muted-foreground">
+                                                                            <span className="font-medium text-foreground/70">{r.title}</span>
+                                                                            {r.url && (
+                                                                                <a
+                                                                                    href={r.url}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    className="ml-2 text-primary/60 hover:text-primary font-mono transition-colors"
+                                                                                >
+                                                                                    {extractDomain(r.url)}
+                                                                                </a>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                }
+                                                return (
+                                                    <div className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                            {c.content}
+                                                        </ReactMarkdown>
+                                                    </div>
+                                                )
+                                            })()
                                         ) : (
                                             c.content
                                         )}
