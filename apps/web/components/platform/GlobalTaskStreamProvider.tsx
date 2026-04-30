@@ -105,6 +105,12 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
               // Update detail cache
               queryClient.setQueryData(['task', taskId], (old: any) => {
                 if (!old?.data?.task) return old;
+                if (status === 'planning') {
+                  return {
+                    ...old,
+                    data: { ...old.data, task: { ...old.data.task, status }, steps: [] },
+                  };
+                }
                 return {
                   ...old,
                   data: { ...old.data, task: { ...old.data.task, status } },
