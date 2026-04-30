@@ -28,6 +28,30 @@ function formatRelativeTime(dateString: string): string {
     return date.toLocaleDateString('en-us', { month: 'short', day: 'numeric' })
 }
 
+function cleanAgentComment(content: string): string {
+    return content
+        .split('\n')
+        .map(line => {
+            // Strip ```json ... ``` fenced blocks within a line
+            let cleaned = line.replace(/```json[\s\S]*?```/g, '').trim()
+            // Strip inline JSON objects { ... } from end of line
+            // Keep the part before the first { if that part is
+            // non-empty human text
+            const jsonStart = cleaned.indexOf('{')
+            if (jsonStart > 0) {
+                const before = cleaned.slice(0, jsonStart).trim()
+                // Only strip if what's before looks like step text
+                // (ends with : or is a numbered item)
+                if (before.match(/:\s*$/) || before.match(/^\d+\./)) {
+                    cleaned = before.replace(/:\s*$/, '').trim()
+                }
+            }
+            return cleaned
+        })
+        .filter(line => line.length > 0)
+        .join('\n')
+}
+
 interface ActivityFeedProps {
     taskId: string
     events: TaskEvent[]
@@ -217,7 +241,7 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
                                                 return (
                                                     <div className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5">
                                                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                            {c.content}
+                                                            {cleanAgentComment(c.content)}
                                                         </ReactMarkdown>
                                                     </div>
                                                 )

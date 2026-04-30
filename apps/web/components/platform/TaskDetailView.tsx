@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -54,6 +54,35 @@ export function TaskDetailView() {
         agentThinking?: boolean
     }>>({})
 
+    // ── Live-field merge selector ─────────────────────────────────────────────
+    // Runs on every cache read — including window-focus refetches and mutation
+    // invalidations — and restores WS-written fields that the server doesn't return.
+    // Order: prefer the value from cache (set by WS handlers) over the ref backup.
+    // The ref backup only kicks in when the field is undefined (i.e. after a server fetch wiped it).
+    const selectWithLiveFields = useCallback((raw: TaskDetailResponse) => {
+        if (!raw?.data?.steps) return raw
+        return {
+            ...raw,
+            data: {
+                ...raw.data,
+                steps: raw.data.steps.map((step: any) => {
+                    const prev = previousStepsRef.current[step.id]
+                    if (!prev) return step
+                    return {
+                        ...step,
+                        liveActivity: step.liveActivity ?? prev.liveActivity,
+                        liveText: step.liveText ?? prev.liveText,
+                        agentThinking: step.agentThinking ?? prev.agentThinking,
+                    }
+                }),
+            },
+        }
+    // previousStepsRef is a stable ref — its .current is always up-to-date without
+    // needing to be in the dep array, and keeping the callback stable avoids TQ
+    // re-running the selector when only the ref changes (not the underlying data).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     // ── Queries ───────────────────────────────────────────────────────────────
     const { data: agentsData } = useQuery<AgentsResponse>({
         queryKey: ['agents'],
@@ -74,6 +103,8 @@ export function TaskDetailView() {
     const { data, isLoading, isError, error } = useQuery<TaskDetailResponse>({
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
+        select: selectWithLiveFields,
+        refetchOnWindowFocus: false,
     })
 
     const task = data?.data?.task
@@ -101,20 +132,9 @@ export function TaskDetailView() {
             try {
                 const fresh = await api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`)
                 const newStatus = fresh?.data?.task?.status
-                const mergedSteps = fresh.data?.steps?.map((step: any) => {
-                    const prev = previousStepsRef.current[step.id]
-                    if (!prev) return step
-                    return {
-                        ...step,
-                        liveActivity: prev.liveActivity ?? step.liveActivity,
-                        liveText: prev.liveText ?? step.liveText,
-                        agentThinking: prev.agentThinking ?? step.agentThinking,
-                    }
-                }) ?? fresh.data?.steps
-                queryClient.setQueryData(['task', taskId], {
-                    ...fresh,
-                    data: { ...fresh.data, steps: mergedSteps },
-                })
+                // No manual merge needed — selectWithLiveFields runs on every cache read
+                // and restores WS-written fields from previousStepsRef automatically.
+                queryClient.setQueryData(['task', taskId], fresh)
                 if (newStatus && STOP_POLLING_STATUSES.includes(newStatus)) {
                     if (pollingIntervalRef.current) {
                         clearInterval(pollingIntervalRef.current)
