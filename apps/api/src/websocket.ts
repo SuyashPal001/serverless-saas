@@ -80,10 +80,14 @@ async function handleConnect(event: any, connectionId: string): Promise<APIGatew
         }
 
         const redisKey = `ws:tenant:${tenantId}:user:${userId}`;
+        const tenantConnKey = `ws:tenant:${tenantId}:connections`;
         const cache = getCacheClient();
 
         await cache.sadd(redisKey, connectionId);
         await cache.expire(redisKey, 86400); // 24 hours
+
+        await cache.sadd(tenantConnKey, connectionId);
+        await cache.expire(tenantConnKey, 86400); // 24 hours
 
         console.log('Client connected and authenticated:', { userId, tenantId, connectionId });
         return { statusCode: 200, body: 'Connected.' };
