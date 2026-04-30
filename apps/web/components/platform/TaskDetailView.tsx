@@ -75,20 +75,6 @@ export function TaskDetailView() {
         queryKey: ['task', taskId],
         queryFn: () => api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`),
         refetchInterval: 30000,
-        select: (data) => {
-            if (!data?.data?.steps) return data
-            const merged = data.data.steps.map((step: any) => {
-                const prev = previousStepsRef.current[step.id]
-                if (!prev) return step
-                return {
-                    ...step,
-                    liveActivity: prev.liveActivity ?? step.liveActivity,
-                    liveText: prev.liveText ?? step.liveText,
-                    agentThinking: prev.agentThinking ?? step.agentThinking,
-                }
-            })
-            return { ...data, data: { ...data.data, steps: merged } }
-        },
     })
 
     const task = data?.data?.task
@@ -116,7 +102,20 @@ export function TaskDetailView() {
             try {
                 const fresh = await api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`)
                 const newStatus = fresh?.data?.task?.status
-                queryClient.setQueryData(['task', taskId], fresh)
+                const mergedSteps = fresh.data?.steps?.map((step: any) => {
+                    const prev = previousStepsRef.current[step.id]
+                    if (!prev) return step
+                    return {
+                        ...step,
+                        liveActivity: prev.liveActivity ?? step.liveActivity,
+                        liveText: prev.liveText ?? step.liveText,
+                        agentThinking: prev.agentThinking ?? step.agentThinking,
+                    }
+                }) ?? fresh.data?.steps
+                queryClient.setQueryData(['task', taskId], {
+                    ...fresh,
+                    data: { ...fresh.data, steps: mergedSteps },
+                })
                 if (newStatus && STOP_POLLING_STATUSES.includes(newStatus)) {
                     if (pollingIntervalRef.current) {
                         clearInterval(pollingIntervalRef.current)

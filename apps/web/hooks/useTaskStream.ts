@@ -63,6 +63,13 @@ interface TaskStatusChangedEvent {
   status: string;
 }
 
+interface TaskClarificationRequestedEvent {
+  type: 'task.clarification.requested';
+  taskId: string;
+  questions: string[] | string;
+  blockedReason?: string;
+}
+
 interface TaskCommentAddedEvent {
   type: 'task.comment.added';
   taskId: string;
@@ -79,7 +86,7 @@ interface TaskCommentAddedEvent {
   };
 }
 
-type TaskWsEvent = TaskStepUpdatedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent | TaskStatusChangedEvent | TaskStepCreatedEvent;
+type TaskWsEvent = TaskStepUpdatedEvent | TaskCommentAddedEvent | TaskStepDeltaEvent | TaskStepToolCallEvent | TaskStepToolResultEvent | TaskStepThinkingEvent | TaskStatusChangedEvent | TaskStepCreatedEvent | TaskClarificationRequestedEvent;
 
 export function useTaskStream(taskId: string | undefined) {
   const queryClient = useQueryClient();
@@ -274,6 +281,33 @@ export function useTaskStream(taskId: string | undefined) {
                     data: {
                       ...old.data,
                       task: { ...old.data.task, status: ev.status },
+                    },
+                  };
+                }
+              );
+            } else if (message.type === 'task.clarification.requested') {
+              const ev = message as TaskClarificationRequestedEvent;
+              queryClient.setQueryData(
+                ['task', taskId],
+                (old: any) => {
+                  if (!old?.data) return old;
+                  const newEvent = {
+                    id: crypto.randomUUID(),
+                    taskId,
+                    eventType: 'clarification_requested',
+                    payload: { questions: ev.questions },
+                    createdAt: new Date().toISOString(),
+                  };
+                  return {
+                    ...old,
+                    data: {
+                      ...old.data,
+                      task: {
+                        ...old.data.task,
+                        status: 'blocked',
+                        blockedReason: ev.blockedReason ?? old.data.task.blockedReason,
+                      },
+                      events: [...(old.data.events ?? []), newEvent],
                     },
                   };
                 }
