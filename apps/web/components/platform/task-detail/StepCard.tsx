@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -14,6 +14,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import type { Step } from '@/types/task'
+import { extractDomain, renderInlineMarkdown, ParsedOutput, parseAgentOutput } from './outputHelpers'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,12 +97,7 @@ function StepInsightsModal({
     open: boolean
     onOpenChange: (v: boolean) => void
     step: Step
-    parsedOutput: {
-        reasoning?: string
-        toolRationale?: string
-        results?: Array<{ title?: string; url?: string; description?: string; company?: string }>
-        summary?: string
-    } | null
+    parsedOutput: ParsedOutput | null
 }) {
     if (!step) return null
 
@@ -273,82 +269,11 @@ function LiveActivityFeed({
     )
 }
 
-// ── helpers (structured output) ───────────────────────────────────────────────
-
-function extractDomain(url: string): string {
-    try {
-        return new URL(url).hostname.replace(/^www\./, '')
-    } catch {
-        return url
-    }
-}
-
-function renderInlineMarkdown(text: string): ReactNode {
-    const parts = text.split(
-        /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|https?:\/\/\S+)/g
-    )
-    return parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={i}>{part.slice(2, -2)}</strong>
-        }
-        if (part.startsWith('`') && part.endsWith('`')) {
-            return (
-                <code
-                    key={i}
-                    className="text-xs bg-muted px-1 py-0.5 rounded font-mono text-primary"
-                >
-                    {part.slice(1, -1)}
-                </code>
-            )
-        }
-        const mdLink = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
-        if (mdLink) {
-            return (
-                <a
-                    key={i}
-                    href={mdLink[2]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline hover:text-primary/80 transition-colors"
-                >
-                    {mdLink[1]}
-                </a>
-            )
-        }
-        if (part.match(/^https?:\/\//)) {
-            return (
-                <a
-                    key={i}
-                    href={part}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline hover:text-primary/80 transition-colors"
-                >
-                    {extractDomain(part)}
-                </a>
-            )
-        }
-        return part
-    })
-}
-
 // ── StepCard ──────────────────────────────────────────────────────────────────
 
 export function StepCard({ step, index }: { step: Step; index: number }) {
     const [insightsOpen, setInsightsOpen] = useState(false)
-    const parsedOutput: {
-        reasoning?: string
-        toolRationale?: string
-        results?: Array<{
-            title?: string
-            url?: string
-            description?: string
-            company?: string
-        }>
-        summary?: string
-    } | null = step.agentOutput
-        ? (() => { try { return JSON.parse(step.agentOutput) } catch { return null } })()
-        : null
+    const parsedOutput = parseAgentOutput(step.agentOutput ?? null)
     const [resultsExpanded, setResultsExpanded] = useState(false)
     const score = step.confidenceScore != null ? Number(step.confidenceScore) : null
     const scoreColor = score === null ? '' : score >= 0.8 ? 'bg-emerald-500' : score >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
