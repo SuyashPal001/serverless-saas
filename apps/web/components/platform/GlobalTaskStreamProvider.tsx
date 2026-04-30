@@ -50,13 +50,16 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
 
   useEffect(() => {
     let isMounted = true;
+    console.log('[GSP] useEffect fired');
 
     const connect = async () => {
+      console.log('[GSP] connect() called');
       if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
 
       try {
         const response = await api.get<{ token: string }>('/api/v1/auth/ws-token');
         const token = response.token;
+        console.log('[GSP] token fetched', !!token);
         const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
 
         if (!wsUrl) {
@@ -68,6 +71,7 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
         wsRef.current = socket;
 
         socket.onopen = () => {
+          console.log('[GSP] socket opened');
           if (!isMounted) return;
           const wasReconnect = retryCountRef.current > 0;
           retryCountRef.current = 0;
@@ -336,6 +340,7 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
           socket.close();
         };
       } catch (error) {
+        console.log('[GSP] connect() failed', error);
         console.error('[GlobalTaskStream] Connection failed:', error);
       }
     };
