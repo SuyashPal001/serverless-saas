@@ -11,17 +11,21 @@ import { api } from '@/lib/api';
  * Opens a single tenant-scoped WebSocket connection for the lifetime of the
  * dashboard layout (survives navigation between board ↔ detail views).
  *
- * Handles:
- *   task.status.changed  — updates ['tasks'] board cache + ['task', taskId]
- *                          detail cache, fires toasts, invalidates on
- *                          awaiting_approval so steps are fetched immediately.
- *   task.step.created    — appends new step to ['task', taskId] detail cache
- *                          so steps animate in even if user navigated away
- *                          and back during planning.
+ * Handles ALL WebSocket event types so that useTaskStream does not need to
+ * open a second connection. Two concurrent connections caused a race condition
+ * where the relay routed events to whichever socket connected last — if that
+ * was this provider, delta/tool/thinking events were silently dropped.
  *
- * Step-level streaming events (delta, tool_call, tool_result, thinking,
- * step.updated) are NOT handled here — high-frequency and only relevant
- * while TaskDetailView is mounted.
+ * Event types handled:
+ *   task.status.changed        — board + detail cache, toasts, awaiting_approval invalidation
+ *   task.step.created          — appends step to detail cache with dedup
+ *   task.step.delta            — sets step.liveText (streaming text)
+ *   task.step.tool_call        — appends tool call entry to step.liveActivity
+ *   task.step.tool_result      — marks last open tool_call as completed
+ *   task.step.thinking         — sets step.agentThinking = true
+ *   task.step.updated          — step status, agentOutput, timestamps
+ *   task.clarification.requested — task status → blocked, appends event
+ *   task.comment.added         — appends to ['task-comments', taskId]
  *
  * BUG-10: Reconnect behaviour
  *   - Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap, max 6 retries.
@@ -152,6 +156,160 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
                   ...old,
                   data: { ...old.data, steps: [...existing, step] },
                 };
+              });
+            } else if (message.type === 'task.step.delta') {
+              const taskId = message.taskId as string;
+              const stepId = message.stepId as string;
+              const text = message.text as string;
+              if (!taskId || !stepId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.steps) return old;
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    steps: old.data.steps.map((s: any) =>
+                      s.id === stepId ? { ...s, liveText: text } : s
+                    ),
+                  },
+                };
+              });
+            } else if (message.type === 'task.step.tool_call') {
+              const taskId = message.taskId as string;
+              const stepId = message.stepId as string;
+              const toolName = message.toolName as string;
+              const toolInput = message.toolInput as string | undefined;
+              if (!taskId || !stepId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.steps) return old;
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    steps: old.data.steps.map((s: any) =>
+                      s.id === stepId
+                        ? { ...s, liveActivity: [...(s.liveActivity ?? []), { type: 'tool_call', toolName, toolInput, startedAt: Date.now() }] }
+                        : s
+                    ),
+                  },
+                };
+              });
+            } else if (message.type === 'task.step.tool_result') {
+              const taskId = message.taskId as string;
+              const stepId = message.stepId as string;
+              const toolName = message.toolName as string;
+              const durationMs = message.durationMs as number | undefined;
+              const resultSummary = message.resultSummary as string | undefined;
+              if (!taskId || !stepId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.steps) return old;
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    steps: old.data.steps.map((s: any) => {
+                      if (s.id !== stepId) return s;
+                      const existing: any[] = s.liveActivity ?? [];
+                      let matched = false;
+                      const updated = [...existing].reverse().map((item: any) => {
+                        if (!matched && item.type === 'tool_call' && item.toolName === toolName && !item.completed) {
+                          matched = true;
+                          return { ...item, completed: true, durationMs, resultSummary };
+                        }
+                        return item;
+                      }).reverse();
+                      return { ...s, liveActivity: updated };
+                    }),
+                  },
+                };
+              });
+            } else if (message.type === 'task.step.thinking') {
+              const taskId = message.taskId as string;
+              const stepId = message.stepId as string;
+              if (!taskId || !stepId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.steps) return old;
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    steps: old.data.steps.map((s: any) =>
+                      s.id === stepId ? { ...s, agentThinking: true } : s
+                    ),
+                  },
+                };
+              });
+            } else if (message.type === 'task.step.updated') {
+              const taskId = message.taskId as string;
+              const stepId = message.stepId as string;
+              const status = message.status as string;
+              const agentOutput = message.agentOutput as string | undefined;
+              if (!taskId || !stepId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data?.steps) return old;
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    steps: old.data.steps.map((s: any) =>
+                      s.id === stepId
+                        ? {
+                            ...s,
+                            status,
+                            ...(agentOutput !== undefined && { agentOutput }),
+                            ...(status === 'running' && { startedAt: new Date().toISOString() }),
+                            ...(status === 'done' && { completedAt: new Date().toISOString() }),
+                            ...(['done', 'failed', 'skipped'].includes(status) && {
+                              liveText: undefined,
+                              liveActivity: undefined,
+                              agentThinking: undefined,
+                            }),
+                          }
+                        : s
+                    ),
+                  },
+                };
+              });
+            } else if (message.type === 'task.clarification.requested') {
+              const taskId = message.taskId as string;
+              const questions = message.questions as string[] | string;
+              const blockedReason = message.blockedReason as string | undefined;
+              if (!taskId) return;
+              queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data) return old;
+                const newEvent = {
+                  id: crypto.randomUUID(),
+                  taskId,
+                  eventType: 'clarification_requested',
+                  payload: { questions },
+                  createdAt: new Date().toISOString(),
+                };
+                return {
+                  ...old,
+                  data: {
+                    ...old.data,
+                    task: {
+                      ...old.data.task,
+                      status: 'blocked',
+                      blockedReason: blockedReason ?? old.data.task.blockedReason,
+                    },
+                    events: [...(old.data.events ?? []), newEvent],
+                  },
+                };
+              });
+            } else if (message.type === 'task.comment.added') {
+              const taskId = message.taskId as string;
+              const comment = message.comment as {
+                id: string; taskId: string; authorId: string;
+                authorType: 'member' | 'agent'; authorName: string;
+                content: string; parentId: string | null;
+                createdAt: string; updatedAt: string;
+              };
+              if (!taskId || !comment?.id) return;
+              queryClient.setQueryData(['task-comments', taskId], (old: any) => {
+                const existing: any[] = old?.data ?? [];
+                if (existing.some((c: any) => c.id === comment.id)) return old;
+                return { ...old, data: [...existing, comment] };
               });
             }
           } catch {

@@ -14,6 +14,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import type { Step } from '@/types/task'
+import { extractDomain, renderInlineMarkdown, ParsedOutput, parseAgentOutput } from './outputHelpers'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,12 +92,20 @@ function StepInsightsModal({
     open,
     onOpenChange,
     step,
+    parsedOutput,
 }: {
     open: boolean
     onOpenChange: (v: boolean) => void
     step: Step
+    parsedOutput: ParsedOutput | null
 }) {
     if (!step) return null
+
+    const reasoning = parsedOutput?.reasoning || step.reasoning || null
+    const toolRationale = parsedOutput?.toolRationale || null
+    const summary = parsedOutput?.summary || null
+    const results = parsedOutput?.results && parsedOutput.results.length > 0 ? parsedOutput.results : null
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl bg-[#0f0f0f] border border-[#1e1e1e] shadow-2xl p-0 overflow-hidden">
@@ -114,7 +123,7 @@ function StepInsightsModal({
                             <Target className="w-3 h-3 text-primary" /> Reasoning & Strategic Context
                         </h4>
                         <div className="bg-[#161616] p-4 rounded-xl border border-[#1e1e1e] text-sm text-foreground/80 leading-relaxed italic">
-                            &ldquo;{step.reasoning || 'No detailed reasoning provided for this specific step yet.'}&rdquo;
+                            &ldquo;{reasoning || 'No detailed reasoning provided for this specific step yet.'}&rdquo;
                         </div>
                     </section>
                     {step.toolName && (
@@ -128,8 +137,45 @@ function StepInsightsModal({
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-mono text-primary font-medium">{step.toolName}</p>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">This tool was chosen to maximize execution precision based on your specific requirements.</p>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        {toolRationale || 'This tool was chosen to maximize execution precision based on your specific requirements.'}
+                                    </p>
                                 </div>
+                            </div>
+                        </section>
+                    )}
+                    {summary && (
+                        <section>
+                            <h4 className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <MessageSquare className="w-3 h-3 text-primary" /> Summary
+                            </h4>
+                            <div className="bg-[#161616] p-4 rounded-xl border border-[#1e1e1e] text-sm text-foreground/80 leading-relaxed">
+                                {summary}
+                            </div>
+                        </section>
+                    )}
+                    {results && (
+                        <section>
+                            <h4 className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <Check className="w-3 h-3 text-primary" /> Results
+                            </h4>
+                            <div className="space-y-2">
+                                {results.map((r, i) => (
+                                    <div key={i} className="rounded-lg border border-[#1e1e1e] bg-[#161616] px-3 py-2.5 text-xs space-y-1">
+                                        {r.title && <p className="text-foreground font-medium">{r.title}</p>}
+                                        {r.url && (
+                                            <a
+                                                href={r.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block text-primary hover:underline truncate"
+                                            >
+                                                {r.url}
+                                            </a>
+                                        )}
+                                        {r.description && <p className="text-muted-foreground/70 leading-relaxed">{r.description}</p>}
+                                    </div>
+                                ))}
                             </div>
                         </section>
                     )}
@@ -227,6 +273,8 @@ function LiveActivityFeed({
 
 export function StepCard({ step, index }: { step: Step; index: number }) {
     const [insightsOpen, setInsightsOpen] = useState(false)
+    const parsedOutput = parseAgentOutput(step.agentOutput ?? null)
+    const [resultsExpanded, setResultsExpanded] = useState(false)
     const score = step.confidenceScore != null ? Number(step.confidenceScore) : null
     const scoreColor = score === null ? '' : score >= 0.8 ? 'bg-emerald-500' : score >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
     const isRunning = step.status === 'running'
@@ -306,7 +354,7 @@ export function StepCard({ step, index }: { step: Step; index: number }) {
                 </div>
             </div>
 
-            {isRunning && (step.liveActivity?.length || step.agentThinking || step.liveText) ? (
+{isRunning && (step.liveActivity?.length || step.agentThinking || step.liveText) ? (
                 <LiveActivityFeed
                     activity={step.liveActivity ?? []}
                     thinking={step.agentThinking ?? false}
@@ -324,13 +372,76 @@ export function StepCard({ step, index }: { step: Step; index: number }) {
                     {(step.summary || step.agentOutput) && (
                         <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg">
                             <span className="block font-bold text-emerald-500/50 tracking-tighter uppercase text-[9px] mb-1.5">Result</span>
-                            <AgentOutputRenderer content={step.summary || step.agentOutput!} />
+                            {/* Case 1: JSON output with structured results */}
+                            {!step.summary && parsedOutput?.summary ? (
+                                <div className="space-y-3">
+                                    <p className="text-sm text-foreground/90 leading-relaxed">
+                                        {renderInlineMarkdown(parsedOutput.summary)}
+                                    </p>
+                                    {parsedOutput.results && parsedOutput.results.length > 0 && (
+                                        <div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setResultsExpanded(v => !v)
+                                                }}
+                                                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                {resultsExpanded
+                                                    ? <ChevronUp className="w-3 h-3" />
+                                                    : <ChevronDown className="w-3 h-3" />
+                                                }
+                                                {parsedOutput.results.length} sources
+                                            </button>
+                                            {resultsExpanded && (
+                                                <div className="mt-2 space-y-3">
+                                                    {parsedOutput.results.map((r, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="border-b border-border/30 pb-3 last:border-0 last:pb-0"
+                                                        >
+                                                            {r.title && (
+                                                                <p className="text-sm font-semibold text-foreground leading-snug">
+                                                                    {r.title}
+                                                                </p>
+                                                            )}
+                                                            {r.url && (
+                                                                <a
+                                                                    href={r.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs font-mono text-primary/70 hover:text-primary transition-colors truncate block mt-0.5"
+                                                                >
+                                                                    {extractDomain(r.url)}
+                                                                </a>
+                                                            )}
+                                                            {r.description && (
+                                                                <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                                                                    {renderInlineMarkdown(r.description)}
+                                                                </p>
+                                                            )}
+                                                            {r.company && (
+                                                                <p className="text-xs text-muted-foreground/50 italic mt-0.5">
+                                                                    {r.company}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Case 2: step.summary exists or agentOutput is plain text */
+                                <AgentOutputRenderer content={step.summary || step.agentOutput!} />
+                            )}
                         </div>
                     )}
                 </div>
             )}
 
-            <StepInsightsModal open={insightsOpen} onOpenChange={setInsightsOpen} step={step} />
+            <StepInsightsModal open={insightsOpen} onOpenChange={setInsightsOpen} step={step} parsedOutput={parsedOutput} />
         </div>
     )
 }

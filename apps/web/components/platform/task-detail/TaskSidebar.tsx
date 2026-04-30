@@ -103,9 +103,9 @@ interface TaskSidebarProps {
     assigneeOptions: Array<{ type: 'agent' | 'member'; id: string; name: string }>
     selectedAssignee: { type: 'agent' | 'member'; id: string; name: string } | null
     isUploadingAttachment: boolean
-    attachFileInputRef: React.RefObject<HTMLInputElement>
-    newLinkInputRef: React.RefObject<HTMLInputElement>
-    referenceTextRef: React.RefObject<HTMLTextAreaElement>
+    attachFileInputRef: React.RefObject<HTMLInputElement | null>
+    newLinkInputRef: React.RefObject<HTMLInputElement | null>
+    referenceTextRef: React.RefObject<HTMLTextAreaElement | null>
     taskOperations: {
         approvePlan: (opts?: { approved: boolean }) => Promise<void>
         deleteTask: () => Promise<void>
@@ -465,7 +465,7 @@ export function TaskSidebar({
             </div>
 
             <div className="space-y-1.5">
-                {task.status === 'backlog' && steps.length > 0 && (
+                {task.status === 'awaiting_approval' && (
                     <button
                         onClick={() => taskOperations.approvePlan({ approved: true })}
                         className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"
@@ -480,7 +480,7 @@ export function TaskSidebar({
                         className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"
                     >
                         <Play className="w-4 h-4 text-primary" />
-                        <span className="text-primary/90 font-medium">Start Task</span>
+                        <span className="text-primary/90 font-medium">Approve</span>
                     </button>
                 )}
                 {task.status !== 'done' && task.status !== 'cancelled' && (

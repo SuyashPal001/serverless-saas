@@ -23,8 +23,8 @@ export function ClarificationPhase({ task, events, onSendClarification }: Clarif
         ? rawQuestions.filter(Boolean)
         : typeof rawQuestions === 'string'
         ? [rawQuestions]
-        : task.blockedReason?.startsWith('Agent needs clarification:')
-        ? [task.blockedReason.replace(/^Agent needs clarification:\s*/, '')]
+        : task.blockedReason
+        ? [task.blockedReason]
         : []
 
     const handleSend = () => {

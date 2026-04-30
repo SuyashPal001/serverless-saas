@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import { CheckCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Task, Step } from '@/types/task'
+import { parseAgentOutput, renderInlineMarkdown, extractDomain } from '../outputHelpers'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -84,15 +85,70 @@ function AgentOutputRenderer({ content }: { content: string }) {
 }
 
 function StepResult({ step }: { step: Step }) {
-    const output = step.summary ?? step.agentOutput ?? ''
-    const trimmed = output.trim()
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    const [resultsExpanded, setResultsExpanded] = useState(false)
+    const parsedOutput = parseAgentOutput(step.agentOutput ?? null)
+
+    if (!step.summary && parsedOutput?.summary) {
         return (
-            <pre className="text-xs overflow-auto whitespace-pre-wrap bg-[#1a1a1a] p-3 rounded-lg border border-[#2a2a2a] text-foreground/70">
-                {output}
-            </pre>
+            <div className="space-y-3">
+                <p className="text-sm text-foreground/90 leading-relaxed">
+                    {renderInlineMarkdown(parsedOutput.summary)}
+                </p>
+                {parsedOutput.results && parsedOutput.results.length > 0 && (
+                    <div>
+                        <button
+                            onClick={() => setResultsExpanded(v => !v)}
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            {resultsExpanded
+                                ? <ChevronUp className="w-3 h-3" />
+                                : <ChevronDown className="w-3 h-3" />
+                            }
+                            {parsedOutput.results.length} sources
+                        </button>
+                        {resultsExpanded && (
+                            <div className="mt-2 space-y-3">
+                                {parsedOutput.results.map((r, i) => (
+                                    <div
+                                        key={i}
+                                        className="border-b border-border/30 pb-3 last:border-0 last:pb-0"
+                                    >
+                                        {r.title && (
+                                            <p className="text-sm font-semibold text-foreground leading-snug">
+                                                {r.title}
+                                            </p>
+                                        )}
+                                        {r.url && (
+                                            <a
+                                                href={r.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs font-mono text-primary/70 hover:text-primary transition-colors truncate block mt-0.5"
+                                            >
+                                                {extractDomain(r.url)}
+                                            </a>
+                                        )}
+                                        {r.description && (
+                                            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                                                {renderInlineMarkdown(r.description)}
+                                            </p>
+                                        )}
+                                        {r.company && (
+                                            <p className="text-xs text-muted-foreground/50 italic mt-0.5">
+                                                {r.company}
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         )
     }
+
+    const output = step.summary ?? step.agentOutput ?? ''
     return <AgentOutputRenderer content={output} />
 }
 
@@ -161,7 +217,11 @@ export function ReviewPhase({ task, steps, onMarkDone }: ReviewPhaseProps) {
 
     const stepsWithOutput = steps.filter(s => s.status === 'done' && (s.summary || s.agentOutput))
     const toolsTouched = [...new Set(steps.filter(s => s.toolName).map(s => s.toolName!))]
-    const summary = extractFirstSentence(stepsWithOutput[0]?.summary || stepsWithOutput[0]?.agentOutput || '')
+    const firstStep = stepsWithOutput[0]
+    const summaryText = firstStep?.summary
+        || parseAgentOutput(firstStep?.agentOutput ?? null)?.summary
+        || null
+    const summary = summaryText ? extractFirstSentence(summaryText) : null
     const allOutputText = stepsWithOutput.map(s => s.summary || s.agentOutput || '').join('\n\n')
     const assumptions = extractAssumptions(allOutputText)
     const rawOutput = stepsWithOutput.map(s => `### ${s.title}\n\n${s.summary || s.agentOutput || ''}`).join('\n\n---\n\n')
@@ -178,12 +238,12 @@ export function ReviewPhase({ task, steps, onMarkDone }: ReviewPhaseProps) {
 
             <div className="px-5 py-5 space-y-5">
                 {/* What Happened */}
-                <section>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What Happened</p>
-                    <p className="text-sm text-foreground/80 leading-relaxed">
-                        {summary || 'Agent completed execution — see results below.'}
-                    </p>
-                </section>
+                {summary && (
+                    <section>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 mb-1.5">What Happened</p>
+                        <p className="text-sm text-foreground/80 leading-relaxed">{summary}</p>
+                    </section>
+                )}
 
                 {/* What I Touched */}
                 {toolsTouched.length > 0 && (
