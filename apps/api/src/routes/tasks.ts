@@ -36,7 +36,15 @@ tasksRoutes.post('/', async (c) => {
         estimatedHours: z.number().positive().optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         links: z.preprocess(
-            (v) => (typeof v === 'string' ? JSON.parse(v) : v),
+            (v) => {
+                const arr = typeof v === 'string' ? JSON.parse(v) : v
+                if (!Array.isArray(arr)) return arr
+                return arr.map((url: unknown) =>
+                    typeof url === 'string' && !/^https?:\/\//i.test(url)
+                        ? `https://${url}`
+                        : url
+                )
+            },
             z.array(z.string().url()).optional(),
         ),
         attachmentFileIds: z.preprocess(
@@ -618,8 +626,22 @@ tasksRoutes.patch('/:taskId', async (c) => {
         dueDate: z.string().datetime().nullable().optional(),
         status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
         startedAt: z.string().datetime().nullable().optional(),
-        links: z.array(z.string().url()).optional(),
-        attachmentFileIds: z.array(z.string().uuid()).optional(),
+        links: z.preprocess(
+            (v) => {
+                const arr = typeof v === 'string' ? JSON.parse(v) : v
+                if (!Array.isArray(arr)) return arr
+                return arr.map((url: unknown) =>
+                    typeof url === 'string' && !/^https?:\/\//i.test(url)
+                        ? `https://${url}`
+                        : url
+                )
+            },
+            z.array(z.string().url()).optional(),
+        ),
+        attachmentFileIds: z.preprocess(
+            (v) => (typeof v === 'string' ? JSON.parse(v) : v),
+            z.array(z.string().uuid()).optional(),
+        ),
         sortOrder: z.number().int().optional(),
         priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
         assigneeId: z.string().uuid().nullable().optional(),
