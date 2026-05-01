@@ -111,6 +111,14 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
                     data: { ...old.data, task: { ...old.data.task, status }, steps: [] },
                   };
                 }
+                // Retry from blocked (execution failure) — clear stale steps so old
+                // done/failed steps don't persist alongside the new execution run.
+                if (status === 'in_progress' && old.data.task.status === 'blocked') {
+                  return {
+                    ...old,
+                    data: { ...old.data, task: { ...old.data.task, status }, steps: [] },
+                  };
+                }
                 return {
                   ...old,
                   data: { ...old.data, task: { ...old.data.task, status } },
