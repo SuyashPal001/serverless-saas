@@ -138,10 +138,18 @@ export function TaskDetailView() {
                 // During planning, WS events own the step cache. Do NOT call setQueryData
                 // with DB data here — the backend may not have cleared old steps yet (e.g.
                 // after clarification answered), so writing fresh would restore stale steps.
-                // Once status changes away from 'planning', write the full fresh response
-                // (which includes the final committed step list).
+                // Once status changes away from 'planning', write the fresh response but
+                // preserve WS-streamed steps if DB hasn't committed them yet (freshSteps
+                // empty while cache already has steps from task.step.created events).
                 if (newStatus !== 'planning') {
-                    queryClient.setQueryData(['task', taskId], fresh)
+                    const current = queryClient.getQueryData<any>(['task', taskId])
+                    const cachedSteps = current?.data?.steps ?? []
+                    const freshSteps = fresh.data?.steps ?? []
+                    const mergedSteps = freshSteps.length > 0 ? freshSteps : cachedSteps
+                    queryClient.setQueryData(['task', taskId], {
+                        ...fresh,
+                        data: { ...fresh.data, steps: mergedSteps },
+                    })
                 }
                 if (newStatus && STOP_POLLING_STATUSES.includes(newStatus)) {
                     if (pollingIntervalRef.current) {
