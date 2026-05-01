@@ -6,6 +6,7 @@ import { agentTasks, taskSteps, taskEvents, agents, files } from '@serverless-sa
 import { eq, asc, and, sql, inArray } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
 import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 // Import schema from TypeScript source so esbuild bundles fresh — avoids stale dist/schema
 // causing db.query.agentTasks to be undefined at runtime.
@@ -23,6 +24,7 @@ let secretsInitialised = false;
 
 const EXTRACTABLE_TYPES = [
   'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
   'text/markdown',
   'text/csv',
@@ -62,6 +64,12 @@ async function extractAttachments(
         if (file.mimeType === 'application/pdf') {
           const parsed = await pdfParse(buffer);
           text = parsed.text.trim();
+        } else if (
+          file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          file.name.toLowerCase().endsWith('.docx')
+        ) {
+          const result = await mammoth.extractRawText({ buffer });
+          text = result.value.trim();
         } else {
           text = buffer.toString('utf-8').trim();
         }
