@@ -2,8 +2,10 @@ import type { SQSHandler } from 'aws-lambda';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '@serverless-saas/database/schema';
-import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema';
-import { eq, asc, and, sql } from 'drizzle-orm';
+import { agentTasks, taskSteps, taskEvents, agents, files } from '@serverless-saas/database/schema';
+import { eq, asc, and, sql, inArray } from 'drizzle-orm';
+import { storageService } from '@serverless-saas/storage';
+import pdfParse from 'pdf-parse';
 
 // Import schema from TypeScript source so esbuild bundles fresh — avoids stale dist/schema
 // causing db.query.agentTasks to be undefined at runtime.
@@ -18,6 +20,72 @@ const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 
 let secretsInitialised = false;
+
+const EXTRACTABLE_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/octet-stream', // fallback for .md uploaded without type
+];
+
+async function extractAttachments(
+  tenantId: string,
+  fileIds: string[]
+): Promise<{ attachmentContext: string | null }> {
+  if (!fileIds.length) return { attachmentContext: null };
+
+  const fileRows = await db
+    .select()
+    .from(files)
+    .where(inArray(files.id, fileIds));
+
+  const parts: string[] = [];
+
+  for (const file of fileRows) {
+    try {
+      const url = await storageService.getDownloadUrl(tenantId, file.id);
+
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      const isExtractable =
+        EXTRACTABLE_TYPES.includes(file.mimeType ?? '') ||
+        file.name.endsWith('.md') ||
+        file.name.endsWith('.txt') ||
+        file.name.endsWith('.csv');
+
+      if (isExtractable) {
+        let text: string;
+
+        if (file.mimeType === 'application/pdf') {
+          const parsed = await pdfParse(buffer);
+          text = parsed.text.trim();
+        } else {
+          text = buffer.toString('utf-8').trim();
+        }
+
+        if (text) {
+          parts.push(`[Attachment: ${file.name}]\n${text}`);
+        }
+      } else {
+        // Unsupported type — send presigned URL for relay to fetch via web_fetch tool
+        parts.push(
+          `[Attachment: ${file.name} (${file.mimeType ?? 'unknown type'})]\n` +
+            `Download URL (expires in 1 hour): ${url}`
+        );
+      }
+    } catch (err) {
+      console.error(`[taskWorker] Failed to extract attachment ${file.name}:`, err);
+      // Skip this file silently — don't fail the whole task
+    }
+  }
+
+  return {
+    attachmentContext: parts.length > 0 ? parts.join('\n\n---\n\n') : null,
+  };
+}
 
 async function getPastSuccessfulPlans(tenantId: string, title: string, description: string | null | undefined, limit = 2): Promise<string | null> {
   const queryText = [title, description].filter(Boolean).join(' ');
@@ -104,6 +172,11 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
 
     const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
 
+    const { attachmentContext } = await extractAttachments(
+      task.tenantId,
+      task.attachmentFileIds ?? []
+    );
+
     // BUG-1+2: AbortSignal.timeout(55_000) prevents the Lambda from hanging
     // indefinitely on a slow/unresponsive relay. Without it, Node's default fetch
     // has no timeout; a hung relay would exhaust the Lambda timeout and leave the
@@ -124,6 +197,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
         agentName: agent?.name ?? null,
         referenceText: task.referenceText ?? null,
         links: task.links ?? [],
+        attachmentContext: attachmentContext ?? null,
         ...(combinedExtraContext ? { extraContext: combinedExtraContext } : {}),
       }),
       signal: AbortSignal.timeout(55_000),
@@ -303,6 +377,11 @@ async function handleExecution(taskId: string) {
   const cache = getCacheClient();
   await cache.set(watchdogKey, JSON.stringify({ taskId, tenantId: task.tenantId, startedAt: Date.now() }), { ex: 600 });
 
+  const { attachmentContext } = await extractAttachments(
+    task.tenantId,
+    task.attachmentFileIds ?? []
+  );
+
   let response: Response;
   try {
     response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
@@ -320,6 +399,7 @@ async function handleExecution(taskId: string) {
         agentName: agent?.name ?? null,
         referenceText: task.referenceText ?? null,
         links: task.links ?? [],
+        attachmentContext: attachmentContext ?? null,
         steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
           id: s.id,
           stepNumber: s.stepNumber,

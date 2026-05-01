@@ -31,6 +31,7 @@
     "@serverless-saas/storage": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
+    "pdf-parse": "^1.1.1",
     "drizzle-orm": "^0.36.4",
     "hono": "^4.6.0",
     "jose": "^6.2.1",
@@ -39,6 +40,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",
     "@types/node": "^20.19.35",
+    "@types/pdf-parse": "^1.1.5",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3"
   }
