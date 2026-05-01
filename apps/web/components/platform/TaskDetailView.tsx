@@ -18,7 +18,7 @@ import type {
 } from '@/types/task'
 
 // Statuses at which task execution has ended — polling should stop
-const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled', 'planning', 'awaiting_approval']
+const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled', 'awaiting_approval']
 const TERMINAL_STATUSES = ['done', 'cancelled', 'review']
 
 export function TaskDetailView() {
@@ -129,15 +129,20 @@ export function TaskDetailView() {
         }
 
         if (!task?.id) return
-        if (task.status !== 'in_progress' && task.status !== 'ready') return
+        if (task.status !== 'in_progress' && task.status !== 'ready' && task.status !== 'planning') return
 
         pollingIntervalRef.current = setInterval(async () => {
             try {
                 const fresh = await api.get<TaskDetailResponse>(`/api/v1/tasks/${taskId}`)
                 const newStatus = fresh?.data?.task?.status
-                // No manual merge needed — selectWithLiveFields runs on every cache read
-                // and restores WS-written fields from previousStepsRef automatically.
-                queryClient.setQueryData(['task', taskId], fresh)
+                // During planning, WS events own the step cache. Do NOT call setQueryData
+                // with DB data here — the backend may not have cleared old steps yet (e.g.
+                // after clarification answered), so writing fresh would restore stale steps.
+                // Once status changes away from 'planning', write the full fresh response
+                // (which includes the final committed step list).
+                if (newStatus !== 'planning') {
+                    queryClient.setQueryData(['task', taskId], fresh)
+                }
                 if (newStatus && STOP_POLLING_STATUSES.includes(newStatus)) {
                     if (pollingIntervalRef.current) {
                         clearInterval(pollingIntervalRef.current)
