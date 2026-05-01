@@ -18,7 +18,8 @@ import type {
 } from '@/types/task'
 
 // Statuses at which task execution has ended — polling should stop
-const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled']
+const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled', 'planning', 'awaiting_approval']
+const TERMINAL_STATUSES = ['done', 'cancelled', 'review']
 
 export function TaskDetailView() {
     const params = useParams()
@@ -121,7 +122,9 @@ export function TaskDetailView() {
         }
 
         if (task?.status && STOP_POLLING_STATUSES.includes(task.status)) {
-            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            if (TERMINAL_STATUSES.includes(task.status)) {
+                queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            }
             return
         }
 
@@ -249,8 +252,10 @@ export function TaskDetailView() {
                         data: { ...old.data, steps: [], task: { ...old.data.task, status: 'planning' } },
                     }
                 })
+                // No invalidateQueries — WS events will stream new steps as they arrive
+            } else {
+                queryClient.invalidateQueries({ queryKey: ['task', taskId] })
             }
-            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
             toast.success(variables.approved ? 'Plan approved' : 'Feedback sent, agent is replanning.')
         },
         onError: (err: Error) => toast.error(err.message || 'Failed to send feedback'),
@@ -276,7 +281,19 @@ export function TaskDetailView() {
 
     const generatePlanMutation = useMutation({
         mutationFn: () => api.post(`/api/v1/tasks/${taskId}/plan`),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+        onSuccess: () => {
+            queryClient.setQueryData(['task', taskId], (old: any) => {
+                if (!old?.data) return old
+                return {
+                    ...old,
+                    data: {
+                        ...old.data,
+                        steps: [],
+                        task: { ...old.data.task, status: 'planning' },
+                    },
+                }
+            })
+        },
         onError: (err: any) => toast.error(err?.data?.error || 'Failed to generate plan'),
     })
 
