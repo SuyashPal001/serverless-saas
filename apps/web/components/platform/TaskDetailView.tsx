@@ -16,6 +16,7 @@ import { TaskMainContent } from './task-detail/TaskMainContent'
 import type {
     Task, Step, TaskEvent, AgentsResponse, MembersResponse, Assignee, TaskDetailResponse,
 } from '@/types/task'
+import { validateAttachment, ATTACHMENT_ACCEPT } from '@/lib/attachmentValidation'
 
 // Statuses at which task execution has ended — polling should stop
 const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled', 'awaiting_approval']
@@ -312,6 +313,12 @@ export function TaskDetailView() {
 
     // ── Attachment upload ─────────────────────────────────────────────────────
     const handleAttachmentUpload = async (file: File) => {
+        const validation = validateAttachment(file)
+        if (!validation.valid) {
+            toast.error(validation.error)
+            return
+        }
+
         setIsUploadingAttachment(true)
         try {
             const { data: fileData } = await api.post<{ data: { fileId: string; uploadUrl: string } }>(
@@ -456,6 +463,7 @@ export function TaskDetailView() {
                 type="file"
                 ref={attachFileInputRef}
                 className="hidden"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) handleAttachmentUpload(file)
