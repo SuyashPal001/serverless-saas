@@ -18,6 +18,7 @@ interface TaskMainContentProps {
         generatePlan: () => Promise<void>
         sendClarification: (answer: string) => Promise<void>
         markDone: () => Promise<void>
+        startTask: () => void
         updateTitle: (title: string) => Promise<void>
         updateDescription: (desc: string) => Promise<void>
         updateCriteria: (criteria: AcceptanceCriterion[]) => void | Promise<void>
@@ -161,6 +162,7 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                     generatePlan: taskOperations.generatePlan,
                     sendClarification: taskOperations.sendClarification,
                     markDone: taskOperations.markDone,
+                    startTask: taskOperations.startTask,
                 }}
             />
             <ActivityFeed taskId={taskId} events={events} />

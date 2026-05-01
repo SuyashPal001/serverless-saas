@@ -294,6 +294,13 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
 
   await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'failed' });
 
+  await pushWebSocketEvent(tenantId, {
+    type: 'task.status.changed',
+    taskId,
+    status: 'blocked',
+    blockedReason: failError,
+  });
+
   // Step failed → task blocked (terminal for this run) — clear watchdog
   getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
 

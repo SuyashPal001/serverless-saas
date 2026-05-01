@@ -8,6 +8,7 @@ import { PlanningFailedPhase } from './phases/PlanningFailedPhase'
 import { ClarificationPhase } from './phases/ClarificationPhase'
 import { PlanReviewPhase } from './phases/PlanReviewPhase'
 import { ExecutionPhase } from './phases/ExecutionPhase'
+import { ExecutionFailedPhase } from './phases/ExecutionFailedPhase'
 import { ReviewPhase } from './phases/ReviewPhase'
 
 interface ExecutionConsoleProps {
@@ -20,6 +21,7 @@ interface ExecutionConsoleProps {
         generatePlan: () => Promise<void>
         sendClarification: (answer: string) => Promise<void>
         markDone: () => Promise<void>
+        startTask: () => void
     }
 }
 
@@ -55,6 +57,14 @@ export function ExecutionConsole({ task, steps, events, taskOperations }: Execut
                     steps={steps}
                     onApprovePlan={() => taskOperations.approvePlan({ approved: true })}
                     onRejectPlan={(feedback) => taskOperations.rejectPlan(feedback)}
+                />
+            )
+        case 'execution_failed':
+            return (
+                <ExecutionFailedPhase
+                    task={task}
+                    steps={steps}
+                    onRetry={() => taskOperations.startTask()}
                 />
             )
         case 'execution':

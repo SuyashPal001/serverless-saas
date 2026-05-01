@@ -4,6 +4,7 @@ export type TaskPhase =
   | 'no_plan'
   | 'planning'
   | 'planning_failed'
+  | 'execution_failed'
   | 'clarification'
   | 'plan_review'
   | 'execution'
@@ -18,6 +19,8 @@ export function getPhase(
   if (status === 'blocked') {
     if (blockedReason?.includes('Planning failed') && steps.length === 0)
       return 'planning_failed'
+    const hasFailedStep = steps.some((s: any) => s.status === 'failed')
+    if (hasFailedStep) return 'execution_failed'
     return 'clarification'
   }
   if (status === 'awaiting_approval') return 'plan_review'
