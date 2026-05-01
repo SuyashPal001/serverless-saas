@@ -20,6 +20,11 @@ import { validateAttachment, ATTACHMENT_ACCEPT } from '@/lib/attachmentValidatio
 
 // Statuses at which task execution has ended — polling should stop
 const STOP_POLLING_STATUSES = ['review', 'done', 'blocked', 'cancelled', 'awaiting_approval']
+
+const normalizeUrl = (url: string): string => {
+    const trimmed = url.trim()
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
 const TERMINAL_STATUSES = ['done', 'cancelled', 'review']
 
 export function TaskDetailView() {
@@ -391,7 +396,7 @@ export function TaskDetailView() {
         updateDescription: async (desc: string) => { await patchTask.mutateAsync({ description: desc || null }) },
         deleteTask: async () => { await deleteTaskMutation.mutateAsync() },
         vote: async (direction: 'up' | 'down') => { await voteMutation.mutateAsync(direction) },
-        addLink: (url: string) => patchTask.mutate({ links: [...(task?.links ?? []), url] }),
+        addLink: (url: string) => patchTask.mutate({ links: [...(task?.links ?? []), normalizeUrl(url)] }),
         removeLink: (url: string) => patchTask.mutate({ links: (task?.links ?? []).filter(l => l !== url) }),
         addAttachment: handleAttachmentUpload,
         removeAttachment: (fileId: string) =>

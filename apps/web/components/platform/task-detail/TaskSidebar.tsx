@@ -3,8 +3,15 @@
 import { useState } from 'react'
 import {
     Bot, User, ChevronDown, Clock, Target, LayoutList, Calendar,
-    Link2, Paperclip, FileText, CheckCircle, Play, XCircle, X,
+    Link2, Paperclip, FileText, CheckCircle, Play, XCircle, X, Pencil,
+    Copy, ExternalLink,
 } from 'lucide-react'
+import { extractDomain } from './outputHelpers'
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -17,6 +24,22 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { Task, Step } from '@/types/task'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {})
+}
+
+const truncateUrl = (url: string, max = 40): string => {
+    try {
+        const { hostname, pathname } = new URL(url)
+        const clean = hostname.replace(/^www\./, '') + pathname
+        return clean.length > max ? clean.slice(0, max) + '...' : clean
+    } catch {
+        return url.length > max ? url.slice(0, max) + '...' : url
+    }
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -347,18 +370,70 @@ export function TaskSidebar({
                     </div>
                     <div className="space-y-1.5 mb-2">
                         {task.links?.map((link, i) => (
-                            <div key={i} className="flex items-center justify-between group">
-                                <a href={link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline truncate flex-1">
-                                    {link}
-                                </a>
-                                {isEditing && (
+                            <div key={i} className="flex items-center gap-1.5 group/link rounded px-1 py-0.5 hover:bg-white/5 transition-all">
+                                {/* Favicon */}
+                                <img
+                                    src={`https://www.google.com/s2/favicons?domain=${extractDomain(link)}&sz=16`}
+                                    alt=""
+                                    width={12}
+                                    height={12}
+                                    className="shrink-0 opacity-70"
+                                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                                />
+                                {/* Clickable URL — opens popover preview */}
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <button className="text-[11px] text-primary hover:underline truncate flex-1 leading-none text-left">
+                                            {truncateUrl(link)}
+                                        </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 p-3 space-y-2" side="left" align="start">
+                                        <p className="text-xs text-muted-foreground break-all select-text leading-relaxed">
+                                            {link}
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <a
+                                                href={link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                            >
+                                                <ExternalLink className="w-3 h-3" />
+                                                Open
+                                            </a>
+                                            <button
+                                                onClick={() => copyToClipboard(link)}
+                                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                <Copy className="w-3 h-3" />
+                                                Copy
+                                            </button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                                {/* Hover actions */}
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover/link:opacity-100 transition-all shrink-0">
+                                    {/* Edit — puts link back in input for correction */}
+                                    <button
+                                        onClick={() => {
+                                            taskOperations.removeLink(link)
+                                            setNewLink(link)
+                                            setTimeout(() => newLinkInputRef.current?.focus(), 50)
+                                        }}
+                                        className="p-0.5 hover:bg-white/10 rounded transition-all"
+                                        title="Edit link"
+                                    >
+                                        <Pencil className="w-3 h-3 text-muted-foreground" />
+                                    </button>
+                                    {/* Delete */}
                                     <button
                                         onClick={() => taskOperations.removeLink(link)}
-                                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500/10 rounded transition-all"
+                                        className="p-0.5 hover:bg-red-500/10 rounded transition-all"
+                                        title="Remove link"
                                     >
                                         <X className="w-3 h-3 text-red-400" />
                                     </button>
-                                )}
+                                </div>
                             </div>
                         ))}
                         {(!task.links || task.links.length === 0) && (
