@@ -118,6 +118,11 @@ type CreateTaskForm = z.infer<typeof createTaskSchema>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const normalizeUrl = (url: string): string => {
+    const trimmed = url.trim()
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
 function formatRelativeTime(dateString: string): string {
     const date = new Date(dateString)
     const diffMs = Date.now() - date.getTime()
@@ -586,6 +591,29 @@ function CreateTaskDialog({
                         </div>
                     </div>
 
+                    {/* Added links list */}
+                    {links.length > 0 && (
+                        <div className="space-y-1 px-6 pt-2">
+                            {links.map((link, i) => (
+                                <div
+                                    key={i}
+                                    className="flex items-center gap-1.5 group/link rounded px-1.5 py-1 bg-white/5 text-xs"
+                                >
+                                    <span className="truncate flex-1 text-primary/80">
+                                        {link.title || link.url}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLinks(p => p.filter((_, j) => j !== i))}
+                                        className="opacity-0 group-hover/link:opacity-100 p-0.5 hover:bg-red-500/10 rounded transition-all shrink-0"
+                                    >
+                                        <X className="w-3 h-3 text-red-400" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Attached files list */}
                     {attachmentFileIds.length > 0 && (
                         <div className="flex flex-col gap-1 px-6 pt-3 pb-1">
@@ -711,7 +739,7 @@ function AddLinkDialog({ open, onOpenChange, onAddLink }: { open: boolean, onOpe
 
     const handleAdd = () => {
         if (url) {
-            onAddLink({ url, title })
+            onAddLink({ url: normalizeUrl(url), title })
             setUrl('')
             setTitle('')
             onOpenChange(false)
@@ -721,6 +749,7 @@ function AddLinkDialog({ open, onOpenChange, onAddLink }: { open: boolean, onOpe
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[425px] bg-[#1a1a1a] border border-[#2a2a2a]">
+                <DialogTitle className="sr-only">Add link</DialogTitle>
                 <DialogHeader>
                     <DialogTitle>Add link</DialogTitle>
                 </DialogHeader>
