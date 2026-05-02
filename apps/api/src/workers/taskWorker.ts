@@ -37,10 +37,14 @@ async function extractAttachments(
 ): Promise<{ attachmentContext: string | null }> {
   if (!fileIds.length) return { attachmentContext: null };
 
+  console.log('[extractAttachments] fileIds:', fileIds)
+
   const fileRows = await db
     .select()
     .from(files)
     .where(inArray(files.id, fileIds));
+
+  console.log('[extractAttachments] fileRows:', fileRows.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })))
 
   const parts: string[] = [];
 
@@ -48,7 +52,10 @@ async function extractAttachments(
     try {
       const url = await storageService.getDownloadUrl(tenantId, file.id);
 
+      console.log('[extractAttachments] got url for:', file.name)
+
       const res = await fetch(url);
+      console.log('[extractAttachments] fetch status:', res.status, 'for:', file.name)
       if (!res.ok) continue;
       const buffer = Buffer.from(await res.arrayBuffer());
 
@@ -74,6 +81,8 @@ async function extractAttachments(
           text = buffer.toString('utf-8').trim();
         }
 
+        console.log('[extractAttachments] extracted', text.length, 'chars from:', file.name)
+
         if (text) {
           parts.push(`[Attachment: ${file.name}]\n${text}`);
         }
@@ -85,13 +94,17 @@ async function extractAttachments(
         );
       }
     } catch (err) {
+      console.error('[extractAttachments] error for', file.name, ':', err)
       console.error(`[taskWorker] Failed to extract attachment ${file.name}:`, err);
       // Skip this file silently — don't fail the whole task
     }
   }
 
+  const attachmentContext = parts.length > 0 ? parts.join('\n\n---\n\n') : null;
+  console.log('[extractAttachments] result:', parts.length, 'parts, context length:', attachmentContext?.length ?? 0)
+
   return {
-    attachmentContext: parts.length > 0 ? parts.join('\n\n---\n\n') : null,
+    attachmentContext,
   };
 }
 
