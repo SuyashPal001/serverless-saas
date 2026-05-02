@@ -131,6 +131,24 @@ export class StorageService {
     return provider.getDownloadUrl(s3Key);
   }
 
+  async downloadFile(tenantId: string, fileId: string): Promise<Buffer> {
+    const [file] = await db
+      .select()
+      .from(files)
+      .where(and(
+        eq(files.id, fileId),
+        eq(files.tenantId, tenantId),
+        isNull(files.deletedAt)
+      ))
+      .limit(1);
+
+    if (!file) throw new Error(`File not found: ${fileId}`);
+
+    const provider = await this.resolveProvider(tenantId) as S3StorageProvider;
+    const s3Key = `tenants/${tenantId}/${file.key}`;
+    return provider.getObject(s3Key);
+  }
+
   async deleteFile(tenantId: string, fileId: string): Promise<void> {
     await db
       .update(files)

@@ -50,14 +50,8 @@ async function extractAttachments(
 
   for (const file of fileRows) {
     try {
-      const url = await storageService.getDownloadUrl(tenantId, file.id);
-
-      console.log('[extractAttachments] got url for:', file.name)
-
-      const res = await fetch(url);
-      console.log('[extractAttachments] fetch status:', res.status, 'for:', file.name)
-      if (!res.ok) continue;
-      const buffer = Buffer.from(await res.arrayBuffer());
+      const buffer = await storageService.downloadFile(tenantId, file.id);
+      console.log('[extractAttachments] downloaded buffer', buffer.length, 'bytes for:', file.name)
 
       const isExtractable =
         EXTRACTABLE_TYPES.includes(file.mimeType ?? '') ||
@@ -88,6 +82,8 @@ async function extractAttachments(
         }
       } else {
         // Unsupported type — send presigned URL for relay to fetch via web_fetch tool
+        const url = await storageService.getDownloadUrl(tenantId, file.id);
+        console.log('[extractAttachments] got url for:', file.name)
         parts.push(
           `[Attachment: ${file.name} (${file.mimeType ?? 'unknown type'})]\n` +
             `Download URL (expires in 1 hour): ${url}`
