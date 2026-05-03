@@ -614,19 +614,19 @@ model: parsed.data.model ?? null,
 
 | # | Workstream | Finding | File(s) | Done? |
 |---|---|---|---|---|
-| 1 | A1 | L1-1 SQS timeout | `infra/terraform/foundation/main.tf` | [ ] |
-| 2 | A2 | L3-2 fetch timeout | `apps/api/src/workers/taskWorker.ts` | [ ] |
+| 1 | A1 | L1-1 SQS timeout | `infra/terraform/foundation/main.tf` | [x] 15dc71d |
+| 2 | A2 | L3-2 fetch timeout | `apps/api/src/workers/taskWorker.ts` | [x] 15dc71d |
 | 3 | A3 | L1-6 SSM path | `packages/foundation/cache/src/websocket-push.ts` | [ ] |
 | 4 | B1 | RELAY-3 real encryption | `packages/foundation/ai/src/utils/encryption.ts` | [ ] |
-| 5 | B2 | L3-3+CC-2 timing-safe auth | `apps/api/src/routes/internal/tasks.ts` | [ ] |
+| 5 | B2 | L3-3+CC-2 timing-safe auth | `apps/api/src/routes/internal/tasks.ts` | [x] 15dc71d |
 | 6 | B3 | RELAY-2 no raw keys to VM | `packages/foundation/ai/src/config/bundler.ts` | [ ] |
-| 7 | B4 | L2-5 tenant cross-check | `apps/api/src/routes/internal/tasks.ts` | [ ] |
-| 8 | C1 | L2-1 state machine | `apps/api/src/routes/tasks.ts` + new lib | [ ] |
-| 9 | C2 | L2-2 max steps | `apps/api/src/workers/taskWorker.ts` | [ ] |
-| 10 | C3 | L2-2 max clarifications | schema + `apps/api/src/routes/tasks.ts` | [ ] |
+| 7 | B4 | L2-5 tenant cross-check | `apps/api/src/routes/internal/tasks.ts` | [x] 9872a1a |
+| 8 | C1 | L2-1 state machine | `apps/api/src/routes/tasks.ts` | [x] cb925a4 |
+| 9 | C2 | L2-2 max steps | `apps/api/src/workers/taskWorker.ts` | [x] 9812be9 |
+| 10 | C3 | L2-2 max clarifications | `apps/api/src/routes/internal/tasks.ts` | [x] 9812be9 |
 | 11 | C4 | L2-4 concurrent limit | `apps/api/src/routes/tasks.ts` | [ ] |
-| 12 | D1 | L3-1 filter completed steps | `apps/api/src/workers/taskWorker.ts` | [ ] |
-| 13 | D2 | L3-4 step ordering | `apps/api/src/routes/internal/tasks.ts` | [ ] |
+| 12 | D1 | L3-1 filter completed steps | `apps/api/src/workers/taskWorker.ts` | [x] 2622d74 |
+| 13 | D2 | L3-4 step ordering | `apps/api/src/routes/internal/tasks.ts` | [x] b4eb883 |
 | 14 | D3 | CC-5 idempotent fail | `apps/api/src/routes/internal/tasks.ts` | [ ] |
 | 15 | E1 | L4-2 prompt injection | `apps/api/src/workers/taskWorker.ts` + relay | [ ] |
 | 16 | F1 | CC-1 observability | multiple files | [ ] |
@@ -999,10 +999,10 @@ async function loadConversationHistory(
 | 2 | H2 | L1-3 DB connection pooling | [ ] |
 | 3 | H3 | L1-4 Secret init abort | [ ] |
 | 4 | H4 | L1-5 Redis health check | [ ] |
-| 5 | I1 | L3-6 Watch planning status | [ ] |
-| 6 | I2 | L2-3 Watch awaiting_approval | [ ] |
+| 5 | I1 | L3-6 Watch planning status | [x] 9641cb4 |
+| 6 | I2 | L2-3 Watch awaiting_approval | [x] 9641cb4 |
 | 7 | J1 | RELAY-4 Vertex retry | [ ] |
-| 8 | J2 | CC-4 Body size limits | [ ] |
+| 8 | J2 | CC-4 Body size limits | [x] 849ab84 |
 | 9 | K1 | RELAY-1 Adapter decision | [ ] |
 | 10 | K2 | RELAY-8 Session limits | [ ] |
 | 11 | K3 | RELAY-7 Token truncation | [ ] |
@@ -1277,7 +1277,7 @@ File: packages/foundation/ai/src/embeddings.ts
 | 2 | L2 | L4-4 Output verification | [ ] |
 | 3 | L3 | L4-5 RAG context restriction | [ ] |
 | 4 | M1 | L3-7 SCAN → SET | [ ] |
-| 5 | M2 | L3-8 Remove delay | [ ] |
+| 5 | M2 | L3-8 Remove delay | [x] 15dc71d |
 | 6 | N1 | RELAY-11 GCP cred TTL | [ ] |
 | 7 | N2 | CC-3 WS token verification | [ ] |
 | 8 | O1 | RELAY-9 Push circuit breaker | [ ] |
