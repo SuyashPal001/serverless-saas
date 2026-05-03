@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, lt, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents, taskComments } from '@serverless-saas/database/schema/agents';
 import { pushWebSocketEvent } from '../../lib/websocket';
@@ -80,6 +80,20 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
     .limit(1))[0];
 
   if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  // Enforce sequential step execution — all prior steps must be done
+  const previousIncomplete = await db.select({ id: taskSteps.id })
+    .from(taskSteps)
+    .where(and(
+      eq(taskSteps.taskId, taskId),
+      lt(taskSteps.stepNumber, step.stepNumber),
+      sql`${taskSteps.status} NOT IN ('done', 'skipped')`,
+    ))
+    .limit(1);
+
+  if (previousIncomplete.length > 0) {
+    return c.json({ error: 'Previous steps not yet completed' }, 409);
+  }
 
   const actorId = task.agentId ?? 'system';
 
