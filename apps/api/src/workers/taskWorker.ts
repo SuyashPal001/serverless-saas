@@ -389,6 +389,22 @@ async function handleExecution(taskId: string) {
     .where(eq(taskSteps.taskId, taskId))
     .orderBy(asc(taskSteps.stepNumber));
 
+  const pendingSteps = steps.filter(s => s.status === 'pending');
+
+  // If all steps already completed (SQS retry scenario), skip relay
+  if (pendingSteps.length === 0 && steps.every(s => s.status === 'done')) {
+    console.log(`[taskWorker] All steps already done for task ${taskId}, skipping relay`);
+    await db.update(agentTasks)
+      .set({ status: 'review', completedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(agentTasks.id, taskId), eq(agentTasks.status, 'in_progress')));
+    await pushWebSocketEvent(task.tenantId, {
+      type: 'task.status.changed',
+      taskId: task.id,
+      status: 'review',
+    });
+    return;
+  }
+
   const watchdogKey = `task:watchdog:${taskId}`;
   const cache = getCacheClient();
   await cache.set(watchdogKey, JSON.stringify({ taskId, tenantId: task.tenantId, startedAt: Date.now() }), { ex: 600 });
@@ -416,7 +432,7 @@ async function handleExecution(taskId: string) {
         referenceText: task.referenceText ?? null,
         links: task.links ?? [],
         attachmentContext: attachmentContext ?? null,
-        steps: steps.map((s: typeof taskSteps.$inferSelect) => ({
+        steps: pendingSteps.map((s: typeof taskSteps.$inferSelect) => ({
           id: s.id,
           stepNumber: s.stepNumber,
           title: s.title,
