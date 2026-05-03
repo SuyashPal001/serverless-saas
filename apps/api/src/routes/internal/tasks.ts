@@ -134,6 +134,16 @@ internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
   const parsed = bodySchema.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
+  // Cross-verify tenantId against DB
+  const step = (await db.select({ tenantId: taskSteps.tenantId })
+    .from(taskSteps)
+    .where(and(eq(taskSteps.id, stepId), eq(taskSteps.taskId, taskId)))
+    .limit(1))[0];
+  if (!step) return c.json({ error: 'Step not found' }, 404);
+  if (step.tenantId !== parsed.data.tenantId) {
+    return c.json({ error: 'Tenant mismatch' }, 403);
+  }
+
   const { tenantId, type: eventType = 'task.step.delta' } = parsed.data;
 
   if (eventType === 'task.step.tool_call') {
@@ -325,6 +335,7 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
 
   const bodySchema = z.object({
     summary: z.string().optional(),
+    tenantId: z.string().uuid().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -332,6 +343,9 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
 
   const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
   if (!task) return c.json({ error: 'Task not found' }, 404);
+  if (parsed.data.tenantId && parsed.data.tenantId !== task.tenantId) {
+    return c.json({ error: 'Tenant mismatch' }, 403);
+  }
 
   const { tenantId } = task;
   const actorId = task.agentId ?? 'system';
@@ -402,6 +416,7 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
 
   const bodySchema = z.object({
     error: z.string().min(1),
+    tenantId: z.string().uuid().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -409,6 +424,9 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
 
   const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
   if (!task) return c.json({ error: 'Task not found' }, 404);
+  if (parsed.data.tenantId && parsed.data.tenantId !== task.tenantId) {
+    return c.json({ error: 'Tenant mismatch' }, 403);
+  }
 
   const { tenantId } = task;
   const actorId = task.agentId ?? 'system';
@@ -466,6 +484,7 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
 
   const bodySchema = z.object({
     questions: z.array(z.string().min(1)).min(1),
+    tenantId: z.string().uuid().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -473,6 +492,9 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
 
   const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
   if (!task) return c.json({ error: 'Task not found' }, 404);
+  if (parsed.data.tenantId && parsed.data.tenantId !== task.tenantId) {
+    return c.json({ error: 'Tenant mismatch' }, 403);
+  }
 
   const { tenantId } = task;
   const actorId = task.agentId ?? 'system';
@@ -545,6 +567,7 @@ internalTasksRoute.post('/:taskId/comments', async (c) => {
     content: z.string().min(1),
     agentId: z.string().uuid(),
     parentId: z.string().uuid().optional(),
+    tenantId: z.string().uuid().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());
@@ -552,6 +575,9 @@ internalTasksRoute.post('/:taskId/comments', async (c) => {
 
   const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
   if (!task) return c.json({ error: 'Task not found' }, 404);
+  if (parsed.data.tenantId && parsed.data.tenantId !== task.tenantId) {
+    return c.json({ error: 'Tenant mismatch' }, 403);
+  }
 
   const { tenantId } = task;
   const { content, agentId, parentId } = parsed.data;
