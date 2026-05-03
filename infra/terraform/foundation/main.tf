@@ -98,7 +98,7 @@ module "sqs" {
     }
     agent_task = {
       name                       = var.agent_task_queue_name
-      visibility_timeout_seconds = var.visibility_timeout_seconds
+      visibility_timeout_seconds = 360
       message_retention_seconds  = var.message_retention_seconds
     }
   }

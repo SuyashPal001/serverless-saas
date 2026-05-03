@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
@@ -12,17 +13,24 @@ import type { AppEnv } from '../../types';
 // NOTE: These routes are mounted on the same API Gateway Lambda as all other /api/v1
 // routes — there is no port-based isolation. The only protection is the shared secret
 // header check below. Ensure INTERNAL_SERVICE_KEY is rotated if compromised.
-function isAuthorized(c: { req: { header: (name: string) => string | undefined } }): boolean {
-  const provided = c.req.header('x-internal-service-key');
-  const expected = process.env.INTERNAL_SERVICE_KEY;
-  return !!provided && !!expected && provided === expected;
+function isAuthorized(provided: string): boolean {
+  const expected = process.env.INTERNAL_SERVICE_KEY
+  if (!expected) return false
+  try {
+    return timingSafeEqual(
+      Buffer.from(provided),
+      Buffer.from(expected)
+    )
+  } catch {
+    return false
+  }
 }
 
 const internalTasksRoute = new Hono<AppEnv>();
 
 // GET /internal/tasks/:taskId/comments — fetch task comments ordered by createdAt
 internalTasksRoute.get('/:taskId/comments', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
 
@@ -47,7 +55,7 @@ internalTasksRoute.get('/:taskId/comments', async (c) => {
 
 // POST /internal/tasks/:taskId/steps/:stepId/start
 internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
@@ -102,7 +110,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/start', async (c) => {
 
 // POST /internal/tasks/:taskId/steps/:stepId/delta — relay fires streaming tokens and tool events
 internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
@@ -164,7 +172,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
 
 // POST /internal/tasks/:taskId/steps/:stepId/complete
 internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
@@ -241,7 +249,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
 
 // POST /internal/tasks/:taskId/steps/:stepId/fail
 internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
@@ -309,7 +317,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
 
 // POST /internal/tasks/:taskId/complete
 internalTasksRoute.post('/:taskId/complete', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
 
@@ -386,7 +394,7 @@ internalTasksRoute.post('/:taskId/complete', async (c) => {
 
 // POST /internal/tasks/:taskId/fail
 internalTasksRoute.post('/:taskId/fail', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
 
@@ -450,7 +458,7 @@ internalTasksRoute.post('/:taskId/fail', async (c) => {
 
 // POST /internal/tasks/:taskId/clarify
 internalTasksRoute.post('/:taskId/clarify', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
 
@@ -506,7 +514,7 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
 
 // POST /internal/tasks/:taskId/comments — agent posting a comment
 internalTasksRoute.post('/:taskId/comments', async (c) => {
-  if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401);
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
 
   const taskId = c.req.param('taskId');
 

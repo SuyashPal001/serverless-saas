@@ -306,7 +306,6 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
           status: 'pending',
         },
       });
-      await new Promise(r => setTimeout(r, 100));
     }
 
     const scores = steps.filter(s => s.confidenceScore != null).map(s => s.confidenceScore!);
@@ -425,27 +424,31 @@ async function handleExecution(taskId: string) {
           toolName: s.toolName,
         })),
       }),
+      signal: AbortSignal.timeout(290_000),
     });
-  } catch (err) {
-    const reason = `Execution failed: relay unreachable or timed out`;
-    console.error('[taskWorker] relay call failed', { taskId, error: (err as Error).message });
-    await cache.del(watchdogKey);
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error &&
+      (err.name === 'AbortError' ||
+       err.name === 'TimeoutError')
+
+    const reason = isTimeout
+      ? 'Execution timeout — relay took too long'
+      : `Relay execution failed: ${err instanceof Error ? err.message : String(err)}`
+
     await db.update(agentTasks)
-      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
-      .where(eq(agentTasks.id, taskId));
-    await db.insert(taskEvents).values({
-      taskId: task.id,
-      tenantId: task.tenantId,
-      actorType: 'agent',
-      actorId: 'system',
-      eventType: 'status_changed',
-      payload: { from: task.status, to: 'blocked', reason },
-    });
+      .set({
+        status: 'blocked',
+        blockedReason: reason,
+        updatedAt: new Date()
+      })
+      .where(eq(agentTasks.id, taskId))
+
     await pushWebSocketEvent(task.tenantId, {
       type: 'task.status.changed',
-      taskId: task.id,
+      taskId,
       status: 'blocked',
-    });
+      blockedReason: reason,
+    })
     return;
   }
 
