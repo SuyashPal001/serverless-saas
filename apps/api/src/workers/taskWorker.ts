@@ -20,6 +20,8 @@ import { embedQuery } from '@serverless-saas/ai';
 const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 
+const MAX_STEPS_PER_TASK = 20;
+
 let secretsInitialised = false;
 
 const EXTRACTABLE_TYPES = [
@@ -265,6 +267,9 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
     const { steps } = body;
     if (!steps || steps.length === 0) {
       throw new Error('Relay returned no steps and no clarification');
+    }
+    if (steps.length > MAX_STEPS_PER_TASK) {
+      throw new Error(`Relay proposed ${steps.length} steps (max ${MAX_STEPS_PER_TASK})`);
     }
 
     const insertedSteps = await db.insert(taskSteps).values(

@@ -26,6 +26,8 @@ function isAuthorized(provided: string): boolean {
   }
 }
 
+const MAX_CLARIFICATION_ROUNDS = 3;
+
 const internalTasksRoute = new Hono<AppEnv>();
 
 // GET /internal/tasks/:taskId/comments — fetch task comments ordered by createdAt
@@ -475,6 +477,27 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
   const { tenantId } = task;
   const actorId = task.agentId ?? 'system';
   const { questions } = parsed.data;
+
+  // Enforce max clarification rounds
+  const priorClarifications = await db.select({ id: taskEvents.id })
+    .from(taskEvents)
+    .where(and(
+      eq(taskEvents.taskId, taskId),
+      eq(taskEvents.eventType, 'clarification_requested'),
+    ));
+
+  if (priorClarifications.length >= MAX_CLARIFICATION_ROUNDS) {
+    const reason = 'Maximum clarification rounds reached. Please restart with more detail.';
+    await db.update(agentTasks)
+      .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
+      .where(eq(agentTasks.id, taskId));
+    await pushWebSocketEvent(tenantId, {
+      type: 'task.status.changed',
+      taskId,
+      status: 'blocked',
+    });
+    return c.json({ error: reason, code: 'MAX_CLARIFICATIONS' }, 429);
+  }
 
   const numbered = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
   const blockedReason = `Agent needs clarification:\n${numbered}`;
