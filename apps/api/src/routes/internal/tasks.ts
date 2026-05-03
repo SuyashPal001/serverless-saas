@@ -135,8 +135,8 @@ internalTasksRoute.post('/:taskId/steps/:stepId/delta', async (c) => {
     tenantId: z.string().uuid(),
     type: z.enum(['task.step.delta', 'task.step.tool_call', 'task.step.tool_result', 'task.step.thinking']).optional(),
     // delta fields
-    delta: z.string().optional(),
-    text: z.string().optional(),
+    delta: z.string().max(50_000).optional(),
+    text: z.string().max(50_000).optional(),
     // tool_call fields
     toolName: z.string().optional(),
     toolInput: z.string().optional(),
@@ -204,7 +204,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
   const stepId = c.req.param('stepId');
 
   const bodySchema = z.object({
-    agentOutput: z.string().optional(),
+    agentOutput: z.string().max(100_000).optional(),
     summary: z.string().optional(),
     toolResult: z.record(z.unknown()).optional(),
     reasoning: z.string().optional(),
