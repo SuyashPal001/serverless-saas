@@ -12,6 +12,18 @@ import { embedTexts } from '@serverless-saas/ai';
 import type { AppEnv } from '../types';
 export const tasksRoutes = new Hono<AppEnv>();
 
+const VALID_USER_TRANSITIONS: Record<string, string[]> = {
+  backlog: ['todo', 'cancelled'],
+  todo: ['backlog', 'cancelled'],
+  planning: [],
+  awaiting_approval: [],
+  in_progress: [],
+  blocked: ['cancelled'],
+  review: ['done', 'cancelled'],
+  done: [],
+  cancelled: [],
+};
+
 // POST /tasks — create task and generate plan via relay
 tasksRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
@@ -682,6 +694,12 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (estimatedHours !== undefined) updateValues.estimatedHours = estimatedHours !== null ? String(estimatedHours) : null;
     if (acceptanceCriteria !== undefined) updateValues.acceptanceCriteria = acceptanceCriteria;
     if (dueDate !== undefined) updateValues.dueDate = dueDate !== null ? new Date(dueDate) : null;
+    if (status !== undefined && status !== task.status) {
+      const allowed = VALID_USER_TRANSITIONS[task.status] ?? [];
+      if (!allowed.includes(status)) {
+        return c.json({ error: `Cannot transition from ${task.status} to ${status}` }, 400);
+      }
+    }
     if (status !== undefined) updateValues.status = status;
     if (startedAt !== undefined) updateValues.startedAt = startedAt !== null ? new Date(startedAt) : null;
     if (links !== undefined) updateValues.links = links;
