@@ -361,6 +361,26 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
     }
 
     // approved === true
+    // Enforce per-tenant concurrent task limit before transitioning to ready (L2-4)
+    const CONCURRENT_TASK_LIMITS: Record<string, number> = {
+        free: 1, starter: 3, business: 10, enterprise: 50,
+    };
+    const plan = requestContext?.tenant?.plan ?? 'free';
+    const maxConcurrent = CONCURRENT_TASK_LIMITS[plan] ?? 1;
+    const [{ value: activeCount }] = await db
+        .select({ value: count() })
+        .from(agentTasks)
+        .where(and(
+            eq(agentTasks.tenantId, tenantId),
+            eq(agentTasks.status, 'in_progress'),
+        ));
+    if (Number(activeCount) >= maxConcurrent) {
+        return c.json({
+            error: `Concurrent task limit reached (${maxConcurrent} for ${plan} plan). Wait for a running task to complete.`,
+            code: 'CONCURRENT_LIMIT',
+        }, 429);
+    }
+
     // BUG-6: Add status predicate to make the update atomic with the guard above.
     // Without it, two concurrent double-click requests both pass the guard and both
     // publish execute_task, running the task twice. With it, the second concurrent

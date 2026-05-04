@@ -309,9 +309,14 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
   const actorId = task.agentId ?? 'system';
   const { error: failError } = parsed.data;
 
-  await db.update(taskSteps)
+  const [updatedStep] = await db.update(taskSteps)
     .set({ status: 'failed', agentOutput: failError, updatedAt: new Date() })
-    .where(eq(taskSteps.id, stepId));
+    .where(and(eq(taskSteps.id, stepId), eq(taskSteps.status, 'running')))
+    .returning({ id: taskSteps.id });
+
+  if (!updatedStep) {
+    return c.json({ error: 'Step is not in a failable state' }, 409);
+  }
 
   await db.update(agentTasks)
     .set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() })
