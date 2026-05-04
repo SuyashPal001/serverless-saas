@@ -22,6 +22,11 @@ const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 
 const MAX_STEPS_PER_TASK = 20;
 
+function makeLog(traceId: string, taskId: string) {
+  return (level: 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) =>
+    console.log(JSON.stringify({ level, msg, traceId, taskId, ts: Date.now(), ...data }));
+}
+
 let secretsInitialised = false;
 
 const EXTRACTABLE_TYPES = [
@@ -149,17 +154,18 @@ export const handler: SQSHandler = async (event) => {
   }
   for (const record of event.Records) {
     const message = JSON.parse(record.body);
-    const { type, taskId } = message;
+    const { type, taskId, traceId = taskId } = message;
 
     if (type === 'plan_task' || type === 'replan_task') {
-      await handlePlanning(taskId, message.extraContext as string | undefined, message.feedbackHistoryMap as Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> | undefined);
+      await handlePlanning(taskId, traceId, message.extraContext as string | undefined, message.feedbackHistoryMap as Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> | undefined);
     } else if (type === 'execute_task') {
-      await handleExecution(taskId);
+      await handleExecution(taskId, traceId);
     }
   }
 };
 
-async function handlePlanning(taskId: string, extraContext?: string, feedbackHistoryMap?: Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>>) {
+async function handlePlanning(taskId: string, traceId: string, extraContext?: string, feedbackHistoryMap?: Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>>) {
+  const log = makeLog(traceId, taskId);
   const task = await db.query.agentTasks.findFirst({
     where: eq(agentTasks.id, taskId),
   });
@@ -183,10 +189,10 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
     try {
       ragContext = await getPastSuccessfulPlans(task.tenantId, task.title, task.description);
       if (ragContext) {
-        console.log(`[handlePlanning] taskId=${taskId} RAG found similar past tasks, prepending context`);
+        log('info', 'RAG found similar past tasks, prepending context');
       }
     } catch (ragErr) {
-      console.error('[handlePlanning] RAG lookup failed (non-fatal):', (ragErr as Error).message);
+      log('warn', 'RAG lookup failed (non-fatal)', { error: (ragErr as Error).message });
     }
 
     const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
@@ -205,6 +211,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
       headers: {
         'Content-Type': 'application/json',
         'x-internal-service-key': INTERNAL_SERVICE_KEY(),
+        'x-trace-id': traceId,
       },
       body: JSON.stringify({
         taskId: task.id,
@@ -354,7 +361,7 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
     // SQS. Rethrowing would cause unbounded retries ending in DLQ, leaving the task
     // permanently stuck in 'planning' with no user-visible feedback.
     const reason = `Planning failed: ${(err as Error).message}`;
-    console.error('[handlePlanning] fatal error', { taskId, error: (err as Error).message });
+    log('error', 'Planning fatal error', { error: (err as Error).message });
     try {
       await db.update(agentTasks)
         .set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() })
@@ -373,13 +380,14 @@ async function handlePlanning(taskId: string, extraContext?: string, feedbackHis
         status: 'blocked',
       });
     } catch (recoveryErr) {
-      console.error('[handlePlanning] recovery write failed', { taskId, error: (recoveryErr as Error).message });
+      log('error', 'Recovery write failed', { error: (recoveryErr as Error).message });
     }
     // Do not rethrow — let SQS ack the message cleanly.
   }
 }
 
-async function handleExecution(taskId: string) {
+async function handleExecution(taskId: string, traceId: string) {
+  const log = makeLog(traceId, taskId);
   const task = await db.query.agentTasks.findFirst({
     where: eq(agentTasks.id, taskId),
   });
@@ -398,7 +406,7 @@ async function handleExecution(taskId: string) {
 
   // If all steps already completed (SQS retry scenario), skip relay
   if (pendingSteps.length === 0 && steps.every(s => s.status === 'done')) {
-    console.log(`[taskWorker] All steps already done for task ${taskId}, skipping relay`);
+    log('info', 'All steps already done, skipping relay');
     await db.update(agentTasks)
       .set({ status: 'review', completedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(agentTasks.id, taskId), eq(agentTasks.status, 'in_progress')));
@@ -426,6 +434,7 @@ async function handleExecution(taskId: string) {
       headers: {
         'Content-Type': 'application/json',
         'x-internal-service-key': INTERNAL_SERVICE_KEY(),
+        'x-trace-id': traceId,
       },
       body: JSON.stringify({
         taskId: task.id,

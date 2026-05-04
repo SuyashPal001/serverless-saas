@@ -11,6 +11,9 @@ import { initRuntimeSecrets } from '../lib/secrets';
 
 const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 
+const wlog = (level: 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) =>
+  console.log(JSON.stringify({ level, msg, component: 'watchdog', ts: Date.now(), ...data }));
+
 let secretsInitialised = false;
 
 export const handler: ScheduledHandler = async () => {
@@ -46,12 +49,12 @@ export const handler: ScheduledHandler = async () => {
     }
 
     if (stalled.length > 0) {
-      console.log(`[watchdog] ${stalled.length} stalled task(s): ${stalled.map(t => t.id).join(', ')}`);
+      wlog('info', 'Stalled tasks detected', { count: stalled.length, taskIds: stalled.map(t => t.id) });
 
       const reason = 'Task timed out. The agent may have crashed. Please retry.';
 
       for (const task of stalled) {
-        console.log('[Watchdog] Stalled task:', task.id, task.tenantId);
+        wlog('info', 'Blocking stalled task', { taskId: task.id, tenantId: task.tenantId });
 
         // BUG-15+16: Add status predicate so the update is a no-op if:
         // (a) two watchdog invocations overlap and one already wrote 'blocked', or
@@ -67,7 +70,7 @@ export const handler: ScheduledHandler = async () => {
           .returning({ id: agentTasks.id });
 
         if (!updated) {
-          console.log(`[watchdog] taskId=${task.id} no longer in_progress — skipping notification`);
+          wlog('info', 'Task no longer in_progress, skipping notification', { taskId: task.id });
           continue;
         }
 
@@ -87,7 +90,7 @@ export const handler: ScheduledHandler = async () => {
             status: 'blocked',
           });
         } catch (wsErr) {
-          console.error(`[watchdog] WS push failed for taskId=${task.id}:`, wsErr);
+          wlog('error', 'WS push failed', { taskId: task.id, error: (wsErr as Error).message });
         }
 
         if (sqsUrl) {
@@ -102,7 +105,7 @@ export const handler: ScheduledHandler = async () => {
               data: { taskId: task.id, taskTitle: task.title },
             });
           } catch (sqsErr) {
-            console.error(`[watchdog] SQS publish failed for taskId=${task.id}:`, sqsErr);
+            wlog('error', 'SQS notification publish failed', { taskId: task.id, error: (sqsErr as Error).message });
           }
         }
       }
@@ -132,7 +135,7 @@ export const handler: ScheduledHandler = async () => {
 
     if (!updated) continue;
 
-    console.log(`[watchdog] Planning timed out for taskId=${task.id}`);
+    wlog('info', 'Planning timed out', { taskId: task.id, tenantId: task.tenantId });
 
     try {
       await pushWebSocketEvent(task.tenantId, {
@@ -141,7 +144,7 @@ export const handler: ScheduledHandler = async () => {
         status: 'blocked',
       });
     } catch (wsErr) {
-      console.error(`[watchdog] WS push failed for taskId=${task.id}:`, wsErr);
+      wlog('error', 'WS push failed (planning sweep)', { taskId: task.id, error: (wsErr as Error).message });
     }
 
     if (sqsUrl) {
@@ -156,7 +159,7 @@ export const handler: ScheduledHandler = async () => {
           data: { taskId: task.id, taskTitle: task.title },
         });
       } catch (sqsErr) {
-        console.error(`[watchdog] SQS publish failed for taskId=${task.id}:`, sqsErr);
+        wlog('error', 'SQS publish failed (planning sweep)', { taskId: task.id, error: (sqsErr as Error).message });
       }
     }
   }
@@ -184,7 +187,7 @@ export const handler: ScheduledHandler = async () => {
 
     if (!updated) continue;
 
-    console.log(`[watchdog] Approval timed out for taskId=${task.id}`);
+    wlog('info', 'Approval timed out, cancelling task', { taskId: task.id, tenantId: task.tenantId });
 
     try {
       await pushWebSocketEvent(task.tenantId, {
@@ -193,7 +196,7 @@ export const handler: ScheduledHandler = async () => {
         status: 'cancelled',
       });
     } catch (wsErr) {
-      console.error(`[watchdog] WS push failed for taskId=${task.id}:`, wsErr);
+      wlog('error', 'WS push failed (approval sweep)', { taskId: task.id, error: (wsErr as Error).message });
     }
   }
 };

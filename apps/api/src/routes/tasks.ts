@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
@@ -329,6 +330,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
             await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
                 type: 'replan_task',
                 taskId,
+                traceId: randomUUID(),
                 ...(fullFeedbackContext ? { extraContext: fullFeedbackContext } : {}),
                 ...(Object.keys(feedbackHistoryMap).length > 0 ? { feedbackHistoryMap } : {}),
             });
@@ -414,7 +416,7 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
 
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId });
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId, traceId: randomUUID() });
     } catch (sqsErr) {
         console.error('[SQS] execute_task publish failed for task', taskId, sqsErr);
         await db.update(agentTasks)
@@ -480,7 +482,7 @@ tasksRoutes.post('/:taskId/plan', async (c) => {
 
     console.log('[SQS] Publishing plan_task for task', taskId);
     try {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId });
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'plan_task', taskId, traceId: randomUUID() });
     } catch (sqsErr) {
         console.error('[SQS] plan_task publish failed for task', taskId, sqsErr);
         await db.update(agentTasks)
@@ -563,6 +565,7 @@ tasksRoutes.post('/:taskId/clarify', async (c) => {
         await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, {
             type: 'replan_task',
             taskId,
+            traceId: randomUUID(),
             extraContext: 'User clarification: ' + answer,
         });
     } catch (sqsErr) {
