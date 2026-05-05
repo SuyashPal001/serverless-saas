@@ -996,16 +996,16 @@ async function loadConversationHistory(
 | # | Workstream | Finding | Done? |
 |---|---|---|---|
 | 1 | H1 | L1-2 DLQ alerting | [ ] |
-| 2 | H2 | L1-3 DB connection pooling | [ ] |
-| 3 | H3 | L1-4 Secret init abort | [ ] |
-| 4 | H4 | L1-5 Redis health check | [ ] |
+| 2 | H2 | L1-3 DB connection pooling | [ ] SKIP (Neon HTTP driver is already stateless) |
+| 3 | H3 | L1-4 Secret init abort | [x] (verified correct — initRuntimeSecrets is outside the for loop) |
+| 4 | H4 | L1-5 Redis health check | [x] 9a125a0 |
 | 5 | I1 | L3-6 Watch planning status | [x] 9641cb4 |
 | 6 | I2 | L2-3 Watch awaiting_approval | [x] 9641cb4 |
-| 7 | J1 | RELAY-4 Vertex retry | [ ] |
+| 7 | J1 | RELAY-4 Vertex retry | [x] 8590253 |
 | 8 | J2 | CC-4 Body size limits | [x] 849ab84 |
-| 9 | K1 | RELAY-1 Adapter decision | [ ] |
-| 10 | K2 | RELAY-8 Session limits | [ ] |
-| 11 | K3 | RELAY-7 Token truncation | [ ] |
+| 9 | K1 | RELAY-1 Adapter decision | [ ] SKIP (architecture decision needed) |
+| 10 | K2 | RELAY-8 Session limits | [x] 15a36ab |
+| 11 | K3 | RELAY-7 Token truncation | [x] 15a36ab |
 
 ---
 
@@ -1273,16 +1273,16 @@ File: packages/foundation/ai/src/embeddings.ts
 
 | # | Workstream | Finding | Done? |
 |---|---|---|---|
-| 1 | L1 | L4-1+RELAY-10 Tool registry | [ ] |
-| 2 | L2 | L4-4 Output verification | [ ] |
-| 3 | L3 | L4-5 RAG context restriction | [ ] |
-| 4 | M1 | L3-7 SCAN → SET | [ ] |
+| 1 | L1 | L4-1+RELAY-10 Tool registry | [ ] SKIP (needs schema migration) |
+| 2 | L2 | L4-4 Output verification | [ ] SKIP (needs schema migration) |
+| 3 | L3 | L4-5 RAG context restriction | [x] 26e22a1 |
+| 4 | M1 | L3-7 SCAN → SET | [ ] (needs connect/disconnect handler changes) |
 | 5 | M2 | L3-8 Remove delay | [x] 15dc71d |
-| 6 | N1 | RELAY-11 GCP cred TTL | [ ] |
-| 7 | N2 | CC-3 WS token verification | [ ] |
-| 8 | O1 | RELAY-9 Push circuit breaker | [ ] |
-| 9 | O2 | L2-6 Vote dedup | [ ] |
-| 10 | O3 | RELAY-5 Token refresh | [ ] |
+| 6 | N1 | RELAY-11 GCP cred TTL | [x] 15a36ab |
+| 7 | N2 | CC-3 WS token verification | [x] 15a36ab |
+| 8 | O1 | RELAY-9 Push circuit breaker | [x] 26e22a1 |
+| 9 | O2 | L2-6 Vote dedup | [ ] SKIP (needs schema migration) |
+| 10 | O3 | RELAY-5 Token refresh | [x] 26e22a1 |
 
 ---
 
