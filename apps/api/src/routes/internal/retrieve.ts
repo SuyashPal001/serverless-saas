@@ -1,30 +1,17 @@
+import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
 import type { AppEnv } from '../../types';
 
-const ssm = new SSMClient({ region: process.env.AWS_REGION ?? 'ap-south-1' });
-let cachedServiceKey: string | null = null;
-
-async function getServiceKey(): Promise<string> {
-  if (cachedServiceKey) return cachedServiceKey;
-  
-  const env = process.env.NODE_ENV || 'dev';
-  const project = process.env.PROJECT || 'serverless-saas';
-  const paramName = `/${project}/${env}/internal-service-key`;
-
+function isAuthorized(provided: string): boolean {
+  const expected = process.env.INTERNAL_SERVICE_KEY;
+  if (!expected) return false;
   try {
-    const result = await ssm.send(new GetParameterCommand({
-      Name: paramName,
-      WithDecryption: true,
-    }));
-    cachedServiceKey = result.Parameter?.Value || '';
-    return cachedServiceKey;
-  } catch (error) {
-    console.error('Failed to fetch internal-service-key from SSM:', error);
-    throw error;
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    return false;
   }
 }
 
@@ -43,11 +30,7 @@ retrieveRoute.post(
   zValidator('json', bodySchema),
   async (c) => {
     try {
-      // Auth: service API key header
-      const serviceKey = await getServiceKey();
-      const provided = c.req.header('X-Service-Key');
-
-      if (!provided || provided !== serviceKey) {
+      if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
         return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
       }
 
