@@ -24,6 +24,82 @@ const DESTRUCTIVE_TOOLS = [
   'cancel_subscription'
 ];
 
+const TOOL_LABELS: Record<string, string> = {
+  gmail_send_message:     'Send Email (Gmail)',
+  calendar_create_event:  'Create Calendar Event',
+  calendar_update_event:  'Update Calendar Event',
+  zoho_mail_send_message: 'Send Email (Zoho)',
+  zoho_cliq_send_message: 'Send Zoho Cliq Message',
+  zoho_create_contact:    'Create CRM Contact',
+  zoho_create_deal:       'Create CRM Deal',
+  jira_create_issue:      'Create Jira Issue',
+  jira_update_issue:      'Update Jira Issue',
+};
+
+function str(v: unknown, max?: number): string {
+  if (v === undefined || v === null) return '—';
+  const s = String(v);
+  return max && s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+function ArgRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2 text-xs font-mono">
+      <span className="text-muted-foreground shrink-0">{label}:</span>
+      <span className="text-foreground break-all">{value}</span>
+    </div>
+  );
+}
+
+function KeyArgs({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+  if (toolName === 'gmail_send_message' || toolName === 'zoho_mail_send_message') {
+    return (
+      <>
+        <ArgRow label="to"      value={str(args.to)} />
+        <ArgRow label="subject" value={str(args.subject)} />
+        <ArgRow label="body"    value={str(args.body, 100)} />
+      </>
+    );
+  }
+  if (toolName === 'calendar_create_event' || toolName === 'calendar_update_event') {
+    const attendees = Array.isArray(args.attendees)
+      ? args.attendees.map(a =>
+          typeof a === 'string' ? a : str((a as Record<string, unknown>).email ?? a)
+        ).join(', ')
+      : str(args.attendees);
+    return (
+      <>
+        <ArgRow label="summary"   value={str(args.summary)} />
+        <ArgRow label="start"     value={str(args.start)} />
+        <ArgRow label="attendees" value={attendees} />
+      </>
+    );
+  }
+  if (toolName === 'zoho_create_contact' || toolName === 'zoho_create_deal') {
+    return (
+      <>
+        <ArgRow label="name"  value={str(args.name ?? args.Last_Name ?? args.Deal_Name)} />
+        <ArgRow label="email" value={str(args.email ?? args.Email)} />
+      </>
+    );
+  }
+  if (toolName === 'jira_create_issue' || toolName === 'jira_update_issue') {
+    return (
+      <>
+        <ArgRow label="summary"     value={str(args.summary)} />
+        <ArgRow label="description" value={str(args.description, 100)} />
+      </>
+    );
+  }
+  return (
+    <>
+      {Object.entries(args).slice(0, 3).map(([k, v]) => (
+        <ArgRow key={k} label={k} value={str(v)} />
+      ))}
+    </>
+  );
+}
+
 export function ApprovalCard({ request, onApprove, onDismiss }: ApprovalCardProps) {
   const isDestructive = DESTRUCTIVE_TOOLS.includes(request.toolName);
   const isPending = request.status === 'pending';
@@ -33,7 +109,7 @@ export function ApprovalCard({ request, onApprove, onDismiss }: ApprovalCardProp
     return (
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-1 px-2 bg-muted/30 rounded-lg border border-border/20 w-fit">
         <Terminal className="h-3 w-3" />
-        <span className="font-mono">{request.toolName}</span>
+        <span className="font-mono">{TOOL_LABELS[request.toolName] ?? request.toolName}</span>
         <span className="mx-1">·</span>
         <span className={cn(isApproved ? "text-green-500" : "text-red-500")}>
           {isApproved ? 'approved' : 'dismissed'} by you
@@ -77,11 +153,13 @@ export function ApprovalCard({ request, onApprove, onDismiss }: ApprovalCardProp
         <div className="rounded-lg border border-border bg-muted/50 overflow-hidden">
           <div className="px-3 py-1.5 border-b border-border bg-muted flex items-center gap-2">
             <Terminal className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-bold">Action: {request.toolName}</span>
+            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-bold">
+              {TOOL_LABELS[request.toolName] ?? request.toolName}
+            </span>
           </div>
-          <pre className="p-3 text-xs font-mono overflow-auto max-h-40 bg-background/50 text-muted-foreground">
-            {JSON.stringify(request.arguments, null, 2)}
-          </pre>
+          <div className="p-3 space-y-1.5 bg-background/50">
+            <KeyArgs toolName={request.toolName} args={request.arguments} />
+          </div>
         </div>
       </div>
 

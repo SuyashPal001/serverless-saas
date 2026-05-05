@@ -2,6 +2,7 @@ import 'dotenv/config'
 import type { Server } from 'node:http'
 import type { IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'
+import { timingSafeEqual } from 'node:crypto'
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync, mkdtempSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -299,6 +300,12 @@ const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? `${API_BASE_URL}/api/v1
 // Keyed by tenantId — safe because /rag/retrieve completes synchronously before the
 // agent generates its reply, so the entry is always present by the time onDone fires.
 const lastRagResult = new Map<string, { chunks: string[]; count: number; ts: number; topScore: number }>()
+
+// MCP write-tool approval state
+// pendingMcpApprovals: approvalId → resolver waiting for user decision (30s timeout → deny)
+const pendingMcpApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }>()
+// sseApprovalChannels: relay sessionId → function that sends an SSE event on the open stream
+const sseApprovalChannels = new Map<string, (payload: Record<string, unknown>) => void>()
 
 function fireMetrics(payload: {
   conversationId: string; tenantId: string; ragFired: boolean
@@ -1062,12 +1069,24 @@ app.post('/api/tasks/execute', async (c) => {
   const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : ''
   const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
   const steps: TaskStep[] = Array.isArray(body.steps) ? body.steps as TaskStep[] : []
-  const taskTitle = typeof body.taskTitle === 'string' ? body.taskTitle.trim() : ''
-  const taskDescription = typeof body.taskDescription === 'string' ? body.taskDescription.trim() : ''
+  const rawTaskTitle = typeof body.taskTitle === 'string' ? body.taskTitle.trim() : ''
+  const rawTaskDescription = typeof body.taskDescription === 'string' ? body.taskDescription.trim() : ''
   const agentName = typeof body.agentName === 'string' && body.agentName.trim() ? body.agentName.trim() : 'Agent'
-  const referenceText = typeof body.referenceText === 'string' && body.referenceText.trim() ? body.referenceText.trim() : null
-  const attachmentContext = typeof body.attachmentContext === 'string' && body.attachmentContext.trim() ? body.attachmentContext.trim() : null
+  const rawReferenceText = typeof body.referenceText === 'string' && body.referenceText.trim() ? body.referenceText.trim() : null
+  const rawAttachmentContext = typeof body.attachmentContext === 'string' && body.attachmentContext.trim() ? body.attachmentContext.trim() : null
   const links = Array.isArray(body.links) ? (body.links as unknown[]).filter((l): l is string => typeof l === 'string' && l.trim() !== '') : null
+
+  const { sanitized: taskTitle, detections: taskTitleD } = filterPII(rawTaskTitle)
+  const { sanitized: taskDescription, detections: taskDescD } = filterPII(rawTaskDescription)
+  const execRefResult = rawReferenceText !== null ? filterPII(rawReferenceText) : null
+  const execAttResult = rawAttachmentContext !== null ? filterPII(rawAttachmentContext) : null
+  const referenceText = execRefResult?.sanitized ?? null
+  const attachmentContext = execAttResult?.sanitized ?? null
+  const execPiiDetections = [...taskTitleD, ...taskDescD, ...(execRefResult?.detections ?? []), ...(execAttResult?.detections ?? [])]
+  if (execPiiDetections.length > 0) {
+    const summary = execPiiDetections.reduce((acc, d) => { acc[d.type] = (acc[d.type] ?? 0) + d.count; return acc }, {} as Record<string, number>)
+    console.log(`[pii-filter] tasks/execute taskId=${taskId} masked: ${Object.entries(summary).map(([t, c]) => `${t}×${c}`).join(' ')}`)
+  }
 
   if (!taskId || !tenantId || steps.length === 0) {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
@@ -1214,8 +1233,8 @@ app.post('/api/tasks/plan', async (c) => {
   const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : ''
   const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : ''
   const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
-  const title = typeof body.title === 'string' ? body.title.trim() : ''
-  const description = typeof body.description === 'string' ? body.description.trim() : ''
+  const rawTitle = typeof body.title === 'string' ? body.title.trim() : ''
+  const rawDescription = typeof body.description === 'string' ? body.description.trim() : ''
   const rawAC = body.acceptanceCriteria
   const acceptanceCriteria = typeof rawAC === 'string'
     ? rawAC.trim()
@@ -1226,9 +1245,21 @@ app.post('/api/tasks/plan', async (c) => {
     ? body.extraContext.trim()
     : undefined
   const agentName = typeof body.agentName === 'string' && body.agentName.trim() ? body.agentName.trim() : 'Agent'
-  const planReferenceText = typeof body.referenceText === 'string' && body.referenceText.trim() ? body.referenceText.trim() : null
-  const planAttachmentContext = typeof body.attachmentContext === 'string' && body.attachmentContext.trim() ? body.attachmentContext.trim() : null
+  const rawPlanReferenceText = typeof body.referenceText === 'string' && body.referenceText.trim() ? body.referenceText.trim() : null
+  const rawPlanAttachmentContext = typeof body.attachmentContext === 'string' && body.attachmentContext.trim() ? body.attachmentContext.trim() : null
   const planLinks = Array.isArray(body.links) ? (body.links as unknown[]).filter((l): l is string => typeof l === 'string' && l.trim() !== '') : null
+
+  const { sanitized: title, detections: titlePlanD } = filterPII(rawTitle)
+  const { sanitized: description, detections: descPlanD } = filterPII(rawDescription)
+  const planRefResult = rawPlanReferenceText !== null ? filterPII(rawPlanReferenceText) : null
+  const planAttResult = rawPlanAttachmentContext !== null ? filterPII(rawPlanAttachmentContext) : null
+  const planReferenceText = planRefResult?.sanitized ?? null
+  const planAttachmentContext = planAttResult?.sanitized ?? null
+  const planPiiDetections = [...titlePlanD, ...descPlanD, ...(planRefResult?.detections ?? []), ...(planAttResult?.detections ?? [])]
+  if (planPiiDetections.length > 0) {
+    const summary = planPiiDetections.reduce((acc, d) => { acc[d.type] = (acc[d.type] ?? 0) + d.count; return acc }, {} as Record<string, number>)
+    console.log(`[pii-filter] tasks/plan taskId=${taskId} masked: ${Object.entries(summary).map(([t, c]) => `${t}×${c}`).join(' ')}`)
+  }
 
   if (!taskId || !tenantId || !title) {
     return c.json({ error: 'taskId, tenantId, and title are required' }, 400)
@@ -1367,6 +1398,94 @@ app.options('/api/chat', (c) => {
   })
 })
 
+app.options('/api/chat/approval', (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+      'Vary': 'Origin',
+    },
+  })
+})
+
+// ─── MCP write-tool approval — called by mcp-server before executing a write tool ──
+app.post('/mcp/approval-request', async (c) => {
+  const serviceKey = c.req.header('x-internal-service-key') ?? ''
+  const keyA = Buffer.from(serviceKey)
+  const keyB = Buffer.from(INTERNAL_SERVICE_KEY)
+  if (!serviceKey || keyA.length !== keyB.length || !timingSafeEqual(keyA, keyB)) {
+    return c.json({ approved: false, reason: 'unauthorized' }, 401)
+  }
+
+  let body: { tenantId?: unknown; sessionId?: unknown; approvalId?: unknown; toolName?: unknown; args?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ approved: false, reason: 'invalid_body' }, 400) }
+
+  const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+  const approvalId = typeof body.approvalId === 'string' ? body.approvalId : ''
+  const toolName   = typeof body.toolName  === 'string' ? body.toolName  : 'unknown_tool'
+  const args       = (typeof body.args === 'object' && body.args !== null) ? body.args as Record<string, unknown> : {}
+
+  if (!approvalId) return c.json({ approved: false, reason: 'approvalId_required' }, 400)
+
+  const send = sseApprovalChannels.get(sessionId)
+  if (!send) {
+    console.log(`[mcp-approval] no active session sessionId=${sessionId} tool=${toolName} — auto-deny`)
+    return c.json({ approved: false, reason: 'no_active_session' })
+  }
+
+  console.log(`[mcp-approval] approval_request sessionId=${sessionId} approvalId=${approvalId} tool=${toolName}`)
+  send({ type: 'approval_request', approvalId, toolName, description: `Agent wants to ${toolName.replace(/_/g, ' ')}`, arguments: args })
+
+  const approved = await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      pendingMcpApprovals.delete(approvalId)
+      console.log(`[mcp-approval] timeout approvalId=${approvalId} tool=${toolName} — auto-deny`)
+      resolve(false)
+    }, 30_000)
+    pendingMcpApprovals.set(approvalId, { resolve, timer })
+  })
+
+  console.log(`[mcp-approval] resolved approvalId=${approvalId} tool=${toolName} approved=${approved}`)
+  return c.json({ approved })
+})
+
+// ─── MCP approval decision — called by frontend after user approves/denies ──
+app.post('/api/chat/approval', async (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  }
+
+  const authHeader = c.req.header('Authorization') ?? ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+
+  try { await validateToken(token) } catch {
+    return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+  }
+
+  let body: { approvalId?: unknown; decision?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
+
+  const approvalId = typeof body.approvalId === 'string' ? body.approvalId.trim() : ''
+  const decision   = typeof body.decision   === 'string' ? body.decision.trim()   : ''
+  if (!approvalId) return c.json({ ok: false, error: 'approvalId required' }, 400, corsHeaders)
+
+  const pending = pendingMcpApprovals.get(approvalId)
+  if (!pending) return c.json({ ok: false, error: 'approval_not_found' }, 404, corsHeaders)
+
+  clearTimeout(pending.timer)
+  pendingMcpApprovals.delete(approvalId)
+  pending.resolve(decision === 'allow' || decision === 'approved')
+
+  return c.json({ ok: true }, 200, corsHeaders)
+})
 
 // ─── Per-user rate limiter ────────────────────────────────────────────────────
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>()
@@ -1442,7 +1561,10 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: 'conversationId and message are required' }, 400)
   }
 
-  const message = rawMessage
+  const { sanitized: message, detections: chatPiiDetections } = filterPII(rawMessage)
+  if (chatPiiDetections.length > 0) {
+    console.log(`[pii-filter] chat userId=${payload.sub} masked: ${chatPiiDetections.map(d => `${d.type}×${d.count}`).join(' ')}`)
+  }
 
   const userId = payload.sub
   let internalUserId: string = userId
@@ -1523,8 +1645,11 @@ app.post('/api/chat', async (c) => {
   const closeStream = (): void => {
     if (streamClosed) return
     streamClosed = true
+    sseApprovalChannels.delete(sessionId)
     try { streamController.close() } catch {}
   }
+
+  sseApprovalChannels.set(sessionId, (payload) => sendEvent('approval_request', payload))
 
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1534,6 +1659,7 @@ app.post('/api/chat', async (c) => {
       // Client disconnected mid-stream — clean up OpenClaw
       console.log(`[sse:${sessionId}] client disconnected, closing openclaw`)
       streamClosed = true
+      sseApprovalChannels.delete(sessionId)
       openClaw?.close()
     },
   })
@@ -1675,7 +1801,7 @@ app.post('/api/chat', async (c) => {
       const mcpServerUrl = process.env.MCP_SERVER_URL
       if (hasMcpIntegrations && mcpServerUrl) {
         console.log(`[sse:${sessionId}] patching mcp server: ${mcpServerUrl}`)
-        await openClaw.patchSessionMcp([{ url: mcpServerUrl, headers: { 'x-tenant-id': tenantId } }])
+        await openClaw.patchSessionMcp([{ url: mcpServerUrl, headers: { 'x-tenant-id': tenantId, 'x-relay-session-id': sessionId } }])
       }
 
       // If client already disconnected during connect, bail out
@@ -1921,7 +2047,11 @@ async function handleSession(
     console.log(`[session:${sessionId}] firstMessage=${firstMessage} message=${JSON.stringify(rawWsMessage)} agentId=${typeof body.agentId === 'string' ? body.agentId : '(missing)'}`)
     const attachments0 = Array.isArray(body.attachments) ? body.attachments : []
     if (!rawWsMessage && attachments0.length === 0) return
-    let effectiveMessage = rawWsMessage || '[voice message]'
+    const { sanitized: filteredWsMsg, detections: wsPiiDetections } = filterPII(rawWsMessage)
+    if (wsPiiDetections.length > 0) {
+      console.log(`[pii-filter] ws sessionId=${sessionId} masked: ${wsPiiDetections.map(d => `${d.type}×${d.count}`).join(' ')}`)
+    }
+    let effectiveMessage = filteredWsMsg || '[voice message]'
     const agentId = typeof body.agentId === 'string' ? body.agentId : ''
     const attachments = attachments0
     if (attachments.length > 0) {

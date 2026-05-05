@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import {
   gmailListMessages, gmailGetMessage, gmailSendMessage,
   driveListFiles, driveGetFile, driveExportDoc,
@@ -18,6 +19,54 @@ import {
 } from './connectors/jira.js'
 import { proxyToVendorMCP, listVendorTools } from './proxy/vendor.js'
 import { getIntegrations } from './db/credentials.js'
+
+// Tools that create, send, or mutate external state — require explicit user confirmation
+// before execution. Read-only tools (list, get, search, export) are excluded.
+const WRITE_TOOLS = new Set([
+  'gmail_send_message',
+  'calendar_create_event',
+  'calendar_update_event',
+  'zoho_create_contact',
+  'zoho_create_deal',
+  'zoho_mail_send_message',
+  'zoho_cliq_send_message',
+  'jira_create_issue',
+  'jira_update_issue',
+])
+
+async function requestApproval(
+  tenantId: string,
+  relaySessionId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<void> {
+  const relayUrl = process.env.RELAY_INTERNAL_URL
+  if (!relayUrl) {
+    throw new Error(`${toolName} requires user approval but RELAY_INTERNAL_URL is not configured`)
+  }
+  const approvalId = randomUUID()
+  let res: Response
+  try {
+    res = await fetch(`${relayUrl}/mcp/approval-request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+      },
+      body: JSON.stringify({ tenantId, sessionId: relaySessionId, approvalId, toolName, args }),
+      signal: AbortSignal.timeout(35_000),
+    })
+  } catch (err) {
+    throw new Error(`${toolName}: could not reach approval relay — ${(err as Error).message}`)
+  }
+  if (!res.ok) {
+    throw new Error(`${toolName}: approval request failed (relay returned ${res.status})`)
+  }
+  const data = await res.json() as { approved: boolean; reason?: string }
+  if (!data.approved) {
+    throw new Error(`User denied ${toolName}${data.reason ? ` (${data.reason})` : ''}`)
+  }
+}
 
 const BUILTIN_TOOLS = [
   // Gmail
@@ -113,7 +162,13 @@ async function toolsList(tenantId: string): Promise<unknown[]> {
   return [...available, ...vendorTools]
 }
 
-async function toolsCall(tenantId: string, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function toolsCall(tenantId: string, name: string, args: Record<string, unknown>, relaySessionId?: string): Promise<unknown> {
+  if (WRITE_TOOLS.has(name)) {
+    if (!relaySessionId) {
+      throw new Error(`${name} requires user approval but no active user session is available`)
+    }
+    await requestApproval(tenantId, relaySessionId, name, args)
+  }
   switch (name) {
     case 'gmail_list_messages':
       return gmailListMessages(tenantId, args.query as string, args.maxResults as number | undefined)
@@ -175,7 +230,7 @@ async function toolsCall(tenantId: string, name: string, args: Record<string, un
   }
 }
 
-export async function handleRequest(tenantId: string, body: RpcBody): Promise<object> {
+export async function handleRequest(tenantId: string, body: RpcBody, relaySessionId?: string): Promise<object> {
   const { id, method } = body
 
   try {
@@ -188,8 +243,8 @@ export async function handleRequest(tenantId: string, body: RpcBody): Promise<ob
         const name = body.params?.name
         if (!name) return err(id, 'params.name required')
         const args = body.params?.arguments ?? {}
-        console.log(`[gateway] tools/call tenant=${tenantId} tool=${name}`)
-        const result = await toolsCall(tenantId, name, args)
+        console.log(`[gateway] tools/call tenant=${tenantId} tool=${name} sessionId=${relaySessionId ?? '(none)'}`)
+        const result = await toolsCall(tenantId, name, args, relaySessionId)
         return ok(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
       }
       default:

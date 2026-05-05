@@ -10,8 +10,8 @@ const PORT = parseInt(process.env.PORT ?? '3002', 10)
 const app = express()
 app.use(express.json())
 
-// SSE session store: sessionId → { res, tenantId }
-interface SseSession { res: Response; tenantId: string }
+// SSE session store: sessionId → { res, tenantId, relaySessionId }
+interface SseSession { res: Response; tenantId: string; relaySessionId?: string }
 const sseSessions = new Map<string, SseSession>()
 
 app.get('/health', (_req, res) => {
@@ -24,7 +24,8 @@ app.post('/mcp', async (req, res) => {
     res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'x-tenant-id header required' } })
     return
   }
-  const result = await handleRequest(tenantId, req.body)
+  const relaySessionId = req.headers['x-relay-session-id'] as string | undefined
+  const result = await handleRequest(tenantId, req.body, relaySessionId)
   res.json(result)
 })
 
@@ -37,6 +38,7 @@ app.get('/sse', (req, res) => {
     res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'x-tenant-id header required' } })
     return
   }
+  const relaySessionId = req.headers['x-relay-session-id'] as string | undefined
 
   const sessionId = randomUUID()
 
@@ -48,8 +50,8 @@ app.get('/sse', (req, res) => {
   // Tell the client where to POST messages for this session
   res.write(`event: endpoint\ndata: /messages?sessionId=${sessionId}\n\n`)
 
-  sseSessions.set(sessionId, { res, tenantId })
-  console.log(`[mcp-server] SSE session opened sessionId=${sessionId} tenant=${tenantId}`)
+  sseSessions.set(sessionId, { res, tenantId, relaySessionId })
+  console.log(`[mcp-server] SSE session opened sessionId=${sessionId} tenant=${tenantId} relaySessionId=${relaySessionId ?? '(none)'}`)
 
   req.on('close', () => {
     sseSessions.delete(sessionId)
@@ -73,7 +75,7 @@ app.post('/messages', async (req, res) => {
   }
 
   try {
-    const result = await handleRequest(session.tenantId, req.body)
+    const result = await handleRequest(session.tenantId, req.body, session.relaySessionId)
     session.res.write(`event: message\ndata: ${JSON.stringify(result)}\n\n`)
     res.status(202).end()
   } catch (e) {
