@@ -96,9 +96,7 @@ resource "aws_wafv2_web_acl" "internal_routes" {
   tags = {}
 }
 
-data "aws_caller_identity" "current" {}
-
 resource "aws_wafv2_web_acl_association" "api_gateway" {
-  resource_arn = "arn:aws:apigateway:${var.region}:${data.aws_caller_identity.current.account_id}:/apis/${module.api_gateway.api_id}/stages/$default"
+  resource_arn = "arn:aws:apigateway:${var.region}::/apis/${module.api_gateway.api_id}/stages/$default"
   web_acl_arn  = aws_wafv2_web_acl.internal_routes.arn
 }
