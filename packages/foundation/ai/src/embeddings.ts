@@ -19,23 +19,24 @@ export async function embedTexts(
   taskType: TaskType
 ): Promise<EmbeddingResult[]> {
   const credentials = await getGcpCredentials();
-
-  const auth = new GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  });
-  const client = await auth.getClient();
-  const token = await client.getAccessToken();
-
   const project = credentials.project_id;
   const location = process.env.GCP_LOCATION ?? 'us-central1';
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${EMBEDDING_MODEL}:predict`;
 
+  // Build auth client once — GoogleAuth handles token caching internally
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const authClient = await auth.getClient();
+
   const results: EmbeddingResult[] = [];
 
   // Process in batches of 100
+  // RELAY-5: refresh access token per batch so long runs don't use expired tokens
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
+    const token = await authClient.getAccessToken();
     const response = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
