@@ -51,3 +51,9 @@ apps/**/package.sam.json
 # Binaries dropped at root
 tsx
 terraform.tfstate
+
+# GCP VM app secrets (not covered by global patterns)
+apps/*/vertex-sa-key.json
+apps/*/*.key
+apps/*/*.pem
+apps/agent-server/portmap.json
