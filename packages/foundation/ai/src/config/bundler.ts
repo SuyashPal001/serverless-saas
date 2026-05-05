@@ -238,6 +238,10 @@ type MessageRow = {
   createdAt: Date;
 };
 
+// Reserve 30K tokens for conversation history; rough 4 chars/token estimate (RELAY-7)
+const MAX_CONTEXT_TOKENS = 30_000;
+const CHARS_PER_TOKEN = 4;
+
 async function loadConversationHistory(
   conversationId: string,
   limit: number,
@@ -257,7 +261,7 @@ async function loadConversationHistory(
     .limit(limit);
 
   // Reverse to chronological order (oldest first) for LLM context
-  return rows.reverse().map((m) => ({
+  const chronological = rows.reverse().map((m) => ({
     id: m.id,
     role: m.role as ConversationMessage['role'],
     content: m.content,
@@ -265,6 +269,20 @@ async function loadConversationHistory(
     toolResults: (m.toolResults as ConversationMessage['toolResults']) ?? undefined,
     createdAt: m.createdAt.toISOString(),
   }));
+
+  // Trim oldest messages first to fit within token budget
+  let tokenBudget = MAX_CONTEXT_TOKENS;
+  const included: ConversationMessage[] = [];
+
+  for (let i = chronological.length - 1; i >= 0; i--) {
+    const msg = chronological[i];
+    const estimated = Math.ceil(msg.content.length / CHARS_PER_TOKEN);
+    if (tokenBudget - estimated < 0 && included.length > 0) break;
+    tokenBudget -= estimated;
+    included.unshift(msg);
+  }
+
+  return included;
 }
 
 async function checkHasMcpIntegrations(tenantId: string): Promise<boolean> {
