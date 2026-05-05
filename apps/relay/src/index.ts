@@ -12,7 +12,7 @@ import { WebSocketServer, WebSocket, RawData } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, checkMessageQuota } from './usage.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
 import { filterPII } from './pii-filter.js'
@@ -798,7 +798,9 @@ function buildStepPrompt(
 }
 
 function extractClarificationQuestion(text: string): string | null {
-  const match = text.match(/NEEDS_CLARIFICATION:\s*([\s\S]+)/m)
+  // [^\n"]+ stops at newline or closing quote — prevents consuming trailing JSON syntax
+  // when summary falls back to raw agentOutput that still contains JSON characters
+  const match = text.match(/NEEDS_CLARIFICATION:\s*([^\n"]+)/m)
   return match ? match[1].trim() : null
 }
 
@@ -836,6 +838,16 @@ async function runTaskSteps(
   const sorted = [...steps].sort((a, b) => a.stepOrder - b.stepOrder)
   const completedSteps: CompletedStep[] = []
 
+  // Quota guard — re-checked here because the endpoint already returned 200 (fire-and-forget).
+  // If quota was consumed between the endpoint check and this execution, fail the task cleanly.
+  const quota = await checkMessageQuota(tenantId)
+  if (!quota.allowed) {
+    console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
+    await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' })
+    return
+  }
+
   let gatewayUrl: string
   try {
     gatewayUrl = await resolveGatewayUrl(tenantId, agentId)
@@ -861,6 +873,7 @@ async function runTaskSteps(
     let deltaAccumulated = ''
     const toolCallStartTimes = new Map<string, number>()
     let hasThinkingFired = false
+    let actualToolUsed: string | null = null
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -886,6 +899,9 @@ async function runTaskSteps(
             const startTime = callId ? toolCallStartTimes.get(callId) : undefined
             const durationMs = startTime !== undefined ? Date.now() - startTime : undefined
             if (callId) toolCallStartTimes.delete(callId)
+            // Track actual tool used — last tool wins for multi-tool steps.
+            // Compared against step.toolName at completion to detect plan deviation.
+            actualToolUsed = tool
             // If onToolCallStart never fired (agent stream path) emit the call event now
             if (!startTime) {
               fireTaskStepEvent(taskId, stepId, { type: 'task.step.tool_call', toolName: tool, tenantId })
@@ -956,9 +972,21 @@ async function runTaskSteps(
     // 2e. Parse structured JSON output from LLM
     let parsedOutput: { reasoning: string; toolRationale: string; results: Array<{ title: string; url: string; description: string }>; summary: string } | null = null
     try {
-      const jsonMatch = agentOutput.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        parsedOutput = JSON.parse(jsonMatch[0])
+      // Strip markdown code fences if present (same logic as extractPlanJson for the planning path)
+      const codeBlockMatch = agentOutput.match(/```(?:json)?\s*([\s\S]*?)```/)
+      const jsonText = codeBlockMatch ? codeBlockMatch[1].trim() : agentOutput.trim()
+      try {
+        parsedOutput = JSON.parse(jsonText)
+      } catch {
+        // Full-text parse failed — extract outermost { } using indexOf/lastIndexOf
+        // (avoids the greedy /\{[\s\S]*\}/ regex that over-captures when prose surrounds the JSON)
+        const start = jsonText.indexOf('{')
+        const end = jsonText.lastIndexOf('}')
+        if (start !== -1 && end > start) {
+          parsedOutput = JSON.parse(jsonText.slice(start, end + 1))
+        } else {
+          console.warn(`[tasks] stepId=${stepId} LLM did not return valid JSON — falling back to raw text`)
+        }
       }
     } catch {
       console.warn(`[tasks] stepId=${stepId} LLM did not return valid JSON — falling back to raw text`)
@@ -970,21 +998,37 @@ async function runTaskSteps(
     const summary = parsedOutput?.summary ?? agentOutput
 
     // 2f. Clarification signal → post comment, relay question and halt
+    // Check 1: NEEDS_CLARIFICATION string in the summary field
     const clarificationQuestion = extractClarificationQuestion(summary)
     if (clarificationQuestion) {
-      console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed`)
+      console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (string signal)`)
       await postTaskComment(taskId, `🤔 I need clarification: ${clarificationQuestion}`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [clarificationQuestion] })
       return
     }
+    // Check 2: planning-style { clarificationNeeded: true, questions: [...] } — model sometimes uses
+    // this format even in step responses because it mirrors the planning prompt format
+    const planStyleClarification = extractPlanJson(agentOutput)
+    if (planStyleClarification && 'clarificationNeeded' in planStyleClarification) {
+      const questions = planStyleClarification.questions ?? []
+      const question = questions[0] ?? 'Agent needs clarification before proceeding.'
+      console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (plan-style signal)`)
+      await postTaskComment(taskId, `🤔 I need clarification: ${question}`, agentId)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: questions.length > 0 ? questions : [question] })
+      return
+    }
 
     // 2d. Step succeeded
+    if (actualToolUsed && actualToolUsed !== step.toolName) {
+      console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} tool deviation: planned="${step.toolName}" actual="${actualToolUsed}"`)
+    }
     console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} complete`)
     completedSteps.push({ title: step.title, agentOutput, results, reasoning, summary })
     await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/complete`, {
       agentOutput,
       reasoning,
       toolRationale,
+      actualToolUsed,
       toolResult: { text: summary, results },
     })
   }
@@ -1027,6 +1071,12 @@ app.post('/api/tasks/execute', async (c) => {
 
   if (!taskId || !tenantId || steps.length === 0) {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
+  }
+
+  const execQuota = await checkMessageQuota(tenantId)
+  if (!execQuota.allowed) {
+    console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${execQuota.used} limit=${execQuota.limit}`)
+    return c.json({ error: 'Message quota exceeded', used: execQuota.used, limit: execQuota.limit }, 429)
   }
 
   console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} execution started steps=${steps.length}`)
@@ -1182,6 +1232,12 @@ app.post('/api/tasks/plan', async (c) => {
 
   if (!taskId || !tenantId || !title) {
     return c.json({ error: 'taskId, tenantId, and title are required' }, 400)
+  }
+
+  const planQuota = await checkMessageQuota(tenantId)
+  if (!planQuota.allowed) {
+    console.warn(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${planQuota.used} limit=${planQuota.limit}`)
+    return c.json({ error: 'Message quota exceeded', used: planQuota.used, limit: planQuota.limit }, 429)
   }
 
   console.log(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} title="${title}"`)
@@ -1412,6 +1468,16 @@ app.post('/api/chat', async (c) => {
 
   if (isInternalCall && !tenantId) {
     return c.json({ error: 'tenantId required for internal service calls' }, 400)
+  }
+
+  // Quota guard — skip for internal service calls (Lambda-initiated, not user-facing).
+  // Checked before ReadableStream setup so we can still return a plain 429, not an SSE error event.
+  if (!isInternalCall) {
+    const chatQuota = await checkMessageQuota(tenantId)
+    if (!chatQuota.allowed) {
+      console.warn(`[sse] tenantId=${tenantId} userId=${userId} quota exceeded used=${chatQuota.used} limit=${chatQuota.limit}`)
+      return c.json({ error: 'Message quota exceeded', used: chatQuota.used, limit: chatQuota.limit }, 429)
+    }
   }
 
   const sessionId = crypto.randomUUID()
