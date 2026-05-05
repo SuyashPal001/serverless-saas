@@ -43,14 +43,24 @@ export function createEventHandler(context: EventHandlerContext): {
   let accumulatedContent = '';
   let usage: UsageReport | undefined;
   const errors: string[] = [];
+  let consecutivePushFailures = 0;
+  const MAX_PUSH_FAILURES = 3;
 
   const handler: AgentEventHandler = async (event: AgentEvent) => {
     // Forward every event to the frontend (best-effort — failures are non-fatal)
-    if (context.pushToFrontend) {
+    // RELAY-9: circuit breaker — stop pushing after 3 consecutive failures to
+    // avoid log spam and wasted network calls for a broken WS connection.
+    if (context.pushToFrontend && consecutivePushFailures < MAX_PUSH_FAILURES) {
       try {
         await context.pushToFrontend(event);
+        consecutivePushFailures = 0;
       } catch (err) {
-        console.warn('[EventHandler] pushToFrontend failed, continuing:', err);
+        consecutivePushFailures++;
+        if (consecutivePushFailures >= MAX_PUSH_FAILURES) {
+          console.warn('[EventHandler] Too many push failures — disabling WS push for this session');
+        } else {
+          console.warn('[EventHandler] pushToFrontend failed, continuing:', err);
+        }
       }
     }
 
