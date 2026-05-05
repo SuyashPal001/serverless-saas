@@ -211,11 +211,3 @@ variable "domain" {
   description = "Root domain for the project (e.g. saas.fitnearn.com). Used for S3 CORS wildcard."
   type        = string
 }
-
-# -------------------------------------------------------
-# WAF
-# -------------------------------------------------------
-variable "relay_ip_allowlist" {
-  description = "GCP VM static IPs allowed to call /api/v1/internal/* routes. No default — set in terraform.tfvars (gitignored)."
-  type        = list(string)
-}
