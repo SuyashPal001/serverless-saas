@@ -2,7 +2,7 @@
 
 **Last updated**: 2026-05-05
 **Branch**: `develop`
-**Latest commit**: `26e22a1`
+**Latest commit**: `2b7f674`
 
 ---
 
@@ -28,6 +28,8 @@
 | `8590253` | J1 | fetchWithRetry utility with exponential backoff applied to embeddings + llm |
 | `15a36ab` | K2, K3, N1, N2 | Session limit (10/tenant), token-aware history truncation, GCP cred TTL, WS token 30s |
 | `26e22a1` | L3, O1, O3 | RAG titles-only, push circuit breaker (3 failures), per-batch token refresh |
+| `d2e9dc9` | L4-2 | Fix acceptanceCriteria serialization + attachmentContext parsing in relay bodies |
+| `2b7f674` | — | TaskSidebar: show real filename for attachments (was "Attachment N") |
 
 ---
 
@@ -92,6 +94,28 @@ cd packages/foundation/database && pnpm db:migrate
 - B3: API keys are NO LONGER sent to the GCP VM — VM must use its own credentials
 - N2: WS token TTL is now 30 seconds (was 5 minutes)
 - K2: Max 10 concurrent sessions per tenant enforced in session manager
+
+---
+
+## Attachment Context Pipeline (May 5, 2026)
+
+### How it works
+1. **Frontend** (`BoardView.tsx`): user attaches file in task creation dialog → upload → confirm → `attachmentFileIds: string[]` sent with `POST /api/v1/tasks`
+2. **Lambda** (`taskWorker.ts` `extractAttachments`): downloads from S3, extracts text (PDF via pdf-parse, DOCX via mammoth, txt/md/csv as UTF-8), sends `attachmentContext` in POST body to relay
+3. **Relay** (`/api/tasks/plan` + `/api/tasks/execute`): parses `attachmentContext` from body, injects `## Attached Files` section into planning/step prompts
+
+### Critical: relay must be rebuilt after source changes
+Relay runs from `/opt/agent-relay/dist/index.js` (compiled JS). After any edit to `/opt/agent-relay/src/index.ts`:
+```bash
+cd /opt/agent-relay && npm run build && pm2 restart agent-relay
+```
+Failing to rebuild = relay runs stale code silently. All attachment fixes before `d2e9dc9` failed this way.
+
+### Frontend state caveat
+After `onSuccess` fires on task creation, `attachmentFileIds` state is cleared. If the agent returns `clarificationNeeded`, user must re-attach files on the next task attempt — OR use the `/tasks/:taskId/clarify` endpoint on the existing blocked task (which re-queues `replan_task` and re-extracts from `task.attachmentFileIds` stored in DB).
+
+### Attachment display
+`task.attachmentFileIds` is `string[]` (IDs only). `TaskSidebar.tsx` fetches `GET /api/v1/files/` (returns `{ data: [{ id, filename, ... }] }`) and maps ID → filename. Fallback: "Attachment N".
 
 ---
 
