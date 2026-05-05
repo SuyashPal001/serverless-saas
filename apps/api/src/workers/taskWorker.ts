@@ -132,13 +132,14 @@ async function getPastSuccessfulPlans(tenantId: string, title: string, descripti
 
   const sections: string[] = [];
   for (const row of rows) {
-    const steps = await db.select({ title: taskSteps.title, description: taskSteps.description })
+    const steps = await db.select({ title: taskSteps.title })
       .from(taskSteps)
       .where(and(eq(taskSteps.taskId, row.id), eq(taskSteps.status, 'done')))
       .orderBy(asc(taskSteps.stepNumber));
 
     if (steps.length > 0) {
-      const stepList = steps.map((s, i) => `${i + 1}. ${s.title}${s.description ? ' — ' + s.description : ''}`).join('\n');
+      // L4-5: RAG context includes step titles only — descriptions may leak sensitive data
+      const stepList = steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
       sections.push(`Past task: "${row.title}"\nSteps taken:\n${stepList}`);
     }
   }
