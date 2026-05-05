@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import * as crypto from 'crypto';
 import { getGcpCredentials } from './gcp-credentials';
+import { fetchWithRetry } from './utils/retry';
 
 const EMBEDDING_MODEL = 'text-embedding-004';
 const EMBEDDING_DIMENSIONS = 768;
@@ -35,7 +36,7 @@ export async function embedTexts(
   // Process in batches of 100
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token.token}`,

@@ -1,5 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { getGcpCredentials } from './gcp-credentials';
+import { fetchWithRetry } from './utils/retry';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_LOCATION = 'us-central1';
@@ -44,7 +45,7 @@ export async function generateTextVertex(params: GenerateTextParams): Promise<st
     }
   };
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token.token}`,
