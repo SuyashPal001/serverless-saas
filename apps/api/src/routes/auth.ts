@@ -219,7 +219,7 @@ authRoutes.get('/ws-token', async (c) => {
         const token = await new SignJWT({ userId, tenantId, type: 'ws' })
             .setProtectedHeader({ alg: 'HS256' })
             .setIssuedAt()
-            .setExpirationTime('5m')
+            .setExpirationTime('30s')  // CC-3: short-lived to reduce replay window
             .sign(secret);
 
         return c.json({ token });
