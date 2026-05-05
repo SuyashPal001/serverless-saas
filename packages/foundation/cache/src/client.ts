@@ -88,3 +88,23 @@ export const getCacheClient = (): CacheClient => {
 export const resetCacheClient = (): void => {
   instance = null;
 };
+
+let healthChecked = false;
+
+/**
+ * Verify Redis connectivity on first use.
+ * Resets the cached instance if the ping fails so the next call retries.
+ * Call from initRuntimeSecrets() after setting UPSTASH credentials.
+ */
+export async function ensureCacheHealthy(): Promise<void> {
+  if (healthChecked) return;
+  const client = getCacheClient();
+  try {
+    await client.ping();
+    healthChecked = true;
+  } catch (err) {
+    resetCacheClient();
+    healthChecked = false;
+    throw new Error(`Redis health check failed: ${(err as Error).message}`);
+  }
+}

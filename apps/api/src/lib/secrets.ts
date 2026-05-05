@@ -1,4 +1,5 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { ensureCacheHealthy } from '@serverless-saas/cache';
 
 const client = new SecretsManagerClient({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 const cache = new Map<string, string>();
@@ -35,4 +36,7 @@ export async function initRuntimeSecrets(): Promise<void> {
             process.env.INTERNAL_SERVICE_KEY = JSON.parse(raw).key;
         }) : Promise.resolve(),
     ]);
+
+    // Verify Redis connectivity after credentials are injected (L1-5)
+    await ensureCacheHealthy();
 }
