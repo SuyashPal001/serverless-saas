@@ -1,0 +1,35 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "description": "Hono WebSocket relay — bridges frontend to OpenClaw gateway",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^7.3.0",
+    "@google-cloud/vertexai": "^1.10.3",
+    "@google/genai": "^1.48.0",
+    "@hono/node-server": "^1.13.7",
+    "dotenv": "^16.4.7",
+    "hono": "^4.7.5",
+    "jose": "^5.10.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.13.3",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.11.11",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

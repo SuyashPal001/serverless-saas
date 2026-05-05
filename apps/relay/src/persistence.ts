@@ -1,0 +1,72 @@
+const API_BASE = process.env.API_BASE_URL ?? ''
+
+function authHeaders(idToken: string): Record<string, string> {
+  return {
+    'Authorization': `Bearer ${idToken}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+export async function createConversation(idToken: string, agentId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/conversations`, {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      body: JSON.stringify({ agentId }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      console.error('[persistence] createConversation failed:', res.status, text)
+      return null
+    }
+    const json = await res.json() as { data?: { id?: string } }
+    const id = json.data?.id
+    if (!id) {
+      console.error('[persistence] createConversation: missing id in response')
+      return null
+    }
+    return id
+  } catch (err) {
+    console.error('[persistence] createConversation error:', (err as Error).message)
+    return null
+  }
+}
+
+export function saveUserMessage(
+  idToken: string,
+  conversationId: string,
+  content: string,
+  attachments?: Array<{ fileId?: string; name: string; type: string; size?: number }>
+): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: authHeaders(idToken),
+    body: JSON.stringify({ role: 'user', content, attachments: attachments ?? [], createdAt: new Date().toISOString() }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveUserMessage status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveUserMessage status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveUserMessage error:', err.message)
+  })
+}
+
+export function saveAssistantMessage(idToken: string, conversationId: string, content: string): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: authHeaders(idToken),
+    body: JSON.stringify({ role: 'assistant', content, createdAt: new Date(Date.now() + 1000).toISOString() }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveAssistantMessage status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveAssistantMessage status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveAssistantMessage error:', err.message)
+  })
+}
