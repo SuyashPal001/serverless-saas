@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
     Bot, User, ChevronDown, Clock, Target, LayoutList, Calendar,
     Link2, Paperclip, FileText, CheckCircle, Play, XCircle, X, Pencil,
@@ -158,6 +159,18 @@ export function TaskSidebar({
     const [newLink, setNewLink] = useState('')
 
     const completedSteps = steps.filter(s => s.status === 'done').length
+
+    const { data: filesData } = useQuery({
+        queryKey: ['files'],
+        queryFn: () => api.get<{ data: Array<{ id: string; filename: string }> }>('/api/v1/files'),
+        enabled: (task.attachmentFileIds?.length ?? 0) > 0,
+        staleTime: 60_000,
+    })
+    const fileNameMap = useMemo(() => {
+        const map: Record<string, string> = {}
+        for (const f of filesData?.data ?? []) map[f.id] = f.filename
+        return map
+    }, [filesData])
 
     return (
         <div className="w-[300px] border-l border-[#1e1e1e] flex-shrink-0 flex flex-col overflow-y-auto px-5 py-6">
@@ -489,7 +502,7 @@ export function TaskSidebar({
                                             }
                                         }}
                                     >
-                                        Attachment {i + 1}
+                                        {fileNameMap[fileId] ?? `Attachment ${i + 1}`}
                                     </button>
                                     <button
                                         onClick={() => taskOperations.removeAttachment(fileId)}
