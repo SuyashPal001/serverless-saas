@@ -5,25 +5,16 @@ export async function pushWebSocketEvent(
   payload: Record<string, unknown>
 ): Promise<void> {
   const cache = getCacheClient();
-  let cursor = 0;
+  const setKey = `ws:tenant:${tenantId}:connections`;
 
-  do {
-    const [nextCursor, keys] = await cache.scan(cursor, {
-      match: `ws:tenant:${tenantId}:user:*`,
-      count: 100,
-    });
-    cursor = Number(nextCursor);
+  // Single SMEMBERS on the flat tenant SET — no SCAN
+  const members = await cache.smembers(setKey) as string[];
 
-    await Promise.all(
-      (keys as string[]).map(async (key) => {
-        const connectionIds = await cache.smembers(key);
-        await Promise.all(
-          connectionIds.map(async (connectionId) => {
-            const ok = await pushToConnection(connectionId, payload);
-            if (!ok) await cache.srem(key, connectionId);
-          })
-        );
-      })
-    );
-  } while (cursor !== 0);
+  await Promise.all(
+    members.map(async (member) => {
+      const connectionId = member.slice(member.indexOf(':') + 1);
+      const ok = await pushToConnection(connectionId, payload);
+      if (!ok) await cache.srem(setKey, member);
+    })
+  );
 }

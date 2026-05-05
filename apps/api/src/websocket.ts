@@ -79,11 +79,15 @@ async function handleConnect(event: any, connectionId: string): Promise<APIGatew
             return { statusCode: 401, body: 'Unauthorized' };
         }
 
-        const redisKey = `ws:tenant:${tenantId}:user:${userId}`;
         const cache = getCacheClient();
+        const member = `${userId}:${connectionId}`;
 
-        await cache.sadd(redisKey, connectionId);
-        await cache.expire(redisKey, 86400); // 24 hours
+        // Flat tenant-level SET — used by pushWebSocketEvent (no SCAN needed)
+        await cache.sadd(`ws:tenant:${tenantId}:connections`, member);
+        await cache.expire(`ws:tenant:${tenantId}:connections`, 86400);
+
+        // Reverse lookup — used by disconnect to find the right SET without SCAN
+        await cache.set(`ws:connection:${connectionId}`, `${tenantId}:${userId}`, { ex: 86400 });
 
         console.log('Client connected and authenticated:', { userId, tenantId, connectionId });
         return { statusCode: 200, body: 'Connected.' };
@@ -101,27 +105,21 @@ async function handleConnect(event: any, connectionId: string): Promise<APIGatew
 async function handleDisconnect(connectionId: string): Promise<APIGatewayProxyResult> {
     try {
         const cache = getCacheClient();
-        let cursor: number = 0;
 
-        do {
-            const [nextCursor, keys] = await cache.scan(cursor, {
-                match: 'ws:tenant:*:user:*',
-                count: 100
-            });
-            cursor = Number(nextCursor);
+        // Reverse lookup to find tenantId + userId directly — no SCAN
+        const lookup = await cache.get(`ws:connection:${connectionId}`) as string | null;
+        if (lookup) {
+            const colonIdx = lookup.indexOf(':');
+            const tenantId = lookup.slice(0, colonIdx);
+            const userId = lookup.slice(colonIdx + 1);
+            const member = `${userId}:${connectionId}`;
 
-            for (const key of keys) {
-                if (typeof key !== 'string') continue;
-                const isMember = await cache.sismember(key, connectionId);
-                if (isMember) {
-                    await cache.srem(key, connectionId);
-                    console.log('Client disconnected and removed from set:', { connectionId, key });
-                    return { statusCode: 200, body: 'Disconnected.' };
-                }
-            }
-        } while (cursor !== 0);
-
-        console.log('Client disconnected, not found in any active set:', { connectionId });
+            await cache.srem(`ws:tenant:${tenantId}:connections`, member);
+            await cache.del(`ws:connection:${connectionId}`);
+            console.log('Client disconnected and removed:', { connectionId, tenantId });
+        } else {
+            console.log('Client disconnected, not found in reverse lookup:', { connectionId });
+        }
 
     } catch (error) {
         console.error('Disconnect handler error:', error);
