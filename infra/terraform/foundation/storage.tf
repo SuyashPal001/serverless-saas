@@ -62,3 +62,24 @@ resource "aws_iam_role_policy" "lambda_s3_files" {
     ]
   })
 }
+
+#---------------------------------------------------------
+# IAM — S3 read permission for the task worker Lambda
+#---------------------------------------------------------
+resource "aws_iam_role_policy" "task_worker_s3_files" {
+  name = "${local.name_prefix}-task-worker-s3-files"
+  role = module.iam.role_names["task_worker"]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+        ]
+        Resource = "${aws_s3_bucket.files.arn}/*"
+      }
+    ]
+  })
+}
