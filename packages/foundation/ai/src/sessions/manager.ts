@@ -128,6 +128,15 @@ export async function createSession(params: {
     return existing;
   }
 
+  // Enforce per-tenant session limit (RELAY-8)
+  const MAX_SESSIONS_PER_TENANT = 10;
+  const activeCount = await getTenantSessionCount(tenantId);
+  if (activeCount >= MAX_SESSIONS_PER_TENANT) {
+    throw new Error(
+      `Tenant ${tenantId} has ${activeCount} active sessions (max ${MAX_SESSIONS_PER_TENANT})`,
+    );
+  }
+
   const now = new Date().toISOString();
   const data: SessionData = {
     sessionId,
