@@ -27,7 +27,6 @@ import type {
   PolicyConfig,
   ConversationMessage,
 } from '../runtime/types';
-import { decryptSecret } from '../utils/encryption';
 
 // =============================================================================
 // PUBLIC TYPES
@@ -290,13 +289,16 @@ async function checkHasMcpIntegrations(tenantId: string): Promise<boolean> {
 function formatLLMProvider(
   provider: typeof llmProviders.$inferSelect,
 ): LLMProviderConfig {
-  const apiKey = decryptSecret(provider.apiKeyEncrypted);
-
+  // RELAY-2: Never send raw API keys to the VM relay.
+  // The VM must have its own LLM credentials configured via its environment.
+  // For Vertex AI, send only non-secret location identifiers.
   const credentials: LLMProviderConfig['credentials'] = {};
 
-  if (provider.provider === 'openai' || provider.provider === 'anthropic' || provider.provider === 'mistral' || provider.provider === 'openrouter') {
-    credentials.apiKey = apiKey;
+  if (provider.provider === 'vertex') {
+    credentials.projectId = process.env.GCP_PROJECT_ID;
+    credentials.location = process.env.GCP_LOCATION;
   }
+  // apiKey intentionally omitted for all providers — VM uses its own keys
 
   return {
     // DB enum is 'openai' | 'anthropic' | 'mistral' | 'openrouter'.

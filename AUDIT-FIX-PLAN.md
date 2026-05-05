@@ -616,21 +616,21 @@ model: parsed.data.model ?? null,
 |---|---|---|---|---|
 | 1 | A1 | L1-1 SQS timeout | `infra/terraform/foundation/main.tf` | [x] 15dc71d |
 | 2 | A2 | L3-2 fetch timeout | `apps/api/src/workers/taskWorker.ts` | [x] 15dc71d |
-| 3 | A3 | L1-6 SSM path | `packages/foundation/cache/src/websocket-push.ts` | [ ] |
-| 4 | B1 | RELAY-3 real encryption | `packages/foundation/ai/src/utils/encryption.ts` | [ ] |
+| 3 | A3 | L1-6 SSM path | `packages/foundation/cache/src/websocket-push.ts` | [x] 5dbc609 |
+| 4 | B1 | RELAY-3 real encryption | `packages/foundation/ai/src/utils/encryption.ts` | [x] 9916147 |
 | 5 | B2 | L3-3+CC-2 timing-safe auth | `apps/api/src/routes/internal/tasks.ts` | [x] 15dc71d |
 | 6 | B3 | RELAY-2 no raw keys to VM | `packages/foundation/ai/src/config/bundler.ts` | [ ] |
 | 7 | B4 | L2-5 tenant cross-check | `apps/api/src/routes/internal/tasks.ts` | [x] 9872a1a |
 | 8 | C1 | L2-1 state machine | `apps/api/src/routes/tasks.ts` | [x] cb925a4 |
 | 9 | C2 | L2-2 max steps | `apps/api/src/workers/taskWorker.ts` | [x] 9812be9 |
 | 10 | C3 | L2-2 max clarifications | `apps/api/src/routes/internal/tasks.ts` | [x] 9812be9 |
-| 11 | C4 | L2-4 concurrent limit | `apps/api/src/routes/tasks.ts` | [ ] |
+| 11 | C4 | L2-4 concurrent limit | `apps/api/src/routes/tasks.ts` | [x] 5dbc609 |
 | 12 | D1 | L3-1 filter completed steps | `apps/api/src/workers/taskWorker.ts` | [x] 2622d74 |
 | 13 | D2 | L3-4 step ordering | `apps/api/src/routes/internal/tasks.ts` | [x] b4eb883 |
-| 14 | D3 | CC-5 idempotent fail | `apps/api/src/routes/internal/tasks.ts` | [ ] |
-| 15 | E1 | L4-2 prompt injection | `apps/api/src/workers/taskWorker.ts` + relay | [ ] |
-| 16 | F1 | CC-1 observability | multiple files | [ ] |
-| 17 | G1 | L4-3+RELAY-6 token tracking | schema + `apps/api/src/routes/internal/tasks.ts` | [ ] |
+| 14 | D3 | CC-5 idempotent fail | `apps/api/src/routes/internal/tasks.ts` | [x] 5dbc609 |
+| 15 | E1 | L4-2 prompt injection | `apps/api/src/workers/taskWorker.ts` + relay | [x] 7344c70 |
+| 16 | F1 | CC-1 observability | multiple files | [x] b575288 |
+| 17 | G1 | L4-3+RELAY-6 token tracking | schema + `apps/api/src/routes/internal/tasks.ts` | [ ] SKIP (migration) |
 
 **Deploy order**: Terraform (A1) → DB migration (C3, G1) → SAM deploy (everything else)
 
