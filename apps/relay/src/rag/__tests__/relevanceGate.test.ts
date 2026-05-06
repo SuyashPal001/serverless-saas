@@ -14,20 +14,17 @@ function chunk(id: string, score: number): ScoredChunk {
 }
 
 describe('fastGateChunks', () => {
-  it('returns chunks sorted by score descending, filtered by threshold', () => {
+  it('returns only chunks at or above the score threshold, sorted descending', () => {
     const chunks = [chunk('a', 0.9), chunk('b', 0.6), chunk('c', 0.3)]
-    // a and b are above 0.5; c is below but i=2 < 3 so the top-3 guard keeps it
+    // c is below 0.5 — must be excluded after removing the || i < 3 guard
     const result = fastGateChunks(chunks, 0.5, 5)
-    expect(result.map(c => c.id)).toEqual(['a', 'b', 'c'])
+    expect(result.map(c => c.id)).toEqual(['a', 'b'])
   })
 
-  it('always keeps the top 3 by score even when all scores are below threshold', () => {
-    const chunks = [chunk('a', 0.1), chunk('b', 0.2), chunk('c', 0.3), chunk('d', 0.4)]
-    // Sorted: d, c, b, a — all below 0.5. Indices 0,1,2 (d,c,b) kept by `|| i < 3`.
-    // Index 3 (a) dropped.
-    const result = fastGateChunks(chunks, 0.5, 5)
-    expect(result).toHaveLength(3)
-    expect(result.map(r => r.id)).toEqual(['d', 'c', 'b'])
+  it('returns [] when all chunks score below the threshold', () => {
+    // Confirms the || i < 3 bug is gone — no implicit top-3 retention
+    const chunks = [chunk('a', 0.01), chunk('b', 0.01), chunk('c', 0.01)]
+    expect(fastGateChunks(chunks, 0.5, 5)).toHaveLength(0)
   })
 
   it('sets relevanceScore to 2 on every returned chunk', () => {

@@ -12,7 +12,7 @@ export interface ScoredChunk {
 export function fastGateChunks(chunks: ScoredChunk[], scoreThreshold = 0.5, limit = 5): ScoredChunk[] {
   return chunks
     .sort((a, b) => b.score - a.score)
-    .filter((c, i) => c.score >= scoreThreshold || i < 3)  // always include top 3 by score
+    .filter((c) => c.score >= scoreThreshold)
     .slice(0, limit)
     .map(c => ({ ...c, relevanceScore: 2 }))
 }
