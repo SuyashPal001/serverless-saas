@@ -26,7 +26,7 @@ Scores:
 | Phase | Status | Commit |
 |---|---|---|
 | Phase 1 — Production Grade Foundation | ✅ COMPLETE | All 4 groups shipped |
-| Phase 2 — OS Capabilities | 🟡 STARTED | 9a46dea — Mastra added |
+| Phase 2 — OS Capabilities | 🟡 STARTED | 9a46dea — Mastra added; 9238a58 — isolation fix |
 
 ### Phase 1 Groups Completed
 
@@ -179,6 +179,13 @@ Scores:
 - Controlled by `USE_MASTRA_TASKS=true/false`
 - Default: false (OpenClaw path — zero production risk)
 - Performance: 80s container spin-up → 0s; ~95s new tenant first task → ~12s
+
+**Mastra tenant isolation fix (COMPLETE — 9238a58):**
+- Removed singleton MCPClient — was sharing one connection across all tenants
+- `getMCPClientForTenant(tenantId)` creates a new MCPClient per task execution
+- Both required headers: `x-internal-service-key` (auth) + `x-tenant-id` (credential scoping)
+- `MCPClient.disconnect()` called in `try/finally` — SSE cleanup on every exit path
+- `TenantAgentWithClient` interface added for clean agent + client lifecycle management
 
 **Remaining Phase 2 work:**
 - Tool registry (TypeScript, packages/foundation/tools/)

@@ -40,13 +40,13 @@ This is a platform OS. Other teams' products sit on it. Every fix is a platform 
 
 ### Step 1 — Mastra Task Executor (COMPLETE)
 
-**Status:** ✅ Shipped — commit 9a46dea, May 2026
+**Status:** ✅ Shipped — 9a46dea (Mastra executor) + 9238a58 (isolation fix), May 2026
 
 **What was built:**
 - `apps/relay/src/mastra/memory.ts` — PostgresStore → Neon (`mastra` schema)
-- `apps/relay/src/mastra/tools.ts` — MCPClient → mcp-server:3002
-- `apps/relay/src/mastra/agent.ts` — per-tenant Mastra Agent
-- `apps/relay/src/mastra/workflow.ts` — task step coordinator with structured output
+- `apps/relay/src/mastra/tools.ts` — `getMCPClientForTenant(tenantId)` — per-task MCPClient with x-tenant-id header
+- `apps/relay/src/mastra/agent.ts` — per-tenant Mastra Agent + `TenantAgentWithClient` interface
+- `apps/relay/src/mastra/workflow.ts` — task step coordinator with structured output; MCPClient.disconnect() in try/finally
 - `apps/relay/src/mastra/index.ts` — module exports
 - `apps/relay/src/app.ts` — `runMastraTaskSteps()` added above `runTaskSteps()`; feature flag branch in `POST /api/tasks/execute`
 
@@ -224,8 +224,14 @@ apps/ai-service/
 **Intent classifier built here** — real product reveals what routing decisions actually matter before building the classifier.
 
 **Infrastructure considered for Phase 3:**
-- REST API off Lambda → GCP VM (if measured latency data demands it)
-- Go rewrite of relay (if measured load data shows Node.js bottleneck)
+- REST API off Lambda → GCP VM — trigger: 10 paying tenants OR measured p95 latency > acceptable threshold
+- Go rewrite of relay — trigger: measured load data shows Node.js event loop is the bottleneck
+
+**Multi-agent pattern (Phase 3+):**
+Single Mastra agent must prove itself in production first. Multi-agent (supervisor + specialists) only after single agent is validated on real product traffic. Real product reveals what routing decisions matter before building intent classifier.
+
+**SOUL.md integration (parked — Phase 3+):**
+`agent_skills.system_prompt` already contains full agent identity, behavioral rules, and tool reference table. SOUL.md adds RAG query rewriting guidance relevant to the chat path. Mastra task path uses `retrieve_documents` via MCP tool directly — SOUL.md guidance not needed. Revisit if RAG migrates to Python ai-service in Phase 3.
 
 ---
 
@@ -280,7 +286,9 @@ Decisions driven by real production traffic data — not speculation.
 | Rust anywhere now | No use case justifying it at current scale. |
 | Python for RAG (was originally planned) | TypeScript RAG is Phase 1 hardened and works. No reason to rewrite. |
 | Python for intent classifier now | Phase 3 — real product reveals what routing matters first. |
-| Move REST API off Lambda now | Working. Premature. Decide when measured performance data demands it. |
+| Move REST API off Lambda now | Working. Premature. Decide at 10 paying tenants or when measured performance data demands it. |
+| SOUL.md for Mastra instructions | `agent_skills.system_prompt` already has full personality + tool rules. SOUL.md adds RAG guidance for chat path only. Phase 3 revisit. |
+| Multi-agent before single agent validated | Single Mastra agent must prove itself in production first. Real product reveals routing patterns. |
 
 ---
 

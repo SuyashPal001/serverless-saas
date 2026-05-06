@@ -254,3 +254,4 @@ Things considered and explicitly rejected with reasons:
 | LiteLLM | Supply chain attack March 24, 2026. Permanently rejected. |
 | Nango for OAuth | MCP-native approach preferred. Official MCP servers handle tool calls. |
 | Inngest (now) | Parked — will decide after real production traffic data. Not speculation. |
+| SOUL.md integration into Mastra instructions | `agent_skills.system_prompt` (templates/IDENTITY.md) already contains full personality + behavioral rules + all 25 tool descriptions. SOUL.md adds RAG query rewriting guidance for the chat path only. Mastra task path calls `retrieve_documents` via MCP tool directly — SOUL.md guidance not applicable. Phase 3 revisit if needed. |

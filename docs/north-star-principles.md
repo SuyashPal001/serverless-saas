@@ -165,7 +165,8 @@ The north star defines what a production agentic platform must do. Every princip
 **What it means:** Tenant A never touches tenant B.
 
 **Evidence:** `apps/relay/src/index.ts:57-60` — hard refusal to cross-tenant route. `apps/mcp-server/src/gateway.ts:97-113` — tools filtered by tenant's active integrations.
-**Mastra:** Memory isolation via `resource: tenantId` in every `agent.generate()` call. PostgresStore queries include resourceId in all lookups.
+**Mastra memory:** Memory isolation via `resource: tenantId` in every `agent.generate()` call. PostgresStore queries include resourceId in all lookups.
+**Mastra tools (isolation fix — 9238a58):** `apps/relay/src/mastra/tools.ts` — `getMCPClientForTenant(tenantId)` creates a new MCPClient per task with both `x-internal-service-key` (auth) and `x-tenant-id: tenantId` (credential scoping) headers. Previous singleton pattern shared one connection across all tenants — removed. MCPClient disconnected in `try/finally` in `workflow.ts` on every exit path.
 
 **Status: ✅ DONE**
 

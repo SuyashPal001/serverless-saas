@@ -166,16 +166,23 @@ fetchAgentSkill(agentId) → get instructions from agent_skills
     ↓
 WorkflowContext built with callbacks → runMastraWorkflow()
     ↓
+createTenantAgent(config)
+    ├── getMCPClientForTenant(tenantId)  — new MCPClient per task
+    │       headers: x-internal-service-key + x-tenant-id: tenantId
+    └── new Agent({ instructions, model, memory, tools })
+    ↓
 Per-step: Mastra agent.generate() with structuredOutput schema
     ↓
 Zod-validated output: { status, summary, reasoning, toolCalled, toolResult }
     ↓
 onStepComplete/onStepFail/onTaskComment → callInternalTaskApi()
+    ↓
+finally: mcpClient.disconnect()  — SSE cleanup on every exit path
 ```
 
 **Improvement:**
 - 0s container spin-up (in-process)
-- Persistent MCP connection
+- Per-tenant MCPClient with x-tenant-id header (tenant isolation — 9238a58)
 - Structured output enforced by Zod schema
 - Working memory persists between tasks for same tenant
 
@@ -314,7 +321,7 @@ new PostgresStore({
 Be honest with yourself about the current state. Phase 1 is complete.
 
 **What works well:**
-- Multi-tenant isolation (Docker per tenant + Mastra resourceId scoping)
+- Multi-tenant isolation (Docker per tenant + Mastra resourceId scoping + per-tenant MCPClient)
 - Plan approval state machine (atomic, race-condition safe)
 - RAG pipeline (Phase 1 hardened — correct sort order, 0.5 threshold)
 - Token/cost recording + quota enforcement
@@ -414,6 +421,21 @@ pm2 restart agent-relay
 | Mastra port | none — runs inside relay |
 | Active Model | gemini-2.0-flash |
 | Mastra feature flag | USE_MASTRA_TASKS=false (default) |
+
+---
+
+## Agent Identity Files — IDENTITY.md vs SOUL.md
+
+Two separate files. Different consumers. Do not conflate.
+
+| File | Written by | Read by | Contains |
+|---|---|---|---|
+| `IDENTITY.md` | `agent-server` at container provision time | OpenClaw (chat path) | Full agent identity from `agent_skills.system_prompt` — personality, all 25 tool descriptions, behavioral rules |
+| `SOUL.md` | Template (static) | OpenClaw (chat path only) | RAG query rewriting strategy, when/when-not to call `retrieve_documents`, citation format |
+
+**Mastra task path uses neither file directly.** It calls `fetchAgentSkill(agentId)` at runtime to get `agent_skills.system_prompt`, which already contains the full identity (same content as `IDENTITY.md`). SOUL.md is chat-path-specific RAG guidance — not injected into Mastra.
+
+**Filesystem path:** `/opt/tenants/{tenantId}/{agentSlug}/workspace/IDENTITY.md`
 
 ---
 

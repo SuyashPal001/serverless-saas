@@ -1,5 +1,5 @@
 # Platform Architecture — Agent OS
-**Last Updated:** May 2026 — Phase 2 started (Mastra integration)
+**Last Updated:** May 2026 — Phase 2: Mastra integration + tenant isolation fix
 **Status:** Phase 1 Complete. Phase 2 Active.
 **Classification:** Internal Engineering Reference
 
@@ -289,7 +289,7 @@ Intent classifier is Phase 3 — after first product proves what routing decisio
 | Phase | What moves | Trigger |
 |---|---|---|
 | Phase 2 (now) | Task execution (Mastra replaces OpenClaw for tasks) | Done ✅ |
-| Phase 3 | REST API off Lambda → GCP VM | Real traffic data shows Lambda latency is user-facing problem |
+| Phase 3 | REST API off Lambda → GCP VM | 10 paying tenants OR measured p95 latency > threshold |
 | Phase 4 | SQS + taskWorker → Inngest or BullMQ | Real traffic data shows retry/step failure rate justifies it |
 
 **Rule:** Infrastructure changes driven by measured production data. Not speculation.
@@ -339,7 +339,9 @@ All 4 groups completed: Deterministic Output, Reliability, Security, Harness.
 
 Building Layer 2 and Layer 3. Mastra for task execution. Python ai-service (thin — ingest + evals). Tool registry. Skill registry. Output schema enforcement. This is what we sell.
 
-**Started:** Mastra task executor added (commit 9a46dea, May 2026).
+**Commits:**
+- 9a46dea — Mastra task executor added (May 2026)
+- 9238a58 — per-tenant MCPClient isolation fix (May 2026)
 
 ### Phase 3 — First Product
 

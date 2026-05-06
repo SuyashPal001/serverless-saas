@@ -1,6 +1,8 @@
 # Mastra Integration
 **Last Updated:** May 2026
-**Commit:** 9a46dea1b000f8fa7401a991ae9fe4366905c272
+**Commits:**
+- 9a46dea — Mastra task executor (initial)
+- 9238a58 — per-tenant MCPClient isolation fix
 **Status:** Shipped — behind `USE_MASTRA_TASKS` feature flag
 **License:** Apache 2.0
 
@@ -100,9 +102,10 @@ runMastraTaskSteps(taskId, agentId, tenantId, steps, ...)
     ↓
 runMastraWorkflow(ctx)  (workflow.ts)
     ├── createTenantAgent(config)  (agent.ts)
-    │       ├── getMastraStore()   — PostgresStore
-    │       ├── getMCPClient()     — persistent SSE to mcp-server
-    │       ├── new Memory(...)    — working + episodic memory
+    │       ├── getMastraStore()                    — PostgresStore
+    │       ├── getMCPClientForTenant(tenantId)      — new MCPClient per task
+    │       │       headers: x-internal-service-key + x-tenant-id: tenantId
+    │       ├── new Memory(...)                      — working + episodic memory
     │       ├── tools = mcpClient.listTools()
     │       └── new Agent({ id, instructions, model, memory, tools })
     └── for each step (sorted by stepNumber):
@@ -315,6 +318,80 @@ pm2 logs agent-relay --lines 20 --nostream
 | New tenant first task (total) | ~95 seconds | ~12 seconds |
 | Memory persistence | Container lifetime | DB-backed (survives restarts) |
 | Working memory | Not available | mastra_resources.workingMemory |
+
+---
+
+## Tenant Isolation — MCPClient Fix (9238a58)
+
+### The Bug
+
+Original `tools.ts` had a module-level singleton:
+```typescript
+let mcpClient: MCPClient | null = null  // ← WRONG
+```
+
+This meant:
+1. All tenants shared one SSE connection to mcp-server
+2. No `x-tenant-id` header — mcp-server could not scope tool credentials to correct tenant
+3. Tenant A's task could use Tenant B's OAuth credentials for Gmail/Drive/Jira
+
+### The Fix
+
+`getMCPClientForTenant(tenantId)` creates a new MCPClient instance per task execution:
+
+```typescript
+export function getMCPClientForTenant(tenantId: string): MCPClient {
+  return new MCPClient({
+    servers: {
+      saarthiTools: {
+        url: new URL(process.env.MCP_SERVER_SSE_URL ?? 'http://localhost:3002/sse'),
+        requestInit: {
+          headers: {
+            'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+            'x-tenant-id': tenantId,  // ← credential scoping
+          },
+        },
+      },
+    },
+  })
+}
+```
+
+### MCPClient Lifecycle
+
+`createTenantAgent()` returns `TenantAgentWithClient`:
+```typescript
+export interface TenantAgentWithClient {
+  agent: Agent
+  mcpClient: MCPClient
+}
+```
+
+`runMastraWorkflow()` disconnects the client in `try/finally`:
+```typescript
+const { agent, mcpClient } = await createTenantAgent(agentConfig)
+try {
+  // step execution loop
+} finally {
+  await mcpClient.disconnect()  // always called — normal, clarification, fail, throw
+}
+```
+
+`disconnect(): Promise<void>` confirmed from installed types at `@mastra/mcp/dist/client/client.d.ts:125`.
+
+---
+
+## IDENTITY.md vs SOUL.md — What Mastra Receives
+
+OpenClaw (chat path) reads two separate files per agent:
+- `IDENTITY.md` — written from `agent_skills.system_prompt` at container provision time
+- `SOUL.md` — static template with RAG query rewriting strategy
+
+**Mastra (task path) only uses `agent_skills.system_prompt`** — fetched at runtime via `fetchAgentSkill(agentId)`. This is the same content as `IDENTITY.md` (full personality + all 25 tool descriptions + behavioral rules).
+
+**SOUL.md integration — parked (Phase 3+):** SOUL.md adds RAG query rewriting guidance. On the Mastra task path, the agent calls `retrieve_documents` via MCP tool directly — the SOUL.md RAG guidance is not applicable. Revisit if RAG migrates to Python ai-service in Phase 3.
+
+**IDENTITY.md filesystem path:** `/opt/tenants/{tenantId}/{agentSlug}/workspace/IDENTITY.md`
 
 ---
 
