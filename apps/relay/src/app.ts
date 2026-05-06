@@ -8,7 +8,9 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, checkMessageQuota } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota } from './usage.js'
+import { runMastraWorkflow } from './mastra/index.js'
+import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
 import { filterPII } from './pii-filter.js'
@@ -825,6 +827,88 @@ async function fetchTenantMcpServers(tenantId: string): Promise<{ provider: stri
   }
 }
 
+async function runMastraTaskSteps(
+  taskId: string,
+  agentId: string,
+  tenantId: string,
+  steps: TaskStep[],
+  taskTitle: string,
+  taskDescription: string,
+  agentName: string,
+  referenceText?: string | null,
+  links?: string[] | null,
+  attachmentContext?: string | null
+): Promise<void> {
+  // Quota guard — same pattern as runTaskSteps
+  const quota = await checkMessageQuota(tenantId)
+  if (!quota.allowed) {
+    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
+    await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' })
+    return
+  }
+
+  const skill = await fetchAgentSkill(agentId)
+  const instructions = skill?.systemPrompt
+    ?? `You are ${agentName}, a helpful AI assistant.`
+
+  let earlyTermination = false
+
+  const ctx: WorkflowContext = {
+    taskId,
+    tenantId,
+    agentId,
+    agentSlug: agentId, // fetchAgentSlug returns agentId unchanged
+    instructions,
+    taskTitle,
+    taskDescription,
+    steps: steps.map(s => ({
+      id: s.id,
+      stepNumber: s.stepOrder,
+      title: s.title,
+      description: s.description,
+      toolName: s.toolName,
+    })),
+    onStepComplete: async (stepId, output) => {
+      await callInternalTaskApi(
+        `/internal/tasks/${taskId}/steps/${stepId}/complete`,
+        {
+          agentOutput: output.summary,
+          reasoning: output.reasoning ?? null,
+          toolRationale: null,
+          actualToolUsed: output.toolCalled ?? null,
+          toolResult: output.toolResult ?? null,
+        }
+      )
+    },
+    onStepFail: async (stepId, error) => {
+      earlyTermination = true
+      await postTaskComment(taskId, `❌ Step failed: ${error}`, agentId)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error })
+    },
+    onTaskComment: async (comment) => {
+      earlyTermination = true
+      await postTaskComment(taskId, comment, agentId)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [comment] })
+    },
+  }
+
+  try {
+    await runMastraWorkflow(ctx)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow error:`, message)
+    await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message })
+    return
+  }
+
+  if (!earlyTermination) {
+    await postTaskComment(taskId, `✅ All steps completed.`, agentId)
+    await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' })
+  }
+}
+
 async function runTaskSteps(
   taskId: string,
   agentId: string,
@@ -1107,9 +1191,16 @@ app.post('/api/tasks/execute', async (c) => {
   console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} execution started steps=${steps.length}`)
 
   // 4. Fire-and-forget — return 200 immediately; step loop runs async
-  runTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext).catch((err: Error) => {
-    console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} unhandled error:`, err.message)
-  })
+  const USE_MASTRA = process.env.USE_MASTRA_TASKS === 'true'
+  if (USE_MASTRA) {
+    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext).catch((err: Error) => {
+      console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} unhandled error:`, err.message)
+    })
+  } else {
+    runTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext).catch((err: Error) => {
+      console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} unhandled error:`, err.message)
+    })
+  }
 
   return c.json({ ok: true, taskId })
 })
