@@ -63,67 +63,73 @@ export async function runMastraWorkflow(
     instructions: ctx.instructions,
   }
 
-  const agent = await createTenantAgent(agentConfig)
+  const { agent, mcpClient } = await createTenantAgent(agentConfig)
 
-  // Execute steps sequentially
-  // Mirrors existing runTaskSteps() behavior
-  // but uses Mastra agent instead of OpenClaw
-  for (const step of ctx.steps.sort(
-    (a, b) => a.stepNumber - b.stepNumber
-  )) {
-    try {
-      const prompt = buildStepPrompt(
-        ctx.taskTitle,
-        ctx.taskDescription,
-        step
-      )
-
-      const result = await agent.generate(prompt, {
-        // Scope memory to this task session
-        // memory.thread = threadId, memory.resource = resourceId
-        memory: {
-          thread: `task:${ctx.taskId}:step:${step.stepNumber}`,
-          resource: ctx.tenantId,
-        },
-        structuredOutput: {
-          schema: StepOutputSchema,
-        },
-      })
-
-      const parsed = result.object as z.infer<
-        typeof StepOutputSchema
-      >
-
-      await ctx.onStepComplete(step.id, {
-        ...parsed,
-        stepId: step.id,
-      })
-
-      // If agent needs clarification — stop execution
-      // Same behavior as existing OpenClaw path
-      if (parsed.status === 'needs_clarification') {
-        await ctx.onTaskComment(
-          `❓ ${parsed.question ??
-            'Clarification needed before continuing.'}`
+  // Disconnect the SSE connection to mcp-server when done —
+  // success, early return (clarification/fail), or thrown exception.
+  try {
+    // Execute steps sequentially
+    // Mirrors existing runTaskSteps() behavior
+    // but uses Mastra agent instead of OpenClaw
+    for (const step of ctx.steps.sort(
+      (a, b) => a.stepNumber - b.stepNumber
+    )) {
+      try {
+        const prompt = buildStepPrompt(
+          ctx.taskTitle,
+          ctx.taskDescription,
+          step
         )
+
+        const result = await agent.generate(prompt, {
+          // Scope memory to this task session
+          // memory.thread = threadId, memory.resource = resourceId
+          memory: {
+            thread: `task:${ctx.taskId}:step:${step.stepNumber}`,
+            resource: ctx.tenantId,
+          },
+          structuredOutput: {
+            schema: StepOutputSchema,
+          },
+        })
+
+        const parsed = result.object as z.infer<
+          typeof StepOutputSchema
+        >
+
+        await ctx.onStepComplete(step.id, {
+          ...parsed,
+          stepId: step.id,
+        })
+
+        // If agent needs clarification — stop execution
+        // Same behavior as existing OpenClaw path
+        if (parsed.status === 'needs_clarification') {
+          await ctx.onTaskComment(
+            `❓ ${parsed.question ??
+              'Clarification needed before continuing.'}`
+          )
+          return
+        }
+
+        if (parsed.status === 'failed') {
+          await ctx.onStepFail(
+            step.id,
+            parsed.summary ?? 'Step failed'
+          )
+          return
+        }
+
+      } catch (err) {
+        const message = err instanceof Error
+          ? err.message
+          : String(err)
+        await ctx.onStepFail(step.id, message)
         return
       }
-
-      if (parsed.status === 'failed') {
-        await ctx.onStepFail(
-          step.id,
-          parsed.summary ?? 'Step failed'
-        )
-        return
-      }
-
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : String(err)
-      await ctx.onStepFail(step.id, message)
-      return
     }
+  } finally {
+    await mcpClient.disconnect()
   }
 }
 

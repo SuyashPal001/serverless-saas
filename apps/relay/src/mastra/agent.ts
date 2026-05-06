@@ -1,14 +1,16 @@
 import { Agent } from '@mastra/core/agent'
+import { MCPClient } from '@mastra/mcp'
 import { Memory } from '@mastra/memory'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { getMastraStore } from './memory.js'
-import { getMCPClient } from './tools.js'
+import { getMCPClientForTenant } from './tools.js'
 
-// Creates a per-tenant Mastra agent
+// Creates a per-tenant Mastra agent alongside its MCPClient.
+// Returns both so the caller can disconnect() the client when done.
 // instructions = tenant IDENTITY.md from DB (agent_skills.system_prompt)
 // memory scoped to tenantId (resourceId)
 // model routes through vertex-proxy at :4001
-// MCP tools from mcp-server at :3002
+// MCP tools from mcp-server at :3002 — scoped to tenantId via x-tenant-id header
 
 export interface TenantAgentConfig {
   tenantId: string
@@ -17,11 +19,16 @@ export interface TenantAgentConfig {
   instructions: string // tenant system prompt from agent_skills
 }
 
+export interface TenantAgentWithClient {
+  agent: Agent
+  mcpClient: MCPClient
+}
+
 export async function createTenantAgent(
   config: TenantAgentConfig
-): Promise<Agent> {
+): Promise<TenantAgentWithClient> {
   const store = getMastraStore()
-  const mcpClient = getMCPClient()
+  const mcpClient = getMCPClientForTenant(config.tenantId)
 
   const memory = new Memory({
     storage: store,
@@ -60,5 +67,5 @@ export async function createTenantAgent(
     tools,
   })
 
-  return agent
+  return { agent, mcpClient }
 }

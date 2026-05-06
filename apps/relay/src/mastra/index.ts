@@ -2,8 +2,9 @@
 // Exports everything needed by index.ts
 
 export { getMastraStore } from './memory.js'
-export { getMCPClient, getToolsForTenant } from
+export { getMCPClientForTenant, getToolsForTenant } from
   './tools.js'
 export { createTenantAgent } from './agent.js'
+export type { TenantAgentWithClient } from './agent.js'
 export { runMastraWorkflow } from './workflow.js'
 export type { WorkflowContext } from './workflow.js'
