@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --ext .ts --fix",
     "type-check": "pnpm -r run type-check",
     "format": "prettier --write \"**/*.{ts,json,yaml,md}\"",
-    "rebuild": "pnpm run clean && pnpm run build"
+    "rebuild": "pnpm run clean && pnpm run build",
+    "test": "pnpm -r run --if-present test"
   },
   "dependencies": {
     "mammoth": "^1.7.0",

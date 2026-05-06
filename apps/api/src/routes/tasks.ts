@@ -13,7 +13,7 @@ import { embedTexts } from '@serverless-saas/ai';
 import type { AppEnv } from '../types';
 export const tasksRoutes = new Hono<AppEnv>();
 
-const VALID_USER_TRANSITIONS: Record<string, string[]> = {
+export const VALID_USER_TRANSITIONS: Record<string, string[]> = {
   backlog: ['todo', 'cancelled'],
   todo: ['backlog', 'cancelled'],
   planning: [],
