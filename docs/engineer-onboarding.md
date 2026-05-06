@@ -1,5 +1,5 @@
 # Engineer Onboarding — Platform OS
-**Last Updated:** May 2026  
+**Last Updated:** May 2026 — Phase 2 Mastra integration
 **Purpose:** Every engineer building on this platform needs this context
 
 ---
@@ -51,12 +51,14 @@ Your browser
             https://qh9a33hgbd.execute-api.ap-south-1.amazonaws.com
 
 GCP VM services (pm2 list):
-  agent-relay    :3001  ← your primary service
-  mcp-server     :3002  ← tool integrations
-  agent-server   :3003  ← container provisioning
+  agent-relay    :3001  ← your primary service (chat + task)
+  mcp-server     :3002  ← tool integrations (25 tools)
+  agent-server   :3003  ← container provisioning (chat path)
   vertex-proxy   :4001  ← LLM translation layer
-  openclaw-src   :18790 ← agent runtime
+  openclaw-src   :18790 ← agent runtime (chat path only)
   web-frontend   :3000  ← Next.js build
+
+Mastra runs INSIDE agent-relay — no separate service or port.
 ```
 
 ---
@@ -67,24 +69,35 @@ Everything is in the monorepo: `serverless-saas/`
 
 ```
 apps/
-  api/        — Lambda REST API. Your CRUD routes live here.
-  worker/     — SQS consumer. Task execution worker lives here.
-  web/        — Next.js frontend.
-  relay/      — Agent relay SOURCE (deployed to GCP VM from git)
-  mcp-server/ — MCP gateway SOURCE (deployed to GCP VM from git)
+  api/          — Lambda REST API. Your CRUD routes live here.
+  worker/       — SQS consumer. Task execution worker lives here.
+  web/          — Next.js frontend.
+  relay/        — Agent relay SOURCE (deployed to GCP VM from git)
+    src/
+      mastra/   — Mastra task executor (Phase 2)
+        memory.ts     — PostgresStore → Neon (mastra schema)
+        tools.ts      — MCPClient → mcp-server:3002
+        agent.ts      — per-tenant Mastra Agent
+        workflow.ts   — task step coordinator
+        index.ts      — module exports
+      rag/          — RAG pipeline (stays in TypeScript)
+      pii-filter.ts — Indian PII patterns (permanent)
+      app.ts        — HTTP routes including task execution
+      index.ts      — WebSocket/SSE chat handling
+  mcp-server/   — MCP gateway SOURCE
   agent-server/ — Container provisioning SOURCE
   vertex-proxy/ — LLM proxy SOURCE
 
 packages/foundation/
-  auth/       — JWT verification, Cognito
-  database/   — Drizzle schema, all DB tables
+  auth/         — JWT verification, Cognito
+  database/     — Drizzle schema, all DB tables
   entitlements/ — Plan limits, quota checking
-  cache/      — Redis
-  storage/    — S3
-  types/      — Shared TypeScript types
+  cache/        — Redis
+  storage/      — S3
+  types/        — Shared TypeScript types
 ```
 
-**Important:** GCP VM services pull source from git. `/opt/agent-relay/` on the VM is the running instance. `apps/relay/` in the monorepo is the source. They should be the same code. If you change relay code, commit → push → VM pulls → build → restart.
+**Important:** GCP VM services pull source from git. `apps/relay/` in the monorepo is the source. The running instance on the VM should always match the latest commit on `develop`.
 
 ---
 
@@ -92,7 +105,7 @@ packages/foundation/
 
 **Neon (serverless Postgres)** — `serverless-saas/dev/database` in AWS Secrets Manager.
 
-Key tables:
+**Application tables (Drizzle schema):**
 - `agent_tasks` — task board tasks
 - `task_steps` — steps within a task
 - `task_events` — audit log of task state changes
@@ -105,30 +118,83 @@ Key tables:
 - `usage_records` — token usage per tenant
 - `integrations` — OAuth credentials per tenant (encrypted)
 
-Never write raw SQL. Use Drizzle ORM. Schema changes → `pnpm db:generate` → `pnpm db:migrate`.
+**Mastra tables (mastra schema — all prefixed `mastra_`):**
+- `mastra_threads` — conversation threads per task/step
+- `mastra_messages` — messages within threads
+- `mastra_resources` — working memory per tenant (resourceId = tenantId)
+- `mastra_ai_spans` — execution traces
+- `mastra_schedules` — scheduled workflow execution
+- Plus ~28 more internal Mastra tables
+
+**Zero collision:** Application tables use no `mastra_` prefix. Mastra tables are in the `mastra` schema. They share the same Neon database but are completely separate.
+
+Never write raw SQL. Use Drizzle ORM for application tables. Mastra tables are managed by `@mastra/pg` — do not touch them manually.
 
 ---
 
-## The Agent Runtime
+## The Two Task Execution Paths
 
-**OpenClaw** handles the ReAct loop (reason → tool call → observe → repeat). You do not write this code. OpenClaw is upstream OSS.
+### Current default: OpenClaw path
 
-Each tenant gets their own OpenClaw Docker container provisioned by `agent-server`. The relay connects to the right container based on `tenantId`.
+```
+POST /api/tasks/execute
+    ↓
+runTaskSteps() in app.ts
+    ↓
+Per-step: agent-server provisions OpenClaw container
+    ↓
+Relay sends step prompt via WebSocket → OpenClaw
+    ↓
+OpenClaw reasons → calls tools → returns structured output
+    ↓
+callInternalTaskApi() → Lambda /internal/tasks/{id}/steps/{stepId}/complete
+```
 
-**What you control:**
-- IDENTITY.md — agent's persona and instructions (written from DB at provision)
-- SOUL.md — base behavioral template
-- Tool list — which MCP tools are available (injected per session)
-- Model — which LLM routes through vertex-proxy
+**Problems with OpenClaw for tasks:**
+- ~80 second container spin-up for new tenants
+- New WebSocket connection per step
+- Per-step MCP reconnect overhead
 
-**What OpenClaw controls:**
-- ReAct loop execution
-- Session memory (within container lifetime)
-- Tool call orchestration
+### Phase 2: Mastra path (USE_MASTRA_TASKS=true)
+
+```
+POST /api/tasks/execute
+    ↓
+runMastraTaskSteps() in app.ts
+    ↓
+fetchAgentSkill(agentId) → get instructions from agent_skills
+    ↓
+WorkflowContext built with callbacks → runMastraWorkflow()
+    ↓
+Per-step: Mastra agent.generate() with structuredOutput schema
+    ↓
+Zod-validated output: { status, summary, reasoning, toolCalled, toolResult }
+    ↓
+onStepComplete/onStepFail/onTaskComment → callInternalTaskApi()
+```
+
+**Improvement:**
+- 0s container spin-up (in-process)
+- Persistent MCP connection
+- Structured output enforced by Zod schema
+- Working memory persists between tasks for same tenant
+
+### Feature flag
+
+```bash
+# apps/relay/.env on GCP VM
+
+USE_MASTRA_TASKS=false   # default — OpenClaw path
+USE_MASTRA_TASKS=true    # Mastra path
+```
+
+Both paths call the same Lambda internal callbacks. Output to the database is identical. The flag is safe to flip.
 
 ---
 
-## The Task Board Flow
+## The Task Board Flow (Planning)
+
+Planning always uses OpenClaw — Mastra is only for execution:
 
 ```
 User creates task
@@ -149,7 +215,7 @@ User approves → SQS message (execute_task)
     ↓
 taskWorker calls relay POST /api/tasks/execute
     ↓
-Relay runs each step → sends to OpenClaw → collects output
+Relay runs each step via OpenClaw OR Mastra (feature flag)
     ↓
 Each step: complete or needs_clarification or failed
     ↓
@@ -171,7 +237,7 @@ Relay provisions OpenClaw container (agent-server)
     ↓
 Relay fetches conversation history from DB
     ↓
-Relay fetches RAG context (/rag/retrieve)
+Relay fetches RAG context (retrieve_documents)
     ↓
 Relay builds: [system] + [history] + [RAG] + [new message]
     ↓
@@ -182,28 +248,89 @@ Relay saves messages to DB (fire-and-forget)
 Relay fires eval metrics (fire-and-forget)
 ```
 
+**Chat path always uses OpenClaw.** Mastra is task-only.
+
+---
+
+## Mastra API — Correct Shapes (Verified from Installed Types)
+
+If you are editing `apps/relay/src/mastra/`, use these exact shapes:
+
+```typescript
+// Memory — import from @mastra/memory (NOT @mastra/core/memory)
+import { Memory } from '@mastra/memory'
+new Memory({
+  storage: store,              // PostgresStore instance
+  options: {
+    lastMessages: 20,
+    semanticRecall: false,     // no vector store in memory
+    workingMemory: { enabled: true },
+  },
+})
+
+// Agent — requires `id` field
+import { Agent } from '@mastra/core/agent'
+new Agent({
+  id: 'saarthi-slug-tenantId',  // REQUIRED — missing = type error
+  name: 'saarthi-slug-tenantId',
+  instructions: 'system prompt string',
+  model: customGoogle('gemini-2.0-flash'),
+  memory,
+  tools,
+})
+
+// Google provider — use createGoogleGenerativeAI for custom baseURL
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
+const customGoogle = createGoogleGenerativeAI({
+  baseURL: 'http://localhost:4001/v1',  // vertex-proxy
+  apiKey: 'placeholder',
+})
+// google() from @ai-sdk/google only takes model ID — no baseURL option
+
+// agent.generate() — memory and structuredOutput shapes
+agent.generate('prompt', {
+  memory: { thread: 'task:id:step:n', resource: 'tenantId' },  // NOT threadId/resourceId
+  structuredOutput: { schema: ZodSchema },  // NOT output:
+})
+// Returns FullOutput<T> — access via result.object
+
+// MCPClient tools
+const tools = await mcpClient.listTools()     // flat Record<string, Tool> — for Agent
+const toolsets = await client.listToolsets()  // nested — for display/debugging
+
+// PostgresStore — requires id field
+import { PostgresStore } from '@mastra/pg'
+new PostgresStore({
+  id: 'mastra-pg-store',  // REQUIRED
+  pool,
+  schemaName: 'mastra',
+})
+```
+
 ---
 
 ## Current Quality Bar
 
-Be honest with yourself about the current state. The audit found:
+Be honest with yourself about the current state. Phase 1 is complete.
 
 **What works well:**
-- Multi-tenant isolation (Docker per tenant, hard routing refusal)
+- Multi-tenant isolation (Docker per tenant + Mastra resourceId scoping)
 - Plan approval state machine (atomic, race-condition safe)
-- RAG pipeline (better than most competitors)
-- Token/cost recording
+- RAG pipeline (Phase 1 hardened — correct sort order, 0.5 threshold)
+- Token/cost recording + quota enforcement
 - Conversation persistence
 - MCP tool integrations (25 tools)
+- PII filtering on user input (Aadhaar, PAN, phone — 14 patterns)
+- Task watchdog Lambda (no more stuck tasks)
+- 24 unit tests via Vitest
+- Mastra task executor (Phase 2 started)
 
-**What is broken or missing:**
-- Agent step output silently stores garbage when LLM returns prose
-- Tasks can get permanently stuck if relay crashes during execution
-- No rate limiting — any tenant can spam the system
-- PII goes verbatim to LLM — Aadhaar, PAN, phone numbers
-- Zero unit tests, zero integration tests
-- Billing quota never enforced — free plan burns unlimited GPU
-- Internal API routes accessible from public internet
+**Still missing / deferred:**
+- 4 of 5 north-star tools absent (web_search, code_execution, browser, file_read)
+- No blue/green deployment for relay (every deploy drops sessions)
+- No distributed trace ID across services
+- Mastra observability (mastra_ai_spans not wired to dashboard)
+- Python ai-service (ingest + evals) — not built yet
 
 ---
 
@@ -219,11 +346,13 @@ Be honest with yourself about the current state. The audit found:
 
 5. **Schema first.** Any new data structure gets a Zod schema. Any new agent output gets a typed schema. No `any`. No untyped JSON.
 
-6. **Test what you ship.** If you add a new code path, add a test for it. No exceptions in Phase 1.
+6. **Test what you ship.** If you add a new code path, add a test for it. No exceptions.
 
 7. **Git is the source of truth.** Never edit on GCP VM directly. Code → git → deploy.
 
 8. **Read before you write.** Before changing any file, read it completely. Report what you find. Wait for confirmation before implementing.
+
+9. **Feature flags for runtime switching.** `USE_MASTRA_TASKS` is the model. New paths behind flags until production data proves them.
 
 ---
 
@@ -236,6 +365,9 @@ pnpm dev
 # Build all packages
 pnpm build
 
+# TypeScript check (run before committing)
+npx tsc --noEmit
+
 # DB schema changes
 pnpm db:generate  # generates migration
 pnpm db:migrate   # applies migration
@@ -244,22 +376,25 @@ pnpm db:migrate   # applies migration
 pnpm --filter @serverless-saas/api build
 sam build && sam deploy
 
-# GCP VM deploy
-cd /opt/agent-relay && git pull && npm run build && pm2 restart agent-relay
+# GCP VM deploy — relay (includes Mastra)
+cd /home/suyashresearchwork/serverless-saas && git pull
+cd apps/relay && npm run build && pm2 restart agent-relay
+
+# GCP VM deploy — other services
+cd apps/mcp-server && npm run build && pm2 restart mcp-server
+cd apps/vertex-proxy && npm run build && pm2 restart vertex-proxy
 
 # View GCP VM logs
 pm2 logs agent-relay --lines 100 --nostream
 pm2 logs mcp-server --lines 50 --nostream
 
-# DB query (from Linux VM)
-DATABASE_URL=$(aws secretsmanager get-secret-value \
-  --secret-id serverless-saas/dev/database \
-  --region ap-south-1 \
-  --query 'SecretString' --output text | \
-  node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).url)") \
-  node -e "const { neon } = require('@neondatabase/serverless'); \
-  const sql = neon(process.env.DATABASE_URL); \
-  sql\`YOUR QUERY\`.then(r => console.log(JSON.stringify(r, null, 2)));"
+# Enable Mastra path on GCP VM
+# Add to apps/relay/.env:
+#   USE_MASTRA_TASKS=true
+#   VERTEX_PROXY_URL=http://localhost:4001/v1
+#   GEMINI_API_KEY=placeholder
+#   MCP_SERVER_SSE_URL=http://localhost:3002/sse
+pm2 restart agent-relay
 ```
 
 ---
@@ -276,7 +411,9 @@ DATABASE_URL=$(aws secretsmanager get-secret-value \
 | Vertex proxy port | 4001 |
 | MCP server port | 3002 |
 | Agent server port | 3003 |
-| Active Model | gemini-2.0-flash-exp |
+| Mastra port | none — runs inside relay |
+| Active Model | gemini-2.0-flash |
+| Mastra feature flag | USE_MASTRA_TASKS=false (default) |
 
 ---
 
@@ -284,8 +421,9 @@ DATABASE_URL=$(aws secretsmanager get-secret-value \
 
 1. Read `CLAUDE.md` at monorepo root first
 2. Read the relevant source file completely
-3. Check `03_PRODUCTION_AUDIT.md` for known issues
-4. Check `02_AGENTIC_NORTH_STAR.md` for principle context
-5. Ask in team channel with: what you read, what you tried, exact error
+3. Check `production-readiness-audit.md` for known issues
+4. Check `north-star-principles.md` for principle context
+5. Check `07_mastra_integration.md` for Mastra-specific details
+6. Ask in team channel with: what you read, what you tried, exact error
 
 Do not make assumptions about code you have not read. Do not fix things you have not diagnosed.

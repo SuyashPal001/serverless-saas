@@ -1,5 +1,5 @@
 # Language & Technology Constraints
-**Last Updated:** May 2026  
+**Last Updated:** May 2026 — Phase 2 Mastra integration
 **Purpose:** Engineering team reference — what language goes where and why
 
 ---
@@ -14,13 +14,13 @@ Team engineers are not Google-level. The system must be buildable, debuggable, a
 
 ## Language Map
 
-### TypeScript — Primary Language (90% of codebase)
+### TypeScript — Primary Language (95%+ of codebase)
 
 **Used for:**
 - `apps/web` — Next.js frontend
 - `apps/api` — Hono Lambda REST API
 - `apps/worker` — SQS Lambda worker
-- `apps/relay` — Agent relay (WebSocket/SSE/HTTP)
+- `apps/relay` — Agent relay (WebSocket/SSE/HTTP) + Mastra executor
 - `apps/mcp-server` — MCP gateway and connectors
 - `apps/agent-server` — Container provisioning
 - `apps/vertex-proxy` — LLM proxy
@@ -28,37 +28,51 @@ Team engineers are not Google-level. The system must be buildable, debuggable, a
 **Why TypeScript is correct here:**
 - REST APIs, WebSocket relay, real-time streaming — Node.js/TS is the right fit
 - Team velocity — fast iteration, single language across frontend and backend
-- Hono, Drizzle, Zod — production-grade TS ecosystem for what these services do
+- Hono, Drizzle, Zod, Mastra — production-grade TS ecosystem for what these services do
 - Not ML code — no ML library advantage from switching
+
+**Phase 2 addition — Mastra:**
+- `apps/relay/src/mastra/` — task orchestration framework
+- `@mastra/core@1.32.1` — Agent, Memory, workflow engine
+- `@mastra/pg@1.10.0` — PostgresStore (Neon, mastra schema)
+- `@mastra/mcp@1.7.0` — MCPClient (persistent SSE to mcp-server)
+- `@mastra/memory@1.17.5` — working memory, episodic memory
+- `@ai-sdk/google@3.0.67` — routes through vertex-proxy:4001
 
 **Engineer profile:** TypeScript engineer. Senior TS for relay and API. Mid-level for MCP connectors.
 
 ---
 
-### Python — AI/ML Layer (Phase 2)
+### Python — AI/ML Layer (Phase 2, thin scope)
 
-**Used for:**
-- `apps/ai-service/rag/` — RAG pipeline
-- `apps/ai-service/evals/` — Eval harness
-- `apps/ai-service/ingest/` — Document ingestion
-- `apps/ai-service/classifier/` — Intent classifier
+**Used for (2 modules only):**
+- `apps/ai-service/ingest/` — Complex PDF parsing (unstructured.io, PyMuPDF)
+- `apps/ai-service/evals/` — Eval harness (Ragas, DeepEval, BERTScore)
 
-**Why Python is necessary here:**
+**NOT used for (modules removed from scope):**
+- `rag/` — TypeScript RAG is Phase 1 hardened, stays in TS, no Python needed
+- `classifier/` — Intent classifier is Phase 3, after first product launch
+
+**Why Python is necessary for these two:**
 
 | Capability | Python | TypeScript |
 |---|---|---|
-| RAG evaluation | Ragas, DeepEval, BERTScore | No equivalent |
-| Document parsing | unstructured.io, PyMuPDF, pdfplumber | mammoth, pdf-parse (limited) |
-| Embeddings | sentence-transformers, cross-encoders | Thin API wrappers |
-| Intent classification | spaCy, transformers, scikit-learn | No equivalent |
-| Vector search | pgvector with full HNSW, FAISS | Basic client |
-| LLM eval frameworks | LangSmith, Langfuse, Braintrust native | Adapter only |
+| Complex PDF parsing | unstructured.io, PyMuPDF, pdfplumber — handles scanned, mixed formats | mammoth, pdf-parse — hit ceiling on complex docs |
+| RAG evaluation | Ragas, DeepEval, BERTScore — these are the libraries | No equivalent — wrappers only |
+| Faithfulness/relevancy metrics | Ragas native | Not available |
 
-**The ceiling problem:** TypeScript RAG is currently hitting its ceiling. `fastGateChunks` uses Gemini for relevance scoring instead of a proper cross-encoder. `mammoth` cannot handle complex PDF structures. `evalAuto.ts` cannot use Ragas faithfulness metrics. These are not fixable in TypeScript — the libraries do not exist.
+**The ceiling problem — ingest:** TypeScript `mammoth`/`pdf-parse` cannot handle scanned PDFs, multi-column layouts, mixed content. This is a hard library ceiling, not a skill gap.
+
+**The ceiling problem — evals:** Ragas faithfulness metrics, DeepEval, BERTScore — Python only. No TypeScript port at production quality.
+
+**What is NOT a ceiling problem:**
+- RAG retrieval — TypeScript `pgvector` client works fine. Stays in TS.
+- Embedding generation — API call (Vertex AI). Language doesn't matter.
+- Semantic search — SQL + pgvector. TypeScript handles it.
 
 **Service boundary:** Python ai-service runs on GCP VM. TypeScript services call it via HTTP. Clean boundary — TypeScript engineer never touches Python code. Python engineer never touches relay code.
 
-**Engineer profile:** ML engineer / Python engineer. Knows FastAPI, Ragas, sentence-transformers. Does not need to know Hono or Drizzle.
+**Engineer profile:** ML engineer / Python engineer. Knows FastAPI, Ragas, unstructured.io. Does not need to know Hono or Drizzle.
 
 ---
 
@@ -93,27 +107,41 @@ None of our services are in those categories. Go handles concurrency at our scal
 
 ### Agent Runtime
 
-**OpenClaw** — stays as primary agent runtime.
+**Two runtimes — different surfaces:**
 
-Reasons:
-- Handles ReAct loop natively
-- WebSocket RPC interface — relay adapts cleanly
-- Adapter system exists — can swap without relay rewrite
+| Surface | Runtime | Status |
+|---|---|---|
+| Chat | OpenClaw | Permanent — works well, no reason to change |
+| Task execution | Mastra | Phase 2 — behind `USE_MASTRA_TASKS` feature flag |
+| Task execution | OpenClaw | Default (flag=false) — kept for comparison |
+
+**OpenClaw stays for chat:**
+- Handles ReAct loop natively via WebSocket RPC
+- Adapter system exists — relay routes to it cleanly
+- Docker container per tenant — strong isolation
 - 280K+ GitHub stars — community and updates
 
-**Multi-agent (Phase 2):** LangGraph (Python) for complex workflows. OpenClaw for chat and simple tasks. Not a replacement — a complement.
+**Mastra for tasks:**
+- TypeScript, runs in-process inside relay (no new PM2 service)
+- Structured output schema enforcement (Zod)
+- Working memory + episodic memory out of box (Neon storage)
+- MCPClient maintains persistent connection to mcp-server
+- Performance: 80s container spin-up → 0s; ~95s new tenant first task → ~12s
 
-Pattern:
-```
-Simple task → OpenClaw container
-Complex multi-agent task → Python ai-service → LangGraph
-```
+**Why NOT LangGraph:**
+- Python orchestration layer = new service, new deploy, new language boundary
+- Mastra does the same thing in TypeScript with zero new infrastructure
+- No Python ai-service needed just for task orchestration
 
 ---
 
 ### Durable Execution
 
-**Inngest** — when ready. Not Temporal.
+**Inngest: Parked — will decide after real traffic data.**
+
+Not adopted yet because: no production traffic data proving that step retry rate / workflow failure rate justifies the operational cost of adding Inngest.
+
+**Decision trigger:** Real Phase 2/3 production data showing task failure rate that Inngest would prevent.
 
 | Factor | Inngest | Temporal self-hosted |
 |---|---|---|
@@ -126,22 +154,22 @@ Complex multi-agent task → Python ai-service → LangGraph
 
 Temporal self-hosted rejected: Datadog (4yr, dozens of clusters) presented "Surviving the Challenges of Self-Hosting Temporal" — their words. Not appropriate for current team size.
 
-**Current bridge:** Watchdog Lambda (4 hours) covers P0 recovery until Inngest is adopted.
+**Current bridge:** Watchdog Lambda (Phase 1) covers P0 recovery.
 
 ---
 
 ### Eval Harness
 
-**Phase 1 (current):** TypeScript evalAuto.ts — LLM-as-judge for RAG. Exists. Works. Not gating deploys yet.
+**Phase 1 (current):** TypeScript evalAuto.ts — LLM-as-judge for RAG. Exists. Works. Not yet gating deploys. Keep it — it is correct TypeScript-side.
 
-**Phase 2 (Python ai-service):** Ragas + DeepEval + BERTScore. Proper eval stack.
+**Phase 2 (Python ai-service/evals/):** Ragas + DeepEval + BERTScore. Proper eval stack for faithfulness/relevancy scoring against golden dataset.
 
-**Why not build full eval harness in TypeScript:**
+**Why not full eval harness in TypeScript:**
 - Ragas (RAG evaluation) — Python only
 - DeepEval — Python only
 - BERTScore — Python only
 - ROUGE — Python native (JS port exists but unmaintained)
-- These are not ports — they are the libraries. TypeScript wrappers call the Python service.
+- These are not ports — they are the libraries. TypeScript wrappers cannot replicate them.
 
 ---
 
@@ -151,7 +179,7 @@ Temporal self-hosted rejected: Datadog (4yr, dozens of clusters) presented "Surv
 
 - Open source, self-hostable
 - Free tier covers early scale
-- Covers: LLM traces, eval scores, cost attribution, quality trends
+- Covers: LLM traces (wire to mastra_ai_spans), eval scores, cost attribution, quality trends
 - Integrates with Python ai-service (Ragas) and TypeScript relay
 
 **Not building:** Custom observability platform. Use Langfuse. Focus engineering on product.
@@ -160,7 +188,7 @@ Temporal self-hosted rejected: Datadog (4yr, dozens of clusters) presented "Surv
 
 ## What Engineers Need to Know
 
-### TypeScript Engineer (relay/API/MCP)
+### TypeScript Engineer (relay/API/MCP/Mastra)
 
 Must know:
 - TypeScript, Node.js
@@ -170,10 +198,11 @@ Must know:
 - WebSocket, SSE (Server-Sent Events)
 - AWS Lambda, SQS, S3
 - Docker basics
+- Mastra (`@mastra/core`, `@mastra/memory`, `@mastra/mcp`) — for relay work
 
 Does NOT need to know:
 - Python
-- ML/AI libraries
+- ML/AI libraries beyond API calls
 - Go or Rust
 
 ---
@@ -183,28 +212,25 @@ Does NOT need to know:
 Must know:
 - Python, FastAPI
 - Ragas, DeepEval for eval
-- sentence-transformers, cross-encoders
-- pgvector, FAISS
-- unstructured.io, PyMuPDF
-- LangGraph (Phase 2)
+- unstructured.io, PyMuPDF for document parsing
+- pgvector client (for future cross-encoder reranking if needed)
 
 Does NOT need to know:
 - TypeScript
 - Hono, Drizzle
 - AWS Lambda
+- Mastra
 
 ---
 
 ### The Boundary
 
 ```
-TypeScript services          Python ai-service
-─────────────────            ──────────────────
-relay/src/index.ts           apps/ai-service/
-  POST /rag/retrieve ──────▶   rag/pipeline.py
-  POST /ingest ───────────▶   ingest/worker.py
-  POST /classify ─────────▶   classifier/intent.py
-  POST /evals/score ──────▶   evals/runner.py
+TypeScript services          Python ai-service (thin)
+─────────────────            ──────────────────────
+relay → Mastra agent         (tasks — in-process, no HTTP)
+worker → HTTP ─────────────▶ apps/ai-service/ingest/
+worker → HTTP ─────────────▶ apps/ai-service/evals/
 ```
 
 Communication: HTTP only. JSON request/response. No shared code. No imports across the boundary. Contract is the API schema.
@@ -218,10 +244,13 @@ Things considered and explicitly rejected with reasons:
 | Technology | Rejected Because |
 |---|---|
 | Temporal self-hosted | Ops burden. Datadog "surviving the challenges" for 4 years. |
-| LangGraph replace OpenClaw | Unnecessary rewrite. Adapter system handles routing. |
+| LangGraph for task orchestration | Mastra (TypeScript) does the same with zero new infrastructure and no Python boundary. |
+| Python for RAG pipeline | TypeScript RAG is Phase 1 hardened and works. No reason to add Python service for this. |
+| Python for intent classifier now | Phase 3 — real product reveals what routing matters before building classifier. |
 | Rust (now) | No use case justifying it at current scale. |
 | Go (now) | Premature. No load data proving Node.js is bottleneck. |
-| Single-language TypeScript forever | AI/ML ceiling. Python libraries have no TypeScript equivalent. |
+| Single-language TypeScript forever | AI/ML ceiling for ingest parsing and Ragas eval metrics — those two modules need Python. |
 | Python for REST API | No advantage. TypeScript ecosystem is better here (Hono, Zod, Drizzle). |
 | LiteLLM | Supply chain attack March 24, 2026. Permanently rejected. |
 | Nango for OAuth | MCP-native approach preferred. Official MCP servers handle tool calls. |
+| Inngest (now) | Parked — will decide after real production traffic data. Not speculation. |
