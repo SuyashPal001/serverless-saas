@@ -935,6 +935,8 @@ async function runMastraTaskSteps(
 
   let earlyTermination = false
   const stepOutputs: string[] = []
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
 
   const ctx: WorkflowContext = {
     taskId,
@@ -987,6 +989,8 @@ async function runMastraTaskSteps(
           args: toolResult,
         })
       }
+      totalInputTokens += output.inputTokens ?? 0
+      totalOutputTokens += output.outputTokens ?? 0
     },
     onStepFail: async (stepId, error) => {
       earlyTermination = true
@@ -1031,12 +1035,11 @@ async function runMastraTaskSteps(
       taskDescription,
       finalOutput: stepOutputs.join('\n\n') || taskTitle,
     })
-    // TODO: wire actual token counts from Mastra agent.generate() response when available
     recordUsage({
       tenantId,
       actorId: agentId,
-      inputTokens: 0,
-      outputTokens: 0,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
     })
   }
 }

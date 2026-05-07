@@ -21,6 +21,8 @@ const StepOutputSchema = z.object({
   toolCalled: z.string().optional(),
   toolResult: z.unknown().optional(),
   latencyMs: z.number().int().optional(),
+  inputTokens: z.number().int().optional(),
+  outputTokens: z.number().int().optional(),
 })
 
 export interface WorkflowContext {
@@ -157,6 +159,7 @@ export async function runMastraWorkflow(
             : {}),
         })
         const stepLatencyMs = Date.now() - stepStartMs
+        const usage = result.totalUsage ?? result.usage
 
         const parsed = result.object as z.infer<
           typeof StepOutputSchema
@@ -166,6 +169,8 @@ export async function runMastraWorkflow(
           ...parsed,
           stepId: step.id,
           latencyMs: stepLatencyMs,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
         })
 
         // If agent needs clarification — stop execution
