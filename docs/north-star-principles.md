@@ -1,5 +1,5 @@
 # Agentic North Star Principles
-**Last Updated:** May 2026 — Phase 2 Mastra integration
+**Last Updated:** May 7, 2026 — post-Phase 2 observability + governance fixes
 **Status:** Living document
 **Source:** Verified against actual codebase — May 2026 audit + Phase 2 additions
 
@@ -181,14 +181,13 @@ The north star defines what a production agentic platform must do. Every princip
 **What it means:** Every token, tool call, and cost tracked.
 
 **Evidence:** `apps/relay/src/index.ts:302-373` — per-turn metrics, RAG metrics, tool call logs, knowledge gap logs. `apps/relay/src/usage.ts:75-93` — three rows per turn in usage_records.
-**Mastra path:** `mastra_ai_spans` table receives execution traces. Wiring to Langfuse is Phase 2 work.
+**Mastra path:** `x-trace-id` propagated end-to-end (taskWorker → relay POST → `runMastraWorkflow` → every step). Token counts real: `result.totalUsage ?? result.usage` captured per step, accumulated, written to `usage_records` once at task completion. `mastra_ai_spans` table receives execution traces.
 
-**Status: ✅ DONE**
+**Status: ✅ DONE — Chat and Task both**
 
-**Gaps:**
-- No distributed trace ID linking frontend → Lambda → relay → Mastra/OpenClaw → MCP
-- `traceId` sent by taskWorker but ignored in relay
-- `mastra_ai_spans` populated but not wired to observability dashboard yet
+**Recent fixes:** commit `05a3524` (traceId end-to-end), `8dfb7de` (real task token counts), `853a2c0` (chat metrics).
+
+**Gap:** `mastra_ai_spans` populated but not wired to observability dashboard yet.
 
 ---
 
@@ -200,9 +199,11 @@ The north star defines what a production agentic platform must do. Every princip
 **Mastra path:** `onTaskComment` callback in WorkflowContext routes `needs_clarification` status to `POST /internal/tasks/{id}/clarify`, which sets task to `awaiting_clarification` state. Execution stops and waits for user.
 
 **Status: ✅ DONE — Task board**
-**Status: 🟡 PARTIAL — Chat**
+**Status: ✅ DONE — Chat (MCP write gate now DB-driven)**
 
-**Gap:** MCP write tools (gmail_send, calendar_create, zoho_mail_send) have no hard programmatic gate — only LLM instruction via IDENTITY.md. If model misinterprets, tool fires.
+**Recent fix (commit `607c365`):** MCP write gate now reads `requires_approval` flag from `agent_tools` table via `fetchRequiresApprovalTools()`. Previously hardcoded. Tools marked `requires_approval = true` in DB are intercepted before execution on both paths.
+
+**Remaining gap:** Chat path approval intercept (`openclaw.ts:1703-1769`) triggers on exec/shell tools only. MCP write tools now have a DB gate; enforcement still relies on the agent honoring `needs_clarification` status for non-task flows.
 
 ---
 
@@ -224,11 +225,13 @@ The north star defines what a production agentic platform must do. Every princip
 **What it means:** Agents triggered by events, schedules, data changes — not just user messages.
 
 **Evidence:** `packages/foundation/database/schema/agents.ts:35-50` — `agentWorkflows` table with trigger enum: `['incident_created', 'scheduled', 'manual']`.
-**Mastra path:** `mastra_schedules` table available for scheduled workflow execution. Wiring to `agentWorkflows` table is Phase 2 work.
+**Mastra path:** EventBridge rule fires on `rate(5m)` → SQS → `handleWorkflowFire` worker handler → relay `POST /api/workflows/execute`. Scheduled workflows now execute without user interaction.
 
-**Status: 🟡 PARTIAL**
+**Status: ✅ DONE**
 
-**Gap:** Schema and data model complete. Manual trigger (task system) works. `mastra_schedules` exists but not yet wired to `agentWorkflows` trigger execution. No EventBridge rule for scheduled triggers.
+**Recent fix (commits `e523f06` + Terraform EventBridge rule):** EventBridge `rate(5m)` rule wired. Worker handler reads due workflows from `agentWorkflows` table and dispatches to relay. Manual trigger (task system) remains the primary path; scheduled and event triggers now also live.
+
+**Remaining gap:** `incident_created` trigger not yet wired to an event source.
 
 ---
 
@@ -266,9 +269,9 @@ The north star defines what a production agentic platform must do. Every princip
 **Mastra path:** `needs_clarification` status in structured output triggers `onTaskComment` → task pauses → user responds before execution resumes.
 
 **Status: ✅ DONE — Task board**
-**Status: 🟡 PARTIAL — Chat**
+**Status: ✅ DONE — Chat (MCP write gate now DB-driven)**
 
-**Gap:** For MCP write tools, enforcement is LLM instruction only — not programmatic gate.
+**Recent fix (commit `607c365`):** MCP write tools now have a hard programmatic gate. `fetchRequiresApprovalTools()` queries `agent_tools WHERE requires_approval = true`. Tools in that list are intercepted before the MCP call fires. Previously this relied on LLM instruction in IDENTITY.md only.
 
 ---
 
@@ -288,13 +291,13 @@ The north star defines what a production agentic platform must do. Every princip
 | 6 | Multi-LLM | ✅ | ✅ | ✅ |
 | 7 | Per-Tenant Config | ✅ | ✅ | ✅ |
 | 8 | Multi-Tenant Isolation | ✅ | ✅ | ✅ |
-| 9 | Observability | ✅ | 🟡 | 🟡 |
-| 10 | Human in the Loop | 🟡 | ✅ | 🟡 |
+| 9 | Observability | ✅ | ✅ | ✅ |
+| 10 | Human in the Loop | ✅ | ✅ | ✅ |
 | 11 | Stateful Sessions | 🟡 | ✅ | 🟡 |
-| 12 | Agent Workflows | ❌ | 🟡 | 🟡 |
+| 12 | Agent Workflows | N/A | ✅ | ✅ |
 | 13 | Sandboxed Execution | 🟡 | 🟡 | 🟡 |
 | 14 | Privacy Router | ✅ | ✅ | ✅ |
-| 15 | Intent Verification | 🟡 | ✅ | 🟡 |
+| 15 | Intent Verification | ✅ | ✅ | ✅ |
 
 ---
 
