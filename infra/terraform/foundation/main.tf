@@ -139,7 +139,7 @@ resource "aws_sqs_queue_policy" "workflow_eventbridge" {
         Resource = module.sqs.queue_arns["workflow"]
         Condition = {
           ArnEquals = {
-            "aws:SourceArn" = module.eventbridge.rule_arns["main:workflow_scheduler"]
+            "aws:SourceArn" = aws_cloudwatch_event_rule.workflow_scheduler.arn
           }
         }
       }
@@ -156,26 +156,33 @@ module "eventbridge" {
   buses = {
     main = {
       name = var.event_bus_name
-      rules = {
-        workflow_scheduler = {
-          name                = "${local.name_prefix}-workflow-scheduler"
-          description         = "Fires scheduled agent workflows every 5 minutes"
-          schedule_expression = "rate(5 minutes)"
-          targets = {
-            workflow_sqs = {
-              target_id = "workflow-sqs"
-              arn       = module.sqs.queue_arns["workflow"]
-              input_transformer = {
-                input_paths    = {}
-                input_template = "{\"type\":\"workflow.fire\"}"
-              }
-            }
-          }
-        }
-      }
     }
   }
   tags = {}
+}
+
+# -------------------------------------------------------
+# Scheduled workflow trigger — default event bus
+# Schedule rules are not supported on custom event buses;
+# they must use the default event bus.
+# -------------------------------------------------------
+resource "aws_cloudwatch_event_rule" "workflow_scheduler" {
+  name                = "${local.name_prefix}-workflow-scheduler"
+  description         = "Fires scheduled agent workflows every 5 minutes"
+  schedule_expression = "rate(5 minutes)"
+  # No event_bus_name — uses default event bus
+}
+
+resource "aws_cloudwatch_event_target" "workflow_scheduler" {
+  rule      = aws_cloudwatch_event_rule.workflow_scheduler.name
+  target_id = "workflow-sqs"
+  arn       = module.sqs.queue_arns["workflow"]
+
+  input_transformer {
+    input_template = jsonencode({
+      type = "workflow.fire"
+    })
+  }
 }
 
 # -------------------------------------------------------
