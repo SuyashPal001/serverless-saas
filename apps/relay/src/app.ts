@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { timingSafeEqual } from 'node:crypto'
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync, mkdtempSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -14,6 +15,17 @@ import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
 import { filterPII } from './pii-filter.js'
+
+// Zod schema for OpenClaw step output validation.
+// All fields optional — schema primarily catches non-object garbage from the LLM.
+const OpenClawStepOutputSchema = z.object({
+  status: z.enum(['done', 'needs_clarification', 'failed']).optional(),
+  summary: z.string().optional(),
+  reasoning: z.string().optional(),
+  question: z.string().optional(),
+  toolCalled: z.string().optional(),
+  toolResult: z.unknown().optional(),
+})
 
 interface Attachment {
   fileId?: string
@@ -1185,6 +1197,24 @@ async function runTaskSteps(
       }
     } catch {
       console.warn(`[tasks] stepId=${stepId} LLM did not return valid JSON — falling back to raw text`)
+    }
+
+    // Validate parsed output against OpenClaw step output schema.
+    // Catches non-object garbage (arrays, bare strings) that JSON.parse accepts but
+    // downstream code cannot safely destructure.
+    if (parsedOutput !== null) {
+      const schemaValidation = OpenClawStepOutputSchema.safeParse(parsedOutput)
+      if (!schemaValidation.success) {
+        if (step.toolName) {
+          const errMsg = 'Step output failed schema validation'
+          console.error(`[relay] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} schema validation failed: ${JSON.stringify(schemaValidation.error.issues)}`)
+          await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
+          await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg })
+          return
+        } else {
+          console.warn(`[relay] step output schema warning — accepting raw text for reasoning step stepId=${stepId}: ${JSON.stringify(schemaValidation.error.issues)}`)
+        }
+      }
     }
 
     // Tool-using steps must return structured JSON — raw prose means the model ignored the

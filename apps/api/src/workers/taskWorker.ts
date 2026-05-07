@@ -20,6 +20,28 @@ import { embedQuery } from '@serverless-saas/ai';
 const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 
+// PII patterns applied in priority order — EMAIL before UPI so TLD emails are
+// caught first, AADHAAR before generic 12-digit runs.
+const TASK_PII_RULES: RegExp[] = [
+  /\b[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}\b/g,              // Email (TLD required)
+  /(?:\+91|91|0)[\s\-]?[6-9]\d{9}\b|\b[6-9]\d{9}\b/g, // Indian mobile
+  /\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b|\b\d{12}\b/g,       // Aadhaar
+  /\b[A-Z]{5}[0-9]{4}[A-Z]\b/g,                         // PAN
+  /\b[\w.\-]+@[\w.\-]+\b/g,                              // UPI (no TLD required)
+];
+
+function sanitizeTaskInput(text: string): string;
+function sanitizeTaskInput(text: string | null | undefined): string | null | undefined;
+function sanitizeTaskInput(text: string | null | undefined): string | null | undefined {
+  if (text == null) return text;
+  let result = text;
+  for (const rule of TASK_PII_RULES) {
+    rule.lastIndex = 0;
+    result = result.replace(rule, '[MASKED]');
+  }
+  return result;
+}
+
 const MAX_STEPS_PER_TASK = 20;
 
 function makeLog(traceId: string, taskId: string) {
@@ -218,8 +240,8 @@ async function handlePlanning(taskId: string, traceId: string, extraContext?: st
         taskId: task.id,
         agentId: task.agentId,
         tenantId: task.tenantId,
-        title: `<user_input>${task.title}</user_input>`,
-        description: task.description ? `<user_input>${task.description}</user_input>` : null,
+        title: `<user_input>${sanitizeTaskInput(task.title)}</user_input>`,
+        description: task.description ? `<user_input>${sanitizeTaskInput(task.description)}</user_input>` : null,
         acceptanceCriteria: task.acceptanceCriteria,
         agentName: agent?.name ?? null,
         referenceText: task.referenceText ? `<user_input>${task.referenceText}</user_input>` : null,
@@ -441,8 +463,8 @@ async function handleExecution(taskId: string, traceId: string) {
         taskId: task.id,
         agentId: task.agentId,
         tenantId: task.tenantId,
-        taskTitle: `<user_input>${task.title}</user_input>`,
-        taskDescription: task.description ? `<user_input>${task.description}</user_input>` : '',
+        taskTitle: `<user_input>${sanitizeTaskInput(task.title)}</user_input>`,
+        taskDescription: task.description ? `<user_input>${sanitizeTaskInput(task.description)}</user_input>` : '',
         agentName: agent?.name ?? null,
         referenceText: task.referenceText ? `<user_input>${task.referenceText}</user_input>` : null,
         links: (task.links ?? []).map((l: string) => `<user_input>${l}</user_input>`),
@@ -450,8 +472,8 @@ async function handleExecution(taskId: string, traceId: string) {
         steps: pendingSteps.map((s: typeof taskSteps.$inferSelect) => ({
           id: s.id,
           stepNumber: s.stepNumber,
-          title: s.title,
-          description: s.description,
+          title: sanitizeTaskInput(s.title),
+          description: sanitizeTaskInput(s.description),
           toolName: s.toolName,
         })),
       }),

@@ -53,6 +53,7 @@ import internalTasksRoute from './routes/internal/tasks';
 import internalIntegrationsRoute from './routes/internal/integrations';
 import { randomUUID } from 'crypto';
 import { initCognito } from '@serverless-saas/auth';
+import { getCacheClient } from '@serverless-saas/cache';
 
 initCognito({
     region:     process.env.AWS_REGION ?? 'ap-south-1',
@@ -90,6 +91,44 @@ const api = new Hono<AppEnv>();
 
 // Step 1: JWT extraction
 api.use('*', authInjectionMiddleware);
+
+// Step 1b: Global rate limiting
+// Tenant-keyed (60 req/min) when JWT carries custom:tenantId; IP-keyed (20 req/min) otherwise.
+// Uses sliding-window INCR+EXPIRE on a per-minute bucket key.
+api.use('*', async (c, next) => {
+    const jwtPayload = c.get('jwtPayload') as Record<string, unknown> | undefined;
+    const tenantId = typeof jwtPayload?.['custom:tenantId'] === 'string'
+        ? (jwtPayload['custom:tenantId'] as string)
+        : undefined;
+
+    const minute = Math.floor(Date.now() / 60_000);
+    let key: string;
+    let limit: number;
+
+    if (tenantId) {
+        key = `ratelimit:${tenantId}:${minute}`;
+        limit = 60;
+    } else {
+        const ip = c.req.header('x-forwarded-for')?.split(',')[0].trim()
+            ?? c.req.header('x-real-ip')
+            ?? 'unknown';
+        key = `ratelimit:ip:${ip}:${minute}`;
+        limit = 20;
+    }
+
+    const cache = getCacheClient();
+    const count = await cache.incr(key);
+    if (count === 1) {
+        await cache.expire(key, 60);
+    }
+
+    if (count > limit) {
+        c.header('Retry-After', '60');
+        return c.json({ error: 'Rate limit exceeded', retryAfter: 60 }, 429);
+    }
+
+    await next();
+});
 
 // Step 2: User upsert
 api.use('*', userUpsertMiddleware);
