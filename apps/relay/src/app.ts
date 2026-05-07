@@ -662,6 +662,29 @@ async function callInternalTaskApi(path: string, body: Record<string, unknown>):
   }
 }
 
+async function logToolCall(params: {
+  tenantId: string
+  toolName: string
+  success: boolean
+  latencyMs?: number
+  errorMessage?: string
+  args?: Record<string, unknown>
+}): Promise<void> {
+  try {
+    await fetch(`${INTERNAL_API_URL}/internal/tool-calls/log`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY,
+      },
+      body: JSON.stringify(params),
+    })
+  } catch (err) {
+    // Fire and forget — never block task execution
+    console.error('[tool-log] failed to log tool call:', (err as Error).message)
+  }
+}
+
 interface TaskComment {
   id?: string
   content: string
@@ -905,11 +928,30 @@ async function runMastraTaskSteps(
           ...(toolResult !== undefined && { toolResult }),
         }
       )
+      // Log tool call to ops dashboard if a tool was used
+      if (output.toolCalled) {
+        await logToolCall({
+          tenantId,
+          toolName: output.toolCalled,
+          success: output.status === 'done',
+          args: toolResult,
+        })
+      }
     },
     onStepFail: async (stepId, error) => {
       earlyTermination = true
       await postTaskComment(taskId, `❌ Step failed: ${error}`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error })
+      // Log failed tool call if we know which tool was involved
+      const failedStep = steps.find(s => s.id === stepId)
+      if (failedStep?.toolName) {
+        await logToolCall({
+          tenantId,
+          toolName: failedStep.toolName,
+          success: false,
+          errorMessage: error,
+        })
+      }
     },
     onTaskComment: async (comment) => {
       earlyTermination = true
