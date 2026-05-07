@@ -7,7 +7,13 @@
  *   DATABASE_URL=<neon-connection-string> pnpm backfill:tsv
  */
 
-import { neon } from '@neondatabase/serverless';
+import { neon, neonConfig } from '@neondatabase/serverless';
+import { Agent, fetch as undiciFetch } from 'undici';
+
+// Force IPv4: undici (Node.js built-in fetch) tries IPv6 first; Neon's API endpoint is IPv4-only from this host
+const ipv4Agent = new Agent({ connect: { family: 4 } });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+neonConfig.fetchFunction = (url: string, opts: any) => undiciFetch(url, { ...opts, dispatcher: ipv4Agent }) as any;
 
 const BATCH_SIZE = 100;
 
