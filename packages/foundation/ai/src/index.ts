@@ -43,3 +43,6 @@ export * from './cache';
 export * from './retrieve';
 export * from './format';
 export * from './llm';
+
+// GCP credentials helper (used by worker for Vertex AI calls)
+export { getGcpCredentials } from './gcp-credentials';

@@ -5,6 +5,7 @@ import { neon } from '@neondatabase/serverless';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { getOrEmbedTexts } from '@serverless-saas/ai';
+import { extractQuestions } from '../rag/extractQuestions';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 const CHUNK_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -117,11 +118,15 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
       DELETE FROM document_chunks WHERE document_id = ${documentId}
     `;
 
-    // 7. Insert chunks with embeddings
+    // 7. Insert chunks with embeddings + extracted questions
     for (let i = 0; i < embedded.length; i++) {
       const { text: content, embedding } = embedded[i];
       const id = chunkId(documentId, i);
       const vectorStr = `[${embedding.join(',')}]`;
+
+      // Extract questions this chunk answers — silent fail, never blocks ingestion
+      const questions = await extractQuestions(content);
+
       const metadata = {
         chunk_index: i,
         total_chunks: embedded.length,
@@ -131,11 +136,17 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
               : mimeType.includes('word') ? 'docx'
               : 'txt',
         ingested_at: new Date().toISOString(),
+        questions,
       };
+
+      // tsvSource = content + questions text so BM25 matches vocabulary from both
+      const tsvSource = questions.length > 0
+        ? `${content} ${questions.join(' ')}`
+        : content;
 
       await sql`
         INSERT INTO document_chunks
-          (id, tenant_id, document_id, content, embedding, chunk_index, metadata)
+          (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv)
         VALUES (
           ${id},
           ${tenantId},
@@ -143,12 +154,14 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
           ${content},
           ${vectorStr}::vector,
           ${i},
-          ${JSON.stringify(metadata)}
+          ${JSON.stringify(metadata)},
+          to_tsvector('english', ${tsvSource})
         )
         ON CONFLICT (id) DO UPDATE SET
           content = EXCLUDED.content,
           embedding = EXCLUDED.embedding,
-          metadata = EXCLUDED.metadata
+          metadata = EXCLUDED.metadata,
+          tsv = EXCLUDED.tsv
       `;
     }
 
