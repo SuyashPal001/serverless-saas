@@ -655,13 +655,14 @@ function fireTaskStepEvent(taskId: string, stepId: string, payload: Record<strin
   })
 }
 
-async function callInternalTaskApi(path: string, body: Record<string, unknown>): Promise<void> {
+async function callInternalTaskApi(path: string, body: Record<string, unknown>, traceId?: string): Promise<void> {
   try {
     const res = await fetch(`${INTERNAL_API_URL}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-internal-service-key': INTERNAL_SERVICE_KEY,
+        ...(traceId ? { 'x-trace-id': traceId } : {}),
       },
       body: JSON.stringify(body),
     })
@@ -902,14 +903,15 @@ async function runMastraTaskSteps(
   agentName: string,
   referenceText?: string | null,
   links?: string[] | null,
-  attachmentContext?: string | null
+  attachmentContext?: string | null,
+  traceId = crypto.randomUUID()
 ): Promise<void> {
   // Quota guard — same pattern as runTaskSteps
   const quota = await checkMessageQuota(tenantId)
   if (!quota.allowed) {
     console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
     await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' })
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' }, traceId)
     return
   }
 
@@ -971,7 +973,8 @@ async function runMastraTaskSteps(
           reasoning: output.reasoning ?? undefined,
           actualToolUsed: output.toolCalled ?? undefined,
           ...(toolResult !== undefined && { toolResult }),
-        }
+        },
+        traceId
       )
       // Log tool call to ops dashboard if a tool was used
       if (output.toolCalled) {
@@ -988,7 +991,7 @@ async function runMastraTaskSteps(
     onStepFail: async (stepId, error) => {
       earlyTermination = true
       await postTaskComment(taskId, `❌ Step failed: ${error}`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error }, traceId)
       // Log failed tool call if we know which tool was involved
       const failedStep = steps.find(s => s.id === stepId)
       if (failedStep?.toolName) {
@@ -1004,7 +1007,7 @@ async function runMastraTaskSteps(
     onTaskComment: async (comment) => {
       earlyTermination = true
       await postTaskComment(taskId, comment, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [comment] })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [comment] }, traceId)
     },
   }
 
@@ -1014,13 +1017,13 @@ async function runMastraTaskSteps(
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow error:`, message)
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message })
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
     return
   }
 
   if (!earlyTermination) {
     await postTaskComment(taskId, `✅ All steps completed.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' })
+    await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     await postTaskEval({
       taskId,
       tenantId,
@@ -1048,7 +1051,8 @@ async function runTaskSteps(
   agentName: string,
   referenceText?: string | null,
   links?: string[] | null,
-  attachmentContext?: string | null
+  attachmentContext?: string | null,
+  traceId = crypto.randomUUID()
 ): Promise<void> {
   const sorted = [...steps].sort((a, b) => a.stepOrder - b.stepOrder)
   const completedSteps: CompletedStep[] = []
@@ -1059,7 +1063,7 @@ async function runTaskSteps(
   if (!quota.allowed) {
     console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
     await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' })
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' }, traceId)
     return
   }
 
@@ -1068,7 +1072,7 @@ async function runTaskSteps(
     gatewayUrl = await resolveGatewayUrl(tenantId, agentId)
   } catch (err) {
     console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} resolveGatewayUrl failed:`, (err as Error).message)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: (err as Error).message })
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: (err as Error).message }, traceId)
     return
   }
 
@@ -1080,7 +1084,7 @@ async function runTaskSteps(
     console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} starting order=${step.stepOrder}`)
 
     // 2a. Signal step start to Lambda
-    await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {})
+    await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
 
     // 2b–2c. Build prompt, send to OpenClaw, collect streamed result
     let agentOutput = ''
@@ -1171,7 +1175,7 @@ async function runTaskSteps(
     if (stepError) {
       console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} error: ${stepError}`)
       await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${stepError}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: stepError })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: stepError }, traceId)
       return
     }
 
@@ -1180,7 +1184,7 @@ async function runTaskSteps(
       const errMsg = 'Agent returned empty response'
       console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} ${errMsg}`)
       await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
       return
     }
 
@@ -1217,7 +1221,7 @@ async function runTaskSteps(
           const errMsg = 'Step output failed schema validation'
           console.error(`[relay] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} schema validation failed: ${JSON.stringify(schemaValidation.error.issues)}`)
           await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-          await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg })
+          await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
           return
         } else {
           console.warn(`[relay] step output schema warning — accepting raw text for reasoning step stepId=${stepId}: ${JSON.stringify(schemaValidation.error.issues)}`)
@@ -1232,7 +1236,7 @@ async function runTaskSteps(
       const errMsg = `Step output was not valid JSON (tool="${step.toolName}" requires structured output)`
       console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} non-JSON tool output: ${errMsg}`)
       await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
       return
     }
 
@@ -1247,7 +1251,7 @@ async function runTaskSteps(
     if (clarificationQuestion) {
       console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (string signal)`)
       await postTaskComment(taskId, `🤔 I need clarification: ${clarificationQuestion}`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [clarificationQuestion] })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [clarificationQuestion] }, traceId)
       return
     }
     // Check 2: planning-style { clarificationNeeded: true, questions: [...] } — model sometimes uses
@@ -1258,7 +1262,7 @@ async function runTaskSteps(
       const question = questions[0] ?? 'Agent needs clarification before proceeding.'
       console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (plan-style signal)`)
       await postTaskComment(taskId, `🤔 I need clarification: ${question}`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: questions.length > 0 ? questions : [question] })
+      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: questions.length > 0 ? questions : [question] }, traceId)
       return
     }
 
@@ -1274,7 +1278,7 @@ async function runTaskSteps(
       toolRationale,
       actualToolUsed,
       toolResult: { text: summary, results },
-    })
+    }, traceId)
   }
 
   // 3. All steps done — post summary comment then complete
@@ -1286,7 +1290,7 @@ async function runTaskSteps(
     })
     .join('\n')
   await postTaskComment(taskId, `✅ All steps completed. Here's what I did:\n${summary}`, agentId)
-  await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary })
+  await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary }, traceId)
 }
 
 app.post('/api/tasks/execute', async (c) => {
@@ -1335,17 +1339,18 @@ app.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'Message quota exceeded', used: execQuota.used, limit: execQuota.limit }, 429)
   }
 
-  console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} execution started steps=${steps.length}`)
+  const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
+  console.log(JSON.stringify({ level: 'info', msg: 'task execution started', traceId, taskId, tenantId, steps: steps.length, ts: Date.now() }))
 
   // 4. Fire-and-forget — return 200 immediately; step loop runs async
   const USE_MASTRA = process.env.USE_MASTRA_TASKS === 'true'
   if (USE_MASTRA) {
-    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext).catch((err: Error) => {
-      console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} unhandled error:`, err.message)
+    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, traceId).catch((err: Error) => {
+      console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
     })
   } else {
-    runTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext).catch((err: Error) => {
-      console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} unhandled error:`, err.message)
+    runTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, traceId).catch((err: Error) => {
+      console.error(JSON.stringify({ level: 'error', msg: 'task unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
     })
   }
 
@@ -1370,6 +1375,7 @@ async function runMastraWorkflowSteps(
   steps: WorkflowStep[],
   systemPrompt: string | null,
   requiresApproval: boolean,
+  traceId = crypto.randomUUID()
 ): Promise<void> {
   const skill = await fetchAgentSkill(agentId)
   const instructions = systemPrompt
@@ -1427,7 +1433,7 @@ async function runMastraWorkflowSteps(
           result: output.toolResult ?? null,
         })
       }
-      console.log('[workflow] step complete:', stepId, output.status)
+      console.log(JSON.stringify({ level: 'info', msg: 'workflow step complete', traceId, workflowRunId, stepId, status: output.status, ts: Date.now() }))
     },
     onStepFail: async (stepId, error) => {
       wfStepsCompleted.push({
@@ -1444,6 +1450,7 @@ async function runMastraWorkflowSteps(
           headers: {
             'Content-Type': 'application/json',
             'x-internal-service-key': INTERNAL_SERVICE_KEY,
+            'x-trace-id': traceId,
           },
           body: JSON.stringify({
             status: 'failed',
@@ -1453,7 +1460,7 @@ async function runMastraWorkflowSteps(
           }),
         }
       ).catch((e: Error) => console.error('[workflow] update failed:', e.message))
-      console.error('[workflow] step failed:', stepId, error)
+      console.error(JSON.stringify({ level: 'error', msg: 'workflow step failed', traceId, workflowRunId, stepId, error, ts: Date.now() }))
     },
     onTaskComment: async (comment) => {
       console.log(`[workflows] workflowRunId=${workflowRunId} comment: ${comment}`)
@@ -1470,6 +1477,7 @@ async function runMastraWorkflowSteps(
       headers: {
         'Content-Type': 'application/json',
         'x-internal-service-key': INTERNAL_SERVICE_KEY,
+        'x-trace-id': traceId,
       },
       body: JSON.stringify({
         status: 'completed',
@@ -1524,11 +1532,12 @@ app.post('/api/workflows/execute', async (c) => {
     return c.json({ error: 'Message quota exceeded', used: quota.used, limit: quota.limit }, 429)
   }
 
-  console.log(`[workflows] tenantId=${tenantId} workflowId=${workflowId} workflowRunId=${workflowRunId} execution started steps=${steps.length}`)
+  const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
+  console.log(JSON.stringify({ level: 'info', msg: 'workflow execution started', traceId, workflowId, workflowRunId, tenantId, steps: steps.length, ts: Date.now() }))
 
   // Fire-and-forget — return 200 immediately; Mastra workflow runs async
-  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval).catch((err: Error) => {
-    console.error(`[workflows] tenantId=${tenantId} workflowId=${workflowId} workflowRunId=${workflowRunId} unhandled error:`, err.message)
+  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval, traceId).catch((err: Error) => {
+    console.error(JSON.stringify({ level: 'error', msg: 'workflow unhandled error', traceId, workflowId, workflowRunId, tenantId, error: err.message, ts: Date.now() }))
   })
 
   return c.json({ ok: true, workflowRunId })

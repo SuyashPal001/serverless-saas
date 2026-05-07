@@ -202,6 +202,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
+  const traceId = c.req.header('x-trace-id') ?? '';
 
   const bodySchema = z.object({
     agentOutput: z.string().max(100_000).optional(),
@@ -253,7 +254,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
       })
       .where(eq(taskSteps.id, stepId));
   } catch (dbErr) {
-    console.error('[step/complete] DB write failed', { taskId, stepId, error: (dbErr as Error).message });
+    console.error(JSON.stringify({ level: 'error', msg: 'step/complete DB write failed', traceId, taskId, stepId, error: (dbErr as Error).message, ts: Date.now() }));
     c.header('Retry-After', '2');
     return c.json({ error: 'Step completion write failed, please retry' }, 503);
   }
@@ -281,6 +282,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
 
   const taskId = c.req.param('taskId');
   const stepId = c.req.param('stepId');
+  const traceId = c.req.header('x-trace-id') ?? '';
 
   const bodySchema = z.object({
     error: z.string().min(1),
@@ -319,6 +321,7 @@ internalTasksRoute.post('/:taskId/steps/:stepId/fail', async (c) => {
   if (!updatedStep) {
     return c.json({ error: 'Step is not in a failable state' }, 409);
   }
+  console.error(JSON.stringify({ level: 'error', msg: 'step failed', traceId, taskId, stepId, error: failError, ts: Date.now() }));
 
   await db.update(agentTasks)
     .set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() })
