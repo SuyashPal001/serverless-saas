@@ -662,6 +662,35 @@ async function callInternalTaskApi(path: string, body: Record<string, unknown>):
   }
 }
 
+async function postTaskEval(params: {
+  taskId: string
+  tenantId: string
+  taskTitle: string
+  taskDescription: string | undefined
+  finalOutput: string
+}): Promise<void> {
+  try {
+    await fetch(`${INTERNAL_API_URL}/internal/evals/auto`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY,
+      },
+      body: JSON.stringify({
+        conversationId: params.taskId,
+        messageId: params.taskId,
+        tenantId: params.tenantId,
+        question: params.taskTitle,
+        retrievedChunks: [],
+        answer: params.finalOutput,
+      }),
+    })
+  } catch (err) {
+    // Fire and forget — never block task execution
+    console.error('[eval] postTaskEval error:', (err as Error).message)
+  }
+}
+
 async function logToolCall(params: {
   tenantId: string
   toolName: string
@@ -891,6 +920,7 @@ async function runMastraTaskSteps(
   ]
 
   let earlyTermination = false
+  const stepOutputs: string[] = []
 
   const ctx: WorkflowContext = {
     taskId,
@@ -913,6 +943,7 @@ async function runMastraTaskSteps(
     blockedTools: policy.blockedActions,
     allowedTools: policy.allowedActions,
     onStepComplete: async (stepId, output) => {
+      stepOutputs.push(output.summary)
       // Lambda toolResult schema is z.record(z.unknown()).optional() — omit when absent
       const raw = output.toolResult
       const toolResult = raw == null
@@ -977,6 +1008,13 @@ async function runMastraTaskSteps(
   if (!earlyTermination) {
     await postTaskComment(taskId, `✅ All steps completed.`, agentId)
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' })
+    await postTaskEval({
+      taskId,
+      tenantId,
+      taskTitle,
+      taskDescription,
+      finalOutput: stepOutputs.join('\n\n') || taskTitle,
+    })
   }
 }
 

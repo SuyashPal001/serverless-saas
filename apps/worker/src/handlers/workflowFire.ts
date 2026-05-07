@@ -1,9 +1,41 @@
 import { eq, and } from 'drizzle-orm';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { db } from '../db';
 import { agentWorkflows, agentWorkflowRuns } from '@serverless-saas/database/schema';
 
 const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY!;
+const SQS_PROCESSING_QUEUE_URL = process.env.SQS_PROCESSING_QUEUE_URL;
+
+const sqsClient = new SQSClient({});
+
+async function fireWorkflowEval(
+  workflow: typeof agentWorkflows.$inferSelect,
+  runId: string,
+): Promise<void> {
+  if (!SQS_PROCESSING_QUEUE_URL) return;
+  try {
+    await sqsClient.send(
+      new SendMessageCommand({
+        QueueUrl: SQS_PROCESSING_QUEUE_URL,
+        MessageBody: JSON.stringify({
+          type: 'eval.auto',
+          payload: {
+            conversationId: runId,
+            messageId: runId,
+            tenantId: workflow.tenantId,
+            question: workflow.name,
+            retrievedChunks: [],
+            answer: workflow.systemPrompt ?? `Workflow "${workflow.name}" scheduled execution completed.`,
+          },
+        }),
+      }),
+    );
+  } catch (err) {
+    // Fire and forget — never block workflow execution
+    console.error('[workflowFire] eval.auto publish error:', err instanceof Error ? err.message : String(err));
+  }
+}
 
 export async function handleWorkflowFire(body: Record<string, unknown>): Promise<void> {
   const workflowId = typeof body.workflowId === 'string' ? body.workflowId : undefined;
@@ -71,6 +103,8 @@ export async function handleWorkflowFire(body: Record<string, unknown>): Promise
         .update(agentWorkflowRuns)
         .set({ status: 'completed', completedAt: new Date() })
         .where(eq(agentWorkflowRuns.id, resolvedRunId));
+
+      void fireWorkflowEval(workflow, resolvedRunId);
     } catch (err) {
       console.error(
         '[workflowFire] error for workflow',
