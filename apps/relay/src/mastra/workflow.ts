@@ -41,6 +41,8 @@ export interface WorkflowContext {
   connectedProviders: string[]    // tenant's active integration providers
   highStakeTools: string[]        // tool names that are high or critical stakes
   requiresApprovalTools: string[] // tool names that need human approval before use
+  blockedTools: string[]          // from policy — always blocked
+  allowedTools: string[]          // from policy — if non-empty, only these are permitted
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepComplete: (
@@ -86,6 +88,34 @@ export async function runMastraWorkflow(
       (a, b) => a.stepNumber - b.stepNumber
     )) {
       try {
+        // Policy: blocked tools — hard stop, fail the step
+        if (step.toolName && ctx.blockedTools.includes(step.toolName)) {
+          await ctx.onStepFail(
+            step.id,
+            `Tool "${step.toolName}" is blocked by agent policy.`
+          )
+          await ctx.onTaskComment(
+            `🚫 Step "${step.title}" blocked — tool "${step.toolName}" is not permitted by policy.`
+          )
+          return
+        }
+
+        // Policy: allowedTools — if set, only these are permitted
+        if (
+          step.toolName &&
+          ctx.allowedTools.length > 0 &&
+          !ctx.allowedTools.includes(step.toolName)
+        ) {
+          await ctx.onStepFail(
+            step.id,
+            `Tool "${step.toolName}" is not in the allowed tools list for this agent.`
+          )
+          await ctx.onTaskComment(
+            `🚫 Step "${step.title}" blocked — tool "${step.toolName}" is not in this agent's allowed tools.`
+          )
+          return
+        }
+
         // If the step's designated tool requires approval — stop immediately
         // before calling the agent. The human must confirm first.
         if (step.toolName && ctx.requiresApprovalTools.includes(step.toolName)) {

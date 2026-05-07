@@ -231,6 +231,69 @@ export async function fetchToolGovernance(
   }
 }
 
+export interface AgentPolicy {
+  allowedActions: string[]      // if non-empty, ONLY these tools allowed
+  blockedActions: string[]      // these tools always blocked
+  requiresApproval: string[]    // these tools need human approval
+  maxTokensPerMessage: number | null
+  maxMessagesPerConversation: number | null
+}
+
+export async function fetchAgentPolicy(
+  agentId: string,
+  tenantId: string,
+): Promise<AgentPolicy> {
+  const p = getPool()
+  try {
+    const res = await p.query<{
+      allowed_actions: string[]
+      blocked_actions: string[]
+      requires_approval: string[]
+      max_tokens_per_message: number | null
+      max_messages_per_conversation: number | null
+    }>(
+      `SELECT allowed_actions, blocked_actions,
+              requires_approval,
+              max_tokens_per_message,
+              max_messages_per_conversation
+       FROM agent_policies
+       WHERE agent_id = $1 AND tenant_id = $2
+       LIMIT 1`,
+      [agentId, tenantId],
+    )
+
+    if (res.rows.length === 0) {
+      // No policy configured — permissive defaults
+      return {
+        allowedActions: [],
+        blockedActions: [],
+        requiresApproval: [],
+        maxTokensPerMessage: null,
+        maxMessagesPerConversation: null,
+      }
+    }
+
+    const row = res.rows[0]
+    return {
+      allowedActions: row.allowed_actions ?? [],
+      blockedActions: row.blocked_actions ?? [],
+      requiresApproval: row.requires_approval ?? [],
+      maxTokensPerMessage: row.max_tokens_per_message,
+      maxMessagesPerConversation: row.max_messages_per_conversation,
+    }
+  } catch (err) {
+    // Fail open — policy errors must never block execution
+    console.error('[policy] fetchAgentPolicy error:', (err as Error).message)
+    return {
+      allowedActions: [],
+      blockedActions: [],
+      requiresApproval: [],
+      maxTokensPerMessage: null,
+      maxMessagesPerConversation: null,
+    }
+  }
+}
+
 export function recordUsage(record: UsageRecord): void {
   const { tenantId, actorId, apiKeyId = null, inputTokens, outputTokens } = record
   const p = getPool()

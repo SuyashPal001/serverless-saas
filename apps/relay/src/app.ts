@@ -8,7 +8,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from './usage.js'
 import { runMastraWorkflow } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
@@ -856,6 +856,15 @@ async function runMastraTaskSteps(
   // the agent ever attempts to call them.
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
+  const policy = await fetchAgentPolicy(agentId, tenantId)
+
+  // Merge requiresApproval from both tool registry and agent policy
+  const mergedRequiresApproval = [
+    ...new Set([
+      ...toolGovernance.requiresApprovalTools,
+      ...policy.requiresApproval,
+    ])
+  ]
 
   let earlyTermination = false
 
@@ -876,7 +885,9 @@ async function runMastraTaskSteps(
     })),
     connectedProviders,
     highStakeTools: toolGovernance.highStakeTools,
-    requiresApprovalTools: toolGovernance.requiresApprovalTools,
+    requiresApprovalTools: mergedRequiresApproval,
+    blockedTools: policy.blockedActions,
+    allowedTools: policy.allowedActions,
     onStepComplete: async (stepId, output) => {
       // Lambda toolResult schema is z.record(z.unknown()).optional() — omit when absent
       const raw = output.toolResult
