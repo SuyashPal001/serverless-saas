@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index, uniqueIndex, customType } from 'drizzle-orm/pg-core';
 import { json, jsonb } from 'drizzle-orm/pg-core';
 
 const vector = customType<{ data: number[]; driverData: string }>({
@@ -165,3 +165,45 @@ export const taskComments = pgTable('task_comments', {
   taskIdIdx: index('task_comments_task_id_idx').on(t.taskId),
   tenantTaskIdx: index('task_comments_tenant_task_idx').on(t.tenantId, t.taskId),
 }));
+
+// ─── Tool Registry ───────────────────────────────────────────────
+
+export const agentToolStakesEnum = pgEnum('agent_tool_stakes', [
+  'low',       // read-only, no side effects
+  'medium',    // writes to external system
+  'high',      // irreversible action (send email, create record)
+  'critical',  // destructive (delete, financial, access change)
+])
+
+export const agentTools = pgTable('agent_tools', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').references(() => tenants.id),
+  // null = platform tool available to all tenants
+  name: text('name').notNull(),
+  displayName: text('display_name').notNull(),
+  description: text('description'),
+  provider: text('provider'),           // 'gmail' | 'drive' | 'jira' etc
+  parametersSchema: jsonb('parameters_schema'),  // JSON Schema for input
+  stakes: agentToolStakesEnum('stakes').notNull().default('low'),
+  requiresApproval: boolean('requires_approval').notNull().default(false),
+  maxRetries: integer('max_retries').notNull().default(1),
+  timeoutMs: integer('timeout_ms').notNull().default(30_000),
+  status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const agentToolAssignments = pgTable(
+  'agent_tool_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id').notNull().references(() => agents.id),
+    toolId: uuid('tool_id').notNull().references(() => agentTools.id),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: uniqueIndex('agent_tool_assignments_unique')
+      .on(t.agentId, t.toolId),
+  })
+)

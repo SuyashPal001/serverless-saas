@@ -57,12 +57,13 @@ export async function createTenantAgent(
   })
 
   const agentId = `saarthi-${config.agentSlug}-${config.tenantId}`
+  const modelId = process.env.MASTRA_MODEL ?? 'gemini-2.5-flash'
 
   const agent = new Agent({
     id: agentId,
     name: agentId,
     instructions: config.instructions,
-    model: customGoogle('gemini-2.0-flash'),
+    model: customGoogle(modelId),
     memory,
     tools,
   })

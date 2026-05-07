@@ -870,14 +870,20 @@ async function runMastraTaskSteps(
       toolName: s.toolName,
     })),
     onStepComplete: async (stepId, output) => {
+      // Lambda toolResult schema is z.record(z.unknown()).optional() — omit when absent
+      const raw = output.toolResult
+      const toolResult = raw == null
+        ? undefined
+        : typeof raw === 'object' && !Array.isArray(raw)
+          ? raw as Record<string, unknown>
+          : { result: raw }
       await callInternalTaskApi(
         `/internal/tasks/${taskId}/steps/${stepId}/complete`,
         {
           agentOutput: output.summary,
-          reasoning: output.reasoning ?? null,
-          toolRationale: null,
-          actualToolUsed: output.toolCalled ?? null,
-          toolResult: output.toolResult ?? null,
+          reasoning: output.reasoning ?? undefined,
+          actualToolUsed: output.toolCalled ?? undefined,
+          ...(toolResult !== undefined && { toolResult }),
         }
       )
     },

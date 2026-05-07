@@ -235,6 +235,14 @@ export async function handleRequest(tenantId: string, body: RpcBody, relaySessio
 
   try {
     switch (method) {
+      case 'initialize':
+        return ok(id, {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'saarthi-mcp-server', version: '1.0.0' },
+        })
+      case 'notifications/initialized':
+        return ok(id, {})
       case 'tools/list': {
         const tools = await toolsList(tenantId)
         return ok(id, { tools })

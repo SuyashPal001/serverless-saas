@@ -12,8 +12,8 @@ export function getMCPClientForTenant(tenantId: string): MCPClient {
     servers: {
       saarthiTools: {
         url: new URL(
-          process.env.MCP_SERVER_SSE_URL ??
-          'http://localhost:3002/sse'
+          process.env.MCP_SERVER_HTTP_URL ??
+          'http://localhost:3002/mcp'
         ),
         requestInit: {
           headers: {
