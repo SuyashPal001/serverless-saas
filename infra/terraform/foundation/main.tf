@@ -123,12 +123,56 @@ module "sns_events" {
 # -------------------------------------------------------
 # Module: EventBridge — Custom Event Bus
 # -------------------------------------------------------
+resource "aws_sqs_queue_policy" "workflow_eventbridge" {
+  queue_url = module.sqs.queue_urls["workflow"]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEventBridgeToSendMessage"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sqs:SendMessage"
+        Resource = module.sqs.queue_arns["workflow"]
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = module.eventbridge.rule_arns["main:workflow_scheduler"]
+          }
+        }
+      }
+    ]
+  })
+}
+
+# -------------------------------------------------------
+# Module: EventBridge — Custom Event Bus
+# -------------------------------------------------------
 module "eventbridge" {
   source = "../modules/messaging/aws/eventbridge"
 
   buses = {
     main = {
       name = var.event_bus_name
+      rules = {
+        workflow_scheduler = {
+          name                = "${local.name_prefix}-workflow-scheduler"
+          description         = "Fires scheduled agent workflows every 5 minutes"
+          schedule_expression = "rate(5 minutes)"
+          targets = {
+            workflow_sqs = {
+              target_id = "workflow-sqs"
+              arn       = module.sqs.queue_arns["workflow"]
+              input_transformer = {
+                input_paths    = {}
+                input_template = "{\"type\":\"workflow.fire\"}"
+              }
+            }
+          }
+        }
+      }
     }
   }
   tags = {}

@@ -1276,6 +1276,125 @@ app.post('/api/tasks/execute', async (c) => {
   return c.json({ ok: true, taskId })
 })
 
+// ─── Workflow execution endpoint ──────────────────────────────────────────────
+
+interface WorkflowStep {
+  id?: string
+  stepNumber?: number
+  title: string
+  description?: string
+  toolName?: string
+}
+
+async function runMastraWorkflowSteps(
+  workflowId: string,
+  workflowRunId: string,
+  agentId: string,
+  tenantId: string,
+  steps: WorkflowStep[],
+  systemPrompt: string | null,
+  requiresApproval: boolean,
+): Promise<void> {
+  const skill = await fetchAgentSkill(agentId)
+  const instructions = systemPrompt
+    ?? skill?.systemPrompt
+    ?? 'You are a helpful AI assistant.'
+
+  const connectedProviders = await fetchConnectedProviders(tenantId)
+  const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
+  const policy = await fetchAgentPolicy(agentId, tenantId)
+
+  const mergedRequiresApproval = [
+    ...new Set([
+      ...toolGovernance.requiresApprovalTools,
+      ...policy.requiresApproval,
+      ...(requiresApproval ? ['*'] : []),
+    ])
+  ]
+
+  const ctx: WorkflowContext = {
+    taskId: workflowRunId,
+    tenantId,
+    agentId,
+    agentSlug: agentId,
+    instructions,
+    taskTitle: `Workflow ${workflowId}`,
+    taskDescription: undefined,
+    steps: steps.map((s, i) => ({
+      id: s.id ?? `step-${i}`,
+      stepNumber: s.stepNumber ?? i + 1,
+      title: s.title,
+      description: s.description,
+      toolName: s.toolName,
+    })),
+    connectedProviders,
+    highStakeTools: toolGovernance.highStakeTools,
+    requiresApprovalTools: mergedRequiresApproval,
+    blockedTools: policy.blockedActions,
+    allowedTools: policy.allowedActions,
+    onStepComplete: async (stepId, output) => {
+      console.log(`[workflows] workflowRunId=${workflowRunId} step=${stepId} complete status=${output.status}`)
+    },
+    onStepFail: async (stepId, error) => {
+      console.error(`[workflows] workflowRunId=${workflowRunId} step=${stepId} failed: ${error}`)
+    },
+    onTaskComment: async (comment) => {
+      console.log(`[workflows] workflowRunId=${workflowRunId} comment: ${comment}`)
+    },
+  }
+
+  await runMastraWorkflow(ctx)
+}
+
+app.post('/api/workflows/execute', async (c) => {
+  const serviceKey = c.req.header('x-internal-service-key') ?? ''
+  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  let body: {
+    workflowId?: unknown
+    workflowRunId?: unknown
+    tenantId?: unknown
+    agentId?: unknown
+    steps?: unknown
+    systemPrompt?: unknown
+    requiresApproval?: unknown
+  }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  const workflowId = typeof body.workflowId === 'string' ? body.workflowId.trim() : ''
+  const workflowRunId = typeof body.workflowRunId === 'string' ? body.workflowRunId.trim() : ''
+  const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
+  const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : ''
+  const steps: WorkflowStep[] = Array.isArray(body.steps) ? body.steps as WorkflowStep[] : []
+  const systemPrompt = typeof body.systemPrompt === 'string' && body.systemPrompt.trim() ? body.systemPrompt.trim() : null
+  const requiresApproval = body.requiresApproval === true
+
+  if (!workflowId || !workflowRunId || !tenantId || !agentId) {
+    return c.json({ error: 'workflowId, workflowRunId, tenantId, and agentId are required' }, 400)
+  }
+
+  const quota = await checkMessageQuota(tenantId)
+  if (!quota.allowed) {
+    console.warn(`[workflows] tenantId=${tenantId} workflowId=${workflowId} quota exceeded used=${quota.used} limit=${quota.limit}`)
+    return c.json({ error: 'Message quota exceeded', used: quota.used, limit: quota.limit }, 429)
+  }
+
+  console.log(`[workflows] tenantId=${tenantId} workflowId=${workflowId} workflowRunId=${workflowRunId} execution started steps=${steps.length}`)
+
+  // Fire-and-forget — return 200 immediately; Mastra workflow runs async
+  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval).catch((err: Error) => {
+    console.error(`[workflows] tenantId=${tenantId} workflowId=${workflowId} workflowRunId=${workflowRunId} unhandled error:`, err.message)
+  })
+
+  return c.json({ ok: true, workflowRunId })
+})
+
 // ─── Task planning endpoint ───────────────────────────────────────────────────
 
 function buildPlanningPrompt(

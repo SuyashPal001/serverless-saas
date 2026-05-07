@@ -7,6 +7,7 @@ import { handleWebhookDelivery } from './handlers/webhookDelivery';
 import { handleUsageRecord } from './handlers/usageRecord';
 import { handleDocumentIngest, DocumentIngestPayload } from './handlers/documentIngest';
 import { handleEvalAuto } from './handlers/evalAuto';
+import { handleWorkflowFire } from './handlers/workflowFire';
 
 export async function route(body: Record<string, unknown>): Promise<void> {
   const type = body.type as string | undefined;
@@ -38,6 +39,9 @@ export async function route(body: Record<string, unknown>): Promise<void> {
       break;
     case 'eval.auto':
       await handleEvalAuto(body);
+      break;
+    case 'workflow.fire':
+      await handleWorkflowFire(body);
       break;
     default:
       console.log('Worker received unknown job type — skipping', { type });
