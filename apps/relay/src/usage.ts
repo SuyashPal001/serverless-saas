@@ -294,6 +294,28 @@ export async function fetchAgentPolicy(
   }
 }
 
+export async function fetchWorkingMemory(
+  tenantId: string
+): Promise<string | null> {
+  const p = getPool()
+  try {
+    const res = await p.query<{ value: string }>(
+      `SELECT value FROM mastra.mastra_resources
+       WHERE "resourceId" = $1
+       AND type = 'workingMemory'
+       LIMIT 1`,
+      [tenantId]
+    )
+    if (!res.rows[0]) return null
+    const parsed = JSON.parse(res.rows[0].value)
+    return typeof parsed === 'string'
+      ? parsed
+      : JSON.stringify(parsed)
+  } catch {
+    return null
+  }
+}
+
 export function recordUsage(record: UsageRecord): void {
   const { tenantId, actorId, apiKeyId = null, inputTokens, outputTokens } = record
   const p = getPool()

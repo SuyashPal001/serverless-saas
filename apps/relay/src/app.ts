@@ -9,7 +9,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
 import { runMastraWorkflow } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
@@ -551,8 +551,11 @@ app.post('/rag/retrieve', async (c) => {
   }
 
   try {
-    // Step A — Query rewriting (skipped for latency; TODO: re-enable after optimization)
-    const rewrittenQuery = query
+    // Step A — Query rewriting with 2 s timeout fallback to raw query
+    const rewrittenQuery = await Promise.race([
+      rewriteQuery(query, conversationHistory ?? []),
+      new Promise<string>(r => setTimeout(() => r(query), 2000))
+    ])
     console.log(`[rag/retrieve] query="${rewrittenQuery}" tenantId=${tenantId}`)
 
     // Step B — Fetch raw chunks from Lambda
@@ -577,8 +580,13 @@ app.post('/rag/retrieve', async (c) => {
       console.error('[rag/retrieve] lambda fetch error:', (fetchErr as Error).message)
     }
 
-    // Step C — Fast score-threshold filter (Gemini gate skipped for latency)
-    const gated = fastGateChunks(rawChunks)
+    // Step C — Gemini relevance gate with 3 s timeout fallback to fast score filter
+    const gated = await Promise.race([
+      gateChunks(rewrittenQuery, rawChunks),
+      new Promise<ScoredChunk[]>(r =>
+        setTimeout(() => r(fastGateChunks(rawChunks)), 3000)
+      )
+    ])
 
     // Step D — Empty result
     if (gated.length === 0) {
@@ -904,7 +912,7 @@ async function runMastraTaskSteps(
   referenceText?: string | null,
   links?: string[] | null,
   attachmentContext?: string | null,
-  traceId = crypto.randomUUID()
+  traceId: string = crypto.randomUUID()
 ): Promise<void> {
   // Quota guard — same pattern as runTaskSteps
   const quota = await checkMessageQuota(tenantId)
@@ -1055,7 +1063,7 @@ async function runTaskSteps(
   referenceText?: string | null,
   links?: string[] | null,
   attachmentContext?: string | null,
-  traceId = crypto.randomUUID()
+  traceId: string = crypto.randomUUID()
 ): Promise<void> {
   const sorted = [...steps].sort((a, b) => a.stepOrder - b.stepOrder)
   const completedSteps: CompletedStep[] = []
@@ -1378,7 +1386,7 @@ async function runMastraWorkflowSteps(
   steps: WorkflowStep[],
   systemPrompt: string | null,
   requiresApproval: boolean,
-  traceId = crypto.randomUUID()
+  traceId: string = crypto.randomUUID()
 ): Promise<void> {
   const skill = await fetchAgentSkill(agentId)
   const instructions = systemPrompt
@@ -2228,6 +2236,16 @@ app.post('/api/chat', async (c) => {
 
       await openClaw.connect()
       console.log(`[sse:${sessionId}] openclaw connected`)
+
+      const workingMemory = await fetchWorkingMemory(tenantId)
+      if (workingMemory) {
+        openClaw.prependSystemContext(
+          `[AGENT MEMORY]\nYou have remembered the following ` +
+          `about this tenant from previous sessions:\n` +
+          `${workingMemory}`
+        )
+        console.log(`[sse:${sessionId}] injected working memory for tenantId=${tenantId}`)
+      }
 
       if (modelId) {
         console.log(`[sse:${sessionId}] model override: ${modelId}`)

@@ -144,20 +144,45 @@ export async function runMastraWorkflow(
         isFirstStep = false
 
         const stepStartMs = Date.now()
-        const result = await agent.generate(prompt, {
-          // Scope memory to this task session
-          // memory.thread = threadId, memory.resource = resourceId
-          memory: {
-            thread: `task:${ctx.taskId}:step:${step.stepNumber}`,
-            resource: ctx.tenantId,
-          },
-          structuredOutput: {
-            schema: StepOutputSchema,
-          },
-          ...(ctx.maxTokensPerMessage
-            ? { modelSettings: { maxOutputTokens: ctx.maxTokensPerMessage } }
-            : {}),
-        })
+        let result
+        let genAttempts = 0
+        while (genAttempts < 2) {
+          try {
+            result = await agent.generate(prompt, {
+              // Scope memory to this task session
+              // memory.thread = threadId, memory.resource = resourceId
+              memory: {
+                thread: `task:${ctx.taskId}:step:${step.stepNumber}`,
+                resource: ctx.tenantId,
+              },
+              structuredOutput: {
+                schema: StepOutputSchema,
+              },
+              ...(ctx.maxTokensPerMessage
+                ? { modelSettings: { maxOutputTokens: ctx.maxTokensPerMessage } }
+                : {}),
+            })
+            break
+          } catch (genErr) {
+            const msg = genErr instanceof Error
+              ? genErr.message
+              : String(genErr)
+            if (
+              genAttempts === 0 &&
+              /timeout|ECONNRESET|ECONNREFUSED|503|429/i.test(msg)
+            ) {
+              console.warn(
+                `[mastra] step ${step.id} transient error, ` +
+                `retrying in 2s: ${msg}`
+              )
+              await new Promise(r => setTimeout(r, 2000))
+              genAttempts++
+            } else {
+              throw genErr
+            }
+          }
+        }
+        if (!result) throw new Error('agent.generate failed after retry')
         const stepLatencyMs = Date.now() - stepStartMs
         const usage = result.totalUsage ?? result.usage
 
