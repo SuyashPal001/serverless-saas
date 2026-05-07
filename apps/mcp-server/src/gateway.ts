@@ -21,6 +21,157 @@ import {
 import { proxyToVendorMCP, listVendorTools } from './proxy/vendor.js'
 import { getIntegrations } from './db/credentials.js'
 
+// Search provider — swap via SEARCH_PROVIDER env var
+// 'google' (default) — Vertex AI Grounding with Google Search
+//                       covered by GCP startup credits
+// 'tavily'           — Tavily API (TAVILY_API_KEY required)
+// 'brave'            — Brave Search API (BRAVE_API_KEY required)
+
+async function executeWebSearch(
+  query: string,
+  maxResults: number = 5
+): Promise<Array<{ title: string; url: string; snippet: string }>> {
+  const provider = process.env.SEARCH_PROVIDER ?? 'google'
+
+  if (provider === 'tavily') {
+    const apiKey = process.env.TAVILY_API_KEY
+    if (!apiKey) throw new Error('TAVILY_API_KEY not set')
+
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        query,
+        max_results: maxResults,
+        search_depth: 'basic',
+      }),
+    })
+    if (!res.ok) throw new Error(`Tavily search failed: ${res.status}`)
+    const data = await res.json() as {
+      results: Array<{ title: string; url: string; content: string }>
+    }
+    return (data.results ?? []).map(r => ({
+      title: r.title,
+      url: r.url,
+      snippet: r.content,
+    }))
+  }
+
+  if (provider === 'brave') {
+    const apiKey = process.env.BRAVE_API_KEY
+    if (!apiKey) throw new Error('BRAVE_API_KEY not set')
+
+    const res = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': apiKey,
+        },
+      }
+    )
+    if (!res.ok) throw new Error(`Brave search failed: ${res.status}`)
+    const data = await res.json() as {
+      web?: { results?: Array<{ title: string; url: string; description: string }> }
+    }
+    return (data.web?.results ?? []).map(r => ({
+      title: r.title,
+      url: r.url,
+      snippet: r.description,
+    }))
+  }
+
+  // Default: Google via Vertex AI Grounding
+  // Uses GCP service account key already on the VM
+  // Covered by GCP startup credits
+  const gcpKey = process.env.GCP_SA_KEY
+  if (!gcpKey) throw new Error('GCP_SA_KEY not set')
+
+  const credentials = JSON.parse(gcpKey)
+  const projectId = credentials.project_id
+  const location = process.env.GCP_LOCATION ?? 'us-central1'
+
+  // Get access token from service account
+  const { GoogleAuth } = await import('google-auth-library')
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  })
+  const client = await auth.getClient()
+  const tokenResponse = await client.getAccessToken()
+  const accessToken = tokenResponse.token
+  if (!accessToken) throw new Error('Failed to get GCP access token')
+
+  // Call Vertex AI with Google Search grounding
+  const model = process.env.MASTRA_MODEL ?? 'gemini-2.5-flash'
+  const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [{ text: `Search for: ${query}\n\nReturn the top ${maxResults} most relevant results about this topic.` }]
+      }],
+      tools: [{
+        googleSearchRetrieval: {}
+      }],
+      generationConfig: {
+        maxOutputTokens: 1024,
+        temperature: 1.0,
+      }
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Vertex AI search failed: ${res.status} ${errText}`)
+  }
+
+  const data = await res.json() as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> }
+      groundingMetadata?: {
+        groundingChunks?: Array<{
+          web?: { uri?: string; title?: string }
+        }>
+        groundingSupports?: Array<{
+          segment?: { text?: string }
+        }>
+      }
+    }>
+  }
+
+  const candidate = data.candidates?.[0]
+  const chunks = candidate?.groundingMetadata?.groundingChunks ?? []
+  const responseText = candidate?.content?.parts?.[0]?.text ?? ''
+
+  // Return grounding chunks as search results
+  // Fall back to response text if no chunks
+  if (chunks.length > 0) {
+    return chunks.slice(0, maxResults).map((chunk, i) => ({
+      title: chunk.web?.title ?? `Result ${i + 1}`,
+      url: chunk.web?.uri ?? '',
+      snippet: candidate?.groundingMetadata?.groundingSupports?.[i]
+        ?.segment?.text ?? responseText,
+    }))
+  }
+
+  // No grounding chunks — return synthesized response
+  return [{
+    title: 'Search Result',
+    url: '',
+    snippet: responseText,
+  }]
+}
+
 // Tools that create, send, or mutate external state — require explicit user confirmation
 // before execution. Read-only tools (list, get, search, export) are excluded.
 // Used as the fallback if the DB query in fetchRequiresApprovalTools() fails.
@@ -165,6 +316,9 @@ const BUILTIN_TOOLS = [
     inputSchema: { type: 'object', properties: { issueKey: { type: 'string' }, summary: { type: 'string' }, description: { type: 'string' }, assigneeEmail: { type: 'string' }, priority: { type: 'string' } }, required: ['issueKey'] } },
   { name: 'jira_list_projects', description: 'List all Jira projects', provider: 'jira',
     inputSchema: { type: 'object', properties: {} } },
+  // Platform tools — always available regardless of integrations
+  { name: 'web_search', description: 'Search the web for current information, news, facts, and real-time data. Returns relevant results with titles, URLs, and snippets.', provider: null,
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query' }, maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5, max: 10)' } }, required: ['query'] } },
 ]
 
 interface RpcBody {
@@ -185,7 +339,7 @@ function err(id: string | number | undefined, message: string, code = -32000) {
 async function toolsList(tenantId: string): Promise<unknown[]> {
   const integrations = await getIntegrations(tenantId)
   const activeProviders = new Set(integrations.map(i => i.provider))
-  const available = BUILTIN_TOOLS.filter(t => activeProviders.has(t.provider))
+  const available = BUILTIN_TOOLS.filter(t => t.provider === null || activeProviders.has(t.provider))
 
   const vendorTools: unknown[] = []
   for (const integration of integrations) {
@@ -260,6 +414,14 @@ async function toolsCall(tenantId: string, name: string, args: Record<string, un
       return jiraUpdateIssue(tenantId, args.issueKey as string, args as Parameters<typeof jiraUpdateIssue>[2])
     case 'jira_list_projects':
       return jiraListProjects(tenantId)
+    case 'web_search': {
+      const query = args.query as string
+      const maxResults = Math.min(
+        (args.maxResults as number | undefined) ?? 5,
+        10
+      )
+      return await executeWebSearch(query, maxResults)
+    }
     default: {
       // Fall through to vendor proxy — find first integration with an mcp_server_url
       const integrations = await getIntegrations(tenantId)

@@ -11,6 +11,9 @@ const PLATFORM_TOOLS: {
   provider: string | null;
   stakes: Stakes;
   requiresApproval: boolean;
+  maxRetries?: number;
+  timeoutMs?: number;
+  status?: string;
   parametersSchema: Record<string, unknown> | null;
 }[] = [
   // ── Gmail ──────────────────────────────────────────────────────────────────
@@ -249,11 +252,14 @@ const PLATFORM_TOOLS: {
   {
     name: 'web_search',
     displayName: 'Web Search',
-    description: 'Search the web for current information',
+    description: 'Search the web for current information, news, facts, and real-time data',
     provider: null,
     stakes: 'low',
     requiresApproval: false,
-    parametersSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    maxRetries: 2,
+    timeoutMs: 15000,
+    status: 'active' as const,
+    parametersSchema: { type: 'object', properties: { query: { type: 'string' }, maxResults: { type: 'number' } }, required: ['query'] },
   },
 ];
 
@@ -280,6 +286,9 @@ export async function seedTools(db: typeof DB): Promise<void> {
       parametersSchema: t.parametersSchema,
       stakes: t.stakes,
       requiresApproval: t.requiresApproval,
+      ...(t.maxRetries !== undefined && { maxRetries: t.maxRetries }),
+      ...(t.timeoutMs !== undefined && { timeoutMs: t.timeoutMs }),
+      ...(t.status !== undefined && { status: t.status }),
     }))
   );
 
