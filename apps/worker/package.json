@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "backfill:tsv": "tsx src/scripts/backfillTsv.ts"
   },
   "dependencies": {
     "@ai-sdk/google-vertex": "^1.0.4",
