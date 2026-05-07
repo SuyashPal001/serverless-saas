@@ -147,7 +147,7 @@ USE_MASTRA_TASKS=
 # Required when USE_MASTRA_TASKS=true:
 VERTEX_PROXY_URL=http://localhost:4001/v1
 GEMINI_API_KEY=placeholder    # vertex-proxy handles actual auth
-MCP_SERVER_SSE_URL=http://localhost:3002/sse
+MCP_SERVER_HTTP_URL=http://localhost:3002/mcp
 ```
 
 **The flag is safe to flip in production.** Both paths:
@@ -254,7 +254,7 @@ new PostgresStore({ id: 'mastra-pg-store', pool, schemaName: 'mastra' })
 USE_MASTRA_TASKS=true
 VERTEX_PROXY_URL=http://localhost:4001/v1
 GEMINI_API_KEY=placeholder
-MCP_SERVER_SSE_URL=http://localhost:3002/sse
+MCP_SERVER_HTTP_URL=http://localhost:3002/mcp
 DATABASE_URL=your_neon_url
 
 # 2. Start relay
@@ -293,7 +293,7 @@ cd apps/relay && npm run build
 USE_MASTRA_TASKS=true
 VERTEX_PROXY_URL=http://localhost:4001/v1
 GEMINI_API_KEY=placeholder
-MCP_SERVER_SSE_URL=http://localhost:3002/sse
+MCP_SERVER_HTTP_URL=http://localhost:3002/mcp
 
 # 3. Restart relay
 pm2 restart agent-relay
@@ -344,7 +344,7 @@ export function getMCPClientForTenant(tenantId: string): MCPClient {
   return new MCPClient({
     servers: {
       saarthiTools: {
-        url: new URL(process.env.MCP_SERVER_SSE_URL ?? 'http://localhost:3002/sse'),
+        url: new URL(process.env.MCP_SERVER_HTTP_URL ?? 'http://localhost:3002/mcp'),
         requestInit: {
           headers: {
             'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',

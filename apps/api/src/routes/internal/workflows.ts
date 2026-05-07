@@ -1,0 +1,77 @@
+import { timingSafeEqual } from 'crypto';
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { eq } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
+import { agentWorkflowRuns } from '@serverless-saas/database/schema/agents';
+import type { AppEnv } from '../../types';
+
+function isAuthorized(provided: string): boolean {
+  const expected = process.env.INTERNAL_SERVICE_KEY
+  if (!expected) return false
+  try {
+    return timingSafeEqual(
+      Buffer.from(provided),
+      Buffer.from(expected)
+    )
+  } catch {
+    return false
+  }
+}
+
+const updateSchema = z.object({
+  status: z.enum(['running', 'completed', 'failed']).optional(),
+  stepsCompleted: z.array(z.unknown()).optional(),
+  toolsCalled: z.array(z.unknown()).optional(),
+  insights: z.string().optional(),
+  completedAt: z.string().optional(),
+});
+
+export const internalWorkflowsRoute = new Hono<AppEnv>();
+
+internalWorkflowsRoute.post('/:workflowRunId/update', async (c) => {
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const { workflowRunId } = c.req.param();
+  const body = await c.req.json().catch(() => null);
+
+  if (!body) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const parsed = updateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid body' }, 400);
+  }
+
+  const update: Partial<typeof agentWorkflowRuns.$inferInsert> = {};
+
+  if (parsed.data.status !== undefined) {
+    update.status = parsed.data.status;
+  }
+  if (parsed.data.stepsCompleted !== undefined) {
+    update.stepsCompleted = parsed.data.stepsCompleted;
+  }
+  if (parsed.data.toolsCalled !== undefined) {
+    update.toolsCalled = parsed.data.toolsCalled;
+  }
+  if (parsed.data.insights !== undefined) {
+    update.insights = parsed.data.insights;
+  }
+  if (parsed.data.completedAt !== undefined) {
+    update.completedAt = new Date(parsed.data.completedAt);
+  }
+
+  if (Object.keys(update).length === 0) {
+    return c.json({ success: true });
+  }
+
+  await db
+    .update(agentWorkflowRuns)
+    .set(update)
+    .where(eq(agentWorkflowRuns.id, workflowRunId));
+
+  return c.json({ success: true });
+});

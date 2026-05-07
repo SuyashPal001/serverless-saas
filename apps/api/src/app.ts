@@ -50,6 +50,7 @@ import internalEvalsRoute from './routes/internal/evals';
 import internalToolCallsRoute from './routes/internal/tool-calls';
 import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
 import internalTasksRoute from './routes/internal/tasks';
+import { internalWorkflowsRoute } from './routes/internal/workflows';
 import internalIntegrationsRoute from './routes/internal/integrations';
 import { randomUUID } from 'crypto';
 import { initCognito } from '@serverless-saas/auth';
@@ -199,6 +200,7 @@ internalApi.route('/internal/evals', internalEvalsRoute);
 internalApi.route('/internal/tool-calls', internalToolCallsRoute);
 internalApi.route('/internal/knowledge-gaps', internalKnowledgeGapsRoute);
 internalApi.route('/internal/tasks', internalTasksRoute);
+internalApi.route('/internal/workflows', internalWorkflowsRoute);
 internalApi.route('/internal/integrations', internalIntegrationsRoute);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────

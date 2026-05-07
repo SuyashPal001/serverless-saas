@@ -9,7 +9,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage } from './usage.js'
 import { runMastraWorkflow } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
@@ -323,7 +323,7 @@ function fireMetrics(payload: {
 }): void {
   fetch(`${API_BASE_URL}/api/v1/internal/evals/metrics`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Service-Key': INTERNAL_SERVICE_KEY },
+    headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY },
     body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
@@ -341,7 +341,7 @@ function fireAutoEval(payload: {
 }): void {
   fetch(`${API_BASE_URL}/api/v1/internal/evals/auto`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Service-Key': INTERNAL_SERVICE_KEY },
+    headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY },
     body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
@@ -359,7 +359,7 @@ function fireToolCallLog(payload: {
 }): void {
   fetch(`${API_BASE_URL}/api/v1/internal/tool-calls/log`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Service-Key': INTERNAL_SERVICE_KEY },
+    headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY },
     body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
@@ -1027,6 +1027,13 @@ async function runMastraTaskSteps(
       taskDescription,
       finalOutput: stepOutputs.join('\n\n') || taskTitle,
     })
+    // TODO: wire actual token counts from Mastra agent.generate() response when available
+    recordUsage({
+      tenantId,
+      actorId: agentId,
+      inputTokens: 0,
+      outputTokens: 0,
+    })
   }
 }
 
@@ -1380,6 +1387,9 @@ async function runMastraWorkflowSteps(
     ])
   ]
 
+  const wfStepsCompleted: unknown[] = []
+  const wfToolsCalled: unknown[] = []
+
   const ctx: WorkflowContext = {
     taskId: workflowRunId,
     tenantId,
@@ -1401,10 +1411,47 @@ async function runMastraWorkflowSteps(
     blockedTools: policy.blockedActions,
     allowedTools: policy.allowedActions,
     onStepComplete: async (stepId, output) => {
-      console.log(`[workflows] workflowRunId=${workflowRunId} step=${stepId} complete status=${output.status}`)
+      wfStepsCompleted.push({
+        stepId,
+        title: steps.find((s: WorkflowStep) => s.id === stepId)?.title ?? stepId,
+        status: output.status,
+        summary: output.summary,
+        toolCalled: output.toolCalled ?? null,
+        completedAt: new Date().toISOString(),
+      })
+      if (output.toolCalled) {
+        wfToolsCalled.push({
+          tool: output.toolCalled,
+          result: output.toolResult ?? null,
+        })
+      }
+      console.log('[workflow] step complete:', stepId, output.status)
     },
     onStepFail: async (stepId, error) => {
-      console.error(`[workflows] workflowRunId=${workflowRunId} step=${stepId} failed: ${error}`)
+      wfStepsCompleted.push({
+        stepId,
+        status: 'failed',
+        error,
+        completedAt: new Date().toISOString(),
+      })
+      // POST workflow update — run failed
+      await fetch(
+        `${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-service-key': INTERNAL_SERVICE_KEY,
+          },
+          body: JSON.stringify({
+            status: 'failed',
+            stepsCompleted: wfStepsCompleted,
+            toolsCalled: wfToolsCalled,
+            completedAt: new Date().toISOString(),
+          }),
+        }
+      ).catch((e: Error) => console.error('[workflow] update failed:', e.message))
+      console.error('[workflow] step failed:', stepId, error)
     },
     onTaskComment: async (comment) => {
       console.log(`[workflows] workflowRunId=${workflowRunId} comment: ${comment}`)
@@ -1412,6 +1459,28 @@ async function runMastraWorkflowSteps(
   }
 
   await runMastraWorkflow(ctx)
+
+  // POST workflow update — run completed
+  await fetch(
+    `${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY,
+      },
+      body: JSON.stringify({
+        status: 'completed',
+        stepsCompleted: wfStepsCompleted,
+        toolsCalled: wfToolsCalled,
+        insights: (wfStepsCompleted as Array<{ summary?: string }>)
+          .map(s => s.summary)
+          .filter(Boolean)
+          .join('\n'),
+        completedAt: new Date().toISOString(),
+      }),
+    }
+  ).catch((e: Error) => console.error('[workflow] update failed:', e.message))
 }
 
 app.post('/api/workflows/execute', async (c) => {

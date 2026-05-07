@@ -99,11 +99,8 @@ export async function handleWorkflowFire(body: Record<string, unknown>): Promise
         throw new Error(`Relay responded with ${response.status}`);
       }
 
-      await db
-        .update(agentWorkflowRuns)
-        .set({ status: 'completed', completedAt: new Date() })
-        .where(eq(agentWorkflowRuns.id, resolvedRunId));
-
+      // Run stays 'running' — relay workflow callbacks will update to completed/failed
+      // asynchronously via POST /internal/workflows/:workflowRunId/update.
       void fireWorkflowEval(workflow, resolvedRunId);
     } catch (err) {
       console.error(
