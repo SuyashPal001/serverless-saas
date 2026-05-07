@@ -208,6 +208,8 @@ internalTasksRoute.post('/:taskId/steps/:stepId/complete', async (c) => {
     summary: z.string().optional(),
     toolResult: z.record(z.unknown()).optional(),
     reasoning: z.string().optional(),
+    // TODO: add actualToolUsed column to taskSteps schema + migration to persist
+    actualToolUsed: z.string().optional(),
   });
 
   const parsed = bodySchema.safeParse(await c.req.json());

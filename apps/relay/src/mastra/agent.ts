@@ -18,6 +18,7 @@ export interface TenantAgentConfig {
   agentSlug: string
   instructions: string // tenant system prompt from agent_skills
   connectedProviders: string[]
+  maxTokens?: number | null
 }
 
 export interface TenantAgentWithClient {
@@ -64,6 +65,8 @@ export async function createTenantAgent(
     id: agentId,
     name: agentId,
     instructions: config.instructions,
+    // maxTokens enforced per-call via modelSettings in agent.generate() —
+    // @ai-sdk/google@^3.0.67 factory only accepts modelId as argument.
     model: customGoogle(modelId),
     memory,
     tools,

@@ -1,4 +1,3 @@
-import { Workflow, Step } from '@mastra/core/workflows'
 import { z } from 'zod'
 import { createTenantAgent, TenantAgentConfig } from
   './agent.js'
@@ -44,6 +43,7 @@ export interface WorkflowContext {
   requiresApprovalTools: string[] // tool names that need human approval before use
   blockedTools: string[]          // from policy — always blocked
   allowedTools: string[]          // from policy — if non-empty, only these are permitted
+  maxTokensPerMessage: number | null
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepComplete: (
@@ -68,6 +68,7 @@ export async function runMastraWorkflow(
     agentSlug: ctx.agentSlug,
     instructions: ctx.instructions,
     connectedProviders: ctx.connectedProviders,
+    maxTokens: ctx.maxTokensPerMessage ?? null,
   }
 
   const { agent, mcpClient } = await createTenantAgent(agentConfig)
@@ -151,6 +152,9 @@ export async function runMastraWorkflow(
           structuredOutput: {
             schema: StepOutputSchema,
           },
+          ...(ctx.maxTokensPerMessage
+            ? { modelSettings: { maxOutputTokens: ctx.maxTokensPerMessage } }
+            : {}),
         })
         const stepLatencyMs = Date.now() - stepStartMs
 
