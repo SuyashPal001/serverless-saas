@@ -34,6 +34,9 @@ export {
 } from './sessions/manager';
 export type { SessionData, SessionSummary } from './sessions/manager';
 
+// Tool registry
+export * from './tools/index';
+
 // RAG
 export * from './embeddings';
 export * from './cache';
