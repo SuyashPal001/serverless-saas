@@ -666,6 +666,7 @@ async function logToolCall(params: {
   tenantId: string
   toolName: string
   success: boolean
+  taskId?: string
   latencyMs?: number
   errorMessage?: string
   args?: Record<string, unknown>
@@ -934,6 +935,8 @@ async function runMastraTaskSteps(
           tenantId,
           toolName: output.toolCalled,
           success: output.status === 'done',
+          latencyMs: output.latencyMs,
+          taskId,
           args: toolResult,
         })
       }
@@ -950,6 +953,7 @@ async function runMastraTaskSteps(
           toolName: failedStep.toolName,
           success: false,
           errorMessage: error,
+          taskId,
         })
       }
     },

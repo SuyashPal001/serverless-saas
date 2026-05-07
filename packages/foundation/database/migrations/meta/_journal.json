@@ -120,6 +120,20 @@
       "when": 1745827200000,
       "tag": "0016_task_step_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778147722612,
+      "tag": "0017_redundant_hedge_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778147863004,
+      "tag": "0018_tool_call_task_id",
+      "breakpoints": true
     }
   ]
 }

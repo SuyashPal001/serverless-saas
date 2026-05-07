@@ -18,6 +18,7 @@ export const toolCallLogs = pgTable('tool_call_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   conversationId: uuid('conversation_id').references(() => conversations.id),
+  taskId: uuid('task_id'),  // null for chat, set for tasks
   userId: uuid('user_id').references(() => users.id),
   toolName: text('tool_name').notNull(),
   success: boolean('success').notNull(),

@@ -37,6 +37,7 @@ internalToolCallsRoute.post('/log', async (c) => {
   const schema = z.object({
     tenantId:       z.string().uuid(),
     conversationId: z.string().uuid().optional(),
+    taskId:         z.string().uuid().optional(),
     userId:         z.string().uuid().nullable().optional(),
     toolName:       z.string().min(1),
     success:        z.boolean(),
@@ -62,6 +63,7 @@ internalToolCallsRoute.post('/log', async (c) => {
     await db.insert(toolCallLogs).values({
       tenantId:       d.tenantId,
       conversationId: d.conversationId ?? null,
+      taskId:         d.taskId ?? null,
       userId:         resolvedUserId,
       toolName:       d.toolName,
       success:        d.success,

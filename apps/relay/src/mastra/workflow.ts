@@ -21,6 +21,7 @@ const StepOutputSchema = z.object({
   question: z.string().optional(),
   toolCalled: z.string().optional(),
   toolResult: z.unknown().optional(),
+  latencyMs: z.number().int().optional(),
 })
 
 export interface WorkflowContext {
@@ -139,6 +140,7 @@ export async function runMastraWorkflow(
         const prompt = isFirstStep ? governanceNote + basePrompt : basePrompt
         isFirstStep = false
 
+        const stepStartMs = Date.now()
         const result = await agent.generate(prompt, {
           // Scope memory to this task session
           // memory.thread = threadId, memory.resource = resourceId
@@ -150,6 +152,7 @@ export async function runMastraWorkflow(
             schema: StepOutputSchema,
           },
         })
+        const stepLatencyMs = Date.now() - stepStartMs
 
         const parsed = result.object as z.infer<
           typeof StepOutputSchema
@@ -158,6 +161,7 @@ export async function runMastraWorkflow(
         await ctx.onStepComplete(step.id, {
           ...parsed,
           stepId: step.id,
+          latencyMs: stepLatencyMs,
         })
 
         // If agent needs clarification — stop execution
