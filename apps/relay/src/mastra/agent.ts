@@ -17,6 +17,7 @@ export interface TenantAgentConfig {
   agentId: string
   agentSlug: string
   instructions: string // tenant system prompt from agent_skills
+  connectedProviders: string[]
 }
 
 export interface TenantAgentWithClient {

@@ -38,6 +38,9 @@ export interface WorkflowContext {
     description?: string
     toolName?: string
   }>
+  connectedProviders: string[]    // tenant's active integration providers
+  highStakeTools: string[]        // tool names that are high or critical stakes
+  requiresApprovalTools: string[] // tool names that need human approval before use
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepComplete: (
@@ -61,9 +64,16 @@ export async function runMastraWorkflow(
     agentId: ctx.agentId,
     agentSlug: ctx.agentSlug,
     instructions: ctx.instructions,
+    connectedProviders: ctx.connectedProviders,
   }
 
   const { agent, mcpClient } = await createTenantAgent(agentConfig)
+
+  // Governance note injected into the first step prompt so the agent knows
+  // which tools require approval before it attempts to use them.
+  const governanceNote = ctx.requiresApprovalTools.length > 0
+    ? `\n\nTOOL GOVERNANCE:\nThese tools require human approval before use: ${ctx.requiresApprovalTools.join(', ')}. If a step requires one of these tools, respond with status "needs_clarification" and explain which tool needs approval.`
+    : ''
 
   // Disconnect the SSE connection to mcp-server when done —
   // success, early return (clarification/fail), or thrown exception.
@@ -71,15 +81,33 @@ export async function runMastraWorkflow(
     // Execute steps sequentially
     // Mirrors existing runTaskSteps() behavior
     // but uses Mastra agent instead of OpenClaw
+    let isFirstStep = true
     for (const step of ctx.steps.sort(
       (a, b) => a.stepNumber - b.stepNumber
     )) {
       try {
-        const prompt = buildStepPrompt(
+        // If the step's designated tool requires approval — stop immediately
+        // before calling the agent. The human must confirm first.
+        if (step.toolName && ctx.requiresApprovalTools.includes(step.toolName)) {
+          await ctx.onStepComplete(step.id, {
+            stepId: step.id,
+            status: 'needs_clarification',
+            summary: `Tool "${step.toolName}" requires human approval before execution.`,
+            question: `This step uses "${step.toolName}" which is configured to require approval. Please confirm you want to proceed.`,
+          })
+          await ctx.onTaskComment(
+            `⚠️ Step "${step.title}" requires approval to use tool: ${step.toolName}`
+          )
+          return
+        }
+
+        const basePrompt = buildStepPrompt(
           ctx.taskTitle,
           ctx.taskDescription,
           step
         )
+        const prompt = isFirstStep ? governanceNote + basePrompt : basePrompt
+        isFirstStep = false
 
         const result = await agent.generate(prompt, {
           // Scope memory to this task session

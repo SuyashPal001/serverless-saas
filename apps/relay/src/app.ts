@@ -8,7 +8,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance } from './usage.js'
 import { runMastraWorkflow } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
@@ -852,6 +852,11 @@ async function runMastraTaskSteps(
   const instructions = skill?.systemPrompt
     ?? `You are ${agentName}, a helpful AI assistant.`
 
+  // Fetch tool governance data — used to gate approval-required tools before
+  // the agent ever attempts to call them.
+  const connectedProviders = await fetchConnectedProviders(tenantId)
+  const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
+
   let earlyTermination = false
 
   const ctx: WorkflowContext = {
@@ -869,6 +874,9 @@ async function runMastraTaskSteps(
       description: s.description,
       toolName: s.toolName,
     })),
+    connectedProviders,
+    highStakeTools: toolGovernance.highStakeTools,
+    requiresApprovalTools: toolGovernance.requiresApprovalTools,
     onStepComplete: async (stepId, output) => {
       // Lambda toolResult schema is z.record(z.unknown()).optional() — omit when absent
       const raw = output.toolResult
