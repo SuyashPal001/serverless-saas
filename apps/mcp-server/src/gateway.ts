@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import pg from 'pg'
 import {
   gmailListMessages, gmailGetMessage, gmailSendMessage,
   driveListFiles, driveGetFile, driveExportDoc,
@@ -22,6 +23,7 @@ import { getIntegrations } from './db/credentials.js'
 
 // Tools that create, send, or mutate external state — require explicit user confirmation
 // before execution. Read-only tools (list, get, search, export) are excluded.
+// Used as the fallback if the DB query in fetchRequiresApprovalTools() fails.
 const WRITE_TOOLS = new Set([
   'gmail_send_message',
   'calendar_create_event',
@@ -33,6 +35,43 @@ const WRITE_TOOLS = new Set([
   'jira_create_issue',
   'jira_update_issue',
 ])
+
+// DB-driven approval gate — reads agent_tools.requires_approval instead of the
+// hardcoded set above. Cached for 60 seconds to avoid a query on every tool call.
+let _approvalPool: pg.Pool | null = null
+
+function getApprovalPool(): pg.Pool {
+  if (!_approvalPool) {
+    _approvalPool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _approvalPool.on('error', (err: Error) => {
+      console.error('[gateway] approval pool error:', err.message)
+    })
+  }
+  return _approvalPool
+}
+
+let _approvalCache: Set<string> | null = null
+let _approvalCacheTs = 0
+const APPROVAL_CACHE_TTL_MS = 60_000
+
+async function fetchRequiresApprovalTools(): Promise<Set<string>> {
+  const now = Date.now()
+  if (_approvalCache && now - _approvalCacheTs < APPROVAL_CACHE_TTL_MS) {
+    return _approvalCache
+  }
+  try {
+    const { rows } = await getApprovalPool().query<{ name: string }>(
+      `SELECT name FROM agent_tools WHERE requires_approval = true AND status = 'active'`
+    )
+    const toolSet = new Set(rows.map(r => r.name))
+    _approvalCache = toolSet
+    _approvalCacheTs = now
+    return toolSet
+  } catch (err) {
+    console.error('[gateway] fetchRequiresApprovalTools error:', (err as Error).message, '— falling back to WRITE_TOOLS')
+    return WRITE_TOOLS
+  }
+}
 
 async function requestApproval(
   tenantId: string,
@@ -163,7 +202,8 @@ async function toolsList(tenantId: string): Promise<unknown[]> {
 }
 
 async function toolsCall(tenantId: string, name: string, args: Record<string, unknown>, relaySessionId?: string): Promise<unknown> {
-  if (WRITE_TOOLS.has(name)) {
+  const approvalTools = await fetchRequiresApprovalTools()
+  if (approvalTools.has(name)) {
     if (!relaySessionId) {
       throw new Error(`${name} requires user approval but no active user session is available`)
     }
