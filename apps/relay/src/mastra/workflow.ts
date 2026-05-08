@@ -106,9 +106,14 @@ export async function runMastraWorkflow(
     // Mirrors existing runTaskSteps() behavior
     // but uses Mastra agent instead of OpenClaw
     let isFirstStep = true
-    for (const step of ctx.steps.sort(
+    for (const rawStep of ctx.steps.sort(
       (a, b) => a.stepNumber - b.stepNumber
     )) {
+      // Normalize toolName to strip any MCP server prefix stored in old plans
+      const step = {
+        ...rawStep,
+        toolName: rawStep.toolName ? normalizeToolName(rawStep.toolName) : rawStep.toolName,
+      }
       try {
         // Policy: blocked tools — hard stop, fail the step
         if (step.toolName && ctx.blockedTools.includes(step.toolName)) {
@@ -250,6 +255,17 @@ export async function runMastraWorkflow(
   }
 }
 
+// Strip MCP server prefix (e.g. "saarthiTools_web_search" → "web_search").
+// Plans created before the server-tool filter fix may have stored prefixed names.
+const SERVER_TOOL_NAMES = new Set(['web_search', 'code_execution', 'web_fetch'])
+function normalizeToolName(toolName: string): string {
+  // Check if any known server tool name appears as a suffix after an underscore
+  for (const name of SERVER_TOOL_NAMES) {
+    if (toolName === name || toolName.endsWith(`_${name}`)) return name
+  }
+  return toolName
+}
+
 function buildStepPrompt(
   taskTitle: string,
   taskDescription: string | undefined,
@@ -274,7 +290,7 @@ function buildStepPrompt(
       ? `Step details: ${step.description}`
       : null,
     step.toolName
-      ? `Use tool: ${step.toolName}`
+      ? `Use tool: ${normalizeToolName(step.toolName)}`
       : null,
     ``,
     `You MUST respond with valid JSON matching:`,
