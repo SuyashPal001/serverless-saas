@@ -84,92 +84,15 @@ async function executeWebSearch(
     }))
   }
 
-  // Default: Google via Vertex AI Grounding
-  // Uses GCP service account key already on the VM
-  // Covered by GCP startup credits
-  const gcpKey = process.env.GCP_SA_KEY
-  if (!gcpKey) throw new Error('GCP_SA_KEY not set')
-
-  const credentials = JSON.parse(gcpKey)
-  const projectId = credentials.project_id
-  const location = process.env.GCP_LOCATION ?? 'us-central1'
-
-  // Get access token from service account
-  const { GoogleAuth } = await import('google-auth-library')
-  const auth = new GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  })
-  const client = await auth.getClient()
-  const tokenResponse = await client.getAccessToken()
-  const accessToken = tokenResponse.token
-  if (!accessToken) throw new Error('Failed to get GCP access token')
-
-  // Call Vertex AI with Google Search grounding
-  const model = process.env.MASTRA_MODEL ?? 'gemini-2.5-flash'
-  const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [{
-        role: 'user',
-        parts: [{ text: `Search for: ${query}\n\nReturn the top ${maxResults} most relevant results about this topic.` }]
-      }],
-      tools: [{
-        googleSearchRetrieval: {}
-      }],
-      generationConfig: {
-        maxOutputTokens: 1024,
-        temperature: 1.0,
-      }
-    }),
-  })
-
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`Vertex AI search failed: ${res.status} ${errText}`)
-  }
-
-  const data = await res.json() as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> }
-      groundingMetadata?: {
-        groundingChunks?: Array<{
-          web?: { uri?: string; title?: string }
-        }>
-        groundingSupports?: Array<{
-          segment?: { text?: string }
-        }>
-      }
-    }>
-  }
-
-  const candidate = data.candidates?.[0]
-  const chunks = candidate?.groundingMetadata?.groundingChunks ?? []
-  const responseText = candidate?.content?.parts?.[0]?.text ?? ''
-
-  // Return grounding chunks as search results
-  // Fall back to response text if no chunks
-  if (chunks.length > 0) {
-    return chunks.slice(0, maxResults).map((chunk, i) => ({
-      title: chunk.web?.title ?? `Result ${i + 1}`,
-      url: chunk.web?.uri ?? '',
-      snippet: candidate?.groundingMetadata?.groundingSupports?.[i]
-        ?.segment?.text ?? responseText,
-    }))
-  }
-
-  // No grounding chunks — return synthesized response
-  return [{
-    title: 'Search Result',
-    url: '',
-    snippet: responseText,
-  }]
+  // Google provider removed — web_search is now a native server tool handled
+  // by the LLM provider via vertex-proxy (googleSearchRetrieval for Gemini,
+  // web_search_20260209 for Anthropic). Set SEARCH_PROVIDER=tavily or =brave
+  // if you need MCP-level web search as a fallback.
+  throw new Error(
+    'web_search: SEARCH_PROVIDER=google is not supported in the MCP gateway. ' +
+    'Use SEARCH_PROVIDER=tavily or SEARCH_PROVIDER=brave for MCP-level search, ' +
+    'or rely on native provider search via vertex-proxy.'
+  )
 }
 
 // Tools that create, send, or mutate external state — require explicit user confirmation

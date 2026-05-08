@@ -145,18 +145,40 @@ function toGeminiContents(messages: OpenAIMessage[]): {
   return { systemInstruction, contents };
 }
 
+// Server tool names that map to native Gemini tools — excluded from functionDeclarations
+const GEMINI_SERVER_TOOL_NAMES = new Set(['web_search', 'code_execution', 'web_fetch']);
+
 function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
   if (!tools || tools.length === 0) return undefined;
 
+  const result: Tool[] = [];
+
+  // Regular function tools (exclude server tools)
   const functionDeclarations: FunctionDeclaration[] = tools
-    .filter((t) => t.type === 'function' && t.function)
+    .filter((t) => t.type === 'function' && t.function && !GEMINI_SERVER_TOOL_NAMES.has(t.function.name))
     .map((t) => ({
       name: t.function.name,
       description: t.function.description ?? '',
       parameters: t.function.parameters as FunctionDeclaration['parameters'],
     }));
 
-  return functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined;
+  if (functionDeclarations.length > 0) {
+    result.push({ functionDeclarations });
+  }
+
+  // Native Gemini server tools — translated from OpenAI tool names
+  const names = tools.map((t) => t.function?.name);
+  if (names.includes('web_search')) {
+    result.push({ googleSearchRetrieval: {} } as unknown as Tool);
+  }
+  if (names.includes('code_execution')) {
+    result.push({ codeExecution: {} } as unknown as Tool);
+  }
+  if (names.includes('web_fetch')) {
+    result.push({ urlContext: {} } as unknown as Tool);
+  }
+
+  return result.length > 0 ? result : undefined;
 }
 
 function toGeminiToolConfig(choice: OpenAIToolChoice | undefined): ToolConfig | undefined {

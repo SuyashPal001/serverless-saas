@@ -17,6 +17,7 @@ import type {
   OpenAIStreamChunk,
   OpenAITool,
   OpenAIToolCall,
+  OpenAIToolChoice,
   OpenAIUsage,
 } from '../types';
 
@@ -98,15 +99,49 @@ function toAnthropicMessages(messages: OpenAIMessage[]): {
   return { system, messages: result };
 }
 
-function toAnthropicTools(tools: OpenAITool[] | undefined): Anthropic.Tool[] | undefined {
+// Server tool names that map to native Anthropic tools — excluded from function tools
+const ANTHROPIC_SERVER_TOOL_NAMES = new Set(['web_search', 'code_execution', 'web_fetch']);
+
+function toAnthropicTools(tools: OpenAITool[] | undefined): Anthropic.ToolUnion[] | undefined {
   if (!tools || tools.length === 0) return undefined;
-  return tools
-    .filter((t) => t.type === 'function' && t.function)
+
+  const result: Anthropic.ToolUnion[] = [];
+
+  // Regular function tools (exclude server tools)
+  const functionTools = tools
+    .filter((t) => t.type === 'function' && t.function && !ANTHROPIC_SERVER_TOOL_NAMES.has(t.function.name))
     .map((t) => ({
       name: t.function.name,
       description: t.function.description ?? '',
       input_schema: (t.function.parameters ?? { type: 'object', properties: {} }) as Anthropic.Tool['input_schema'],
     }));
+  result.push(...functionTools);
+
+  // Native Anthropic server tools — translated from OpenAI tool names
+  const names = tools.map((t) => t.function?.name);
+  if (names.includes('web_search')) {
+    result.push({ type: 'web_search_20260209', name: 'web_search' } as Anthropic.WebSearchTool20260209);
+  }
+  if (names.includes('code_execution')) {
+    result.push({ type: 'code_execution_20250825', name: 'code_execution' } as Anthropic.CodeExecutionTool20250825);
+  }
+  if (names.includes('web_fetch')) {
+    result.push({ type: 'web_fetch_20250910', name: 'web_fetch' } as Anthropic.WebFetchTool20250910);
+  }
+
+  return result.length > 0 ? result : undefined;
+}
+
+function toAnthropicToolChoice(
+  choice: OpenAIToolChoice | undefined,
+): Anthropic.ToolChoice | undefined {
+  if (!choice || choice === 'auto') return { type: 'auto' };
+  if (choice === 'none') return { type: 'none' };
+  if (choice === 'required') return { type: 'any' };
+  if (typeof choice === 'object' && choice.type === 'function') {
+    return { type: 'tool', name: choice.function.name };
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +206,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     );
 
     // Build base request params
+    const toolChoice = toAnthropicToolChoice(openaiReq.tool_choice);
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: modelName,
       max_tokens: openaiReq.max_tokens ?? 8192,
@@ -178,6 +214,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     };
     if (system) params.system = system;
     if (tools) params.tools = tools;
+    if (tools && toolChoice) params.tool_choice = toolChoice;
     if (openaiReq.temperature !== undefined) params.temperature = openaiReq.temperature;
     if (openaiReq.top_p !== undefined) params.top_p = openaiReq.top_p;
 

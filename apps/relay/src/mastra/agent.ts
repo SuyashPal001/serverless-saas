@@ -1,9 +1,42 @@
 import { Agent } from '@mastra/core/agent'
+import { createTool } from '@mastra/core/tools'
 import { MCPClient } from '@mastra/mcp'
 import { Memory } from '@mastra/memory'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { z } from 'zod'
 import { getMastraStore } from './memory.js'
 import { getMCPClientForTenant } from './tools.js'
+
+// Server tools — passed as definitions so vertex-proxy can translate them to
+// native provider capabilities (googleSearchRetrieval, codeExecution, urlContext
+// for Gemini; web_search_20260209, code_execution_20250825, web_fetch_20250910
+// for Anthropic). These are never executed by Mastra; the LLM handles them natively.
+const SERVER_TOOLS = {
+  web_search: createTool({
+    id: 'web_search',
+    description: 'Search the web for current information, news, facts, and real-time data.',
+    inputSchema: z.object({
+      query: z.string().describe('The search query'),
+    }),
+    execute: async () => ({ result: 'handled natively by the LLM provider' }),
+  }),
+  code_execution: createTool({
+    id: 'code_execution',
+    description: 'Execute code in a sandboxed environment and return the output.',
+    inputSchema: z.object({
+      code: z.string().describe('The code to execute'),
+    }),
+    execute: async () => ({ result: 'handled natively by the LLM provider' }),
+  }),
+  web_fetch: createTool({
+    id: 'web_fetch',
+    description: 'Fetch the content of a URL and return it as text.',
+    inputSchema: z.object({
+      url: z.string().describe('The URL to fetch'),
+    }),
+    execute: async () => ({ result: 'handled natively by the LLM provider' }),
+  }),
+}
 
 // Creates a per-tenant Mastra agent alongside its MCPClient.
 // Returns both so the caller can disconnect() the client when done.
@@ -49,7 +82,9 @@ export async function createTenantAgent(
 
   // listTools() returns flat Record<serverName_toolName, Tool>
   // compatible with Agent `tools` field (ToolsInput)
-  const tools = await mcpClient.listTools()
+  // Merge with SERVER_TOOLS so vertex-proxy translates them to native provider capabilities
+  const mcpTools = await mcpClient.listTools()
+  const tools = { ...mcpTools, ...SERVER_TOOLS }
 
   // createGoogleGenerativeAI allows a custom baseURL at the provider level
   // Routes through vertex-proxy on :4001 which handles GCP auth + quota
