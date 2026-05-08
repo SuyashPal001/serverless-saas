@@ -4,21 +4,39 @@ import { MCPClient } from '@mastra/mcp'
 import { Memory } from '@mastra/memory'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { z } from 'zod'
+import { Exa as ExaClass } from 'exa-js'
 import { getMastraStore } from './memory.js'
 import { getMCPClientForTenant } from './tools.js'
 
-// Server tools — passed as definitions so vertex-proxy can translate them to
-// native provider capabilities (googleSearchRetrieval, codeExecution, urlContext
-// for Gemini; web_search_20260209, code_execution_20250825, web_fetch_20250910
-// for Anthropic). These are never executed by Mastra; the LLM handles them natively.
+// Exa search client — real web search via function call (compatible with structured output)
+const exa = new ExaClass(process.env.EXA_API_KEY ?? '')
+
+// Server tools — real function-call implementations executed by Mastra.
+// web_search uses Exa API (avoids Gemini native googleSearch which is incompatible
+// with responseSchema/structured output and functionDeclarations in same request).
 const SERVER_TOOLS = {
-  web_search: createTool({
-    id: 'web_search',
-    description: 'Search the web for current information, news, facts, and real-time data.',
+  // Named 'internet_search' (not 'web_search') to avoid Vertex AI reserved name conflict.
+  // Vertex AI treats any functionDeclaration named 'web_search' as the native Search tool
+  // which is incompatible with responseSchema (structured output).
+  internet_search: createTool({
+    id: 'internet_search',
+    description: 'Search the internet for current information, news, facts, jobs, and real-time data.',
     inputSchema: z.object({
       query: z.string().describe('The search query'),
     }),
-    execute: async () => ({ result: 'handled natively by the LLM provider' }),
+    execute: async ({ query }: { query: string }) => {
+      const { results } = await exa.searchAndContents(query, {
+        livecrawl: 'always',
+        numResults: 5,
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return results.map((r: any) => ({
+        title: r.title ?? null,
+        url: r.url,
+        content: (r.text ?? '').slice(0, 800),
+        publishedDate: r.publishedDate,
+      }))
+    },
   }),
   code_execution: createTool({
     id: 'code_execution',
@@ -85,32 +103,32 @@ export async function createTenantAgent(
 
   // listTools() returns flat Record<serverName_toolName, Tool>
   // compatible with Agent `tools` field (ToolsInput)
-  // Filter SERVER_TOOLS by enabledTools from agent_skills.tools.
-  // null/undefined = all server tools enabled (default-open for existing agents).
+  // SERVER_TOOLS (web_search, code_execution, web_fetch) are always active — they are
+  // native LLM capabilities handled by vertex-proxy, not gated by agent_skills.tools.
+  // agent_skills.tools contains MCP tool names only (e.g. ZOHO_MAIL_LIST_MESSAGES).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mcpTools: Record<string, any> = {}
   try {
     mcpTools = await mcpClient.listTools()
+    console.log('[mastra] listTools keys:', Object.keys(mcpTools).join(', '))
   } catch (err) {
     console.warn('[mastra] MCP listTools failed, continuing without MCP tools:', (err as Error).message)
   }
-  const activeServerTools = config.enabledTools == null
-    ? SERVER_TOOLS
-    : Object.fromEntries(
-        Object.entries(SERVER_TOOLS).filter(([name]) => config.enabledTools!.includes(name))
-      )
-  // Exclude MCP tools whose name matches a SERVER_TOOL — those are handled natively
-  // by the LLM provider via vertex-proxy and must not be routed through the MCP gateway.
-  // Handles both exact match (key === 'web_search') and prefixed form (key ends with '_web_search').
-  const serverToolNames = new Set(Object.keys(activeServerTools))
+  // Exclude MCP tools whose name matches a SERVER_TOOL (or its canonical aliases).
+  // 'web_search' from MCP is blocked because we handle it via Exa as 'internet_search'.
+  // Handles both exact match and prefixed form (e.g. 'saarthiTools_web_search').
+  const serverToolNames = new Set([...Object.keys(SERVER_TOOLS), 'web_search'])
   const filteredMcpTools = Object.fromEntries(
-    Object.entries(mcpTools).filter(([key]) =>
-      !Array.from(serverToolNames).some(
+    Object.entries(mcpTools).filter(([key]) => {
+      const blocked = Array.from(serverToolNames).some(
         (name) => key === name || key.endsWith(`_${name}`)
       )
-    )
+      if (blocked) console.log(`[mastra] filtering out MCP tool: ${key}`)
+      return !blocked
+    })
   )
-  const tools = { ...filteredMcpTools, ...activeServerTools }
+  const tools = { ...filteredMcpTools, ...SERVER_TOOLS }
+  console.log('[mastra] agent tools:', Object.keys(tools).join(', '))
 
   // createGoogleGenerativeAI allows a custom baseURL at the provider level
   // Routes through vertex-proxy on :4001 which handles GCP auth + quota

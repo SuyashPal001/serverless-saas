@@ -255,13 +255,22 @@ export async function runMastraWorkflow(
   }
 }
 
-// Strip MCP server prefix (e.g. "saarthiTools_web_search" → "web_search").
+// Map of plan/DB tool names → actual agent tool names.
+// 'web_search' is stored in plans but the agent tool is 'internet_search' to avoid
+// Vertex AI's reserved name conflict (web_search triggers native Search tool behavior
+// which is incompatible with responseSchema/structured output).
+const TOOL_NAME_MAP: Record<string, string> = {
+  web_search: 'internet_search',
+  code_execution: 'code_execution',
+  web_fetch: 'web_fetch',
+}
+
+// Strip MCP server prefix (e.g. "saarthiTools_web_search" → "internet_search").
 // Plans created before the server-tool filter fix may have stored prefixed names.
-const SERVER_TOOL_NAMES = new Set(['web_search', 'code_execution', 'web_fetch'])
 function normalizeToolName(toolName: string): string {
-  // Check if any known server tool name appears as a suffix after an underscore
-  for (const name of SERVER_TOOL_NAMES) {
-    if (toolName === name || toolName.endsWith(`_${name}`)) return name
+  // Check against known server tool names (with or without MCP prefix)
+  for (const [planName, agentName] of Object.entries(TOOL_NAME_MAP)) {
+    if (toolName === planName || toolName.endsWith(`_${planName}`)) return agentName
   }
   return toolName
 }

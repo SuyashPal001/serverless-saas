@@ -71,8 +71,8 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
 
 /**
  * Native Gemini API pass-through.
- * Some tools hit /v1beta/models/:model:generateContent directly.
- * We route these through the Vertex AI SDK so preview models work.
+ * @ai-sdk/google hits /v1/models/:model:generateContent in Google AI format.
+ * web_search is now handled by Exa (real function call) so no tool transformation needed.
  */
 async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Lazy import to avoid pulling in vertexai at top level for this edge case
@@ -88,7 +88,9 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
   console.log(`[vertex-proxy] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
 
   try {
-    const nativeRequest = body ? JSON.parse(body) : {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nativeRequest = (body ? JSON.parse(body) : {}) as any;
+    console.log('[vertex-proxy] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
     const nativeModel = vertexAI.getGenerativeModel({ model: nativeModelName });
     const result = await nativeModel.generateContent(nativeRequest);
     res.writeHead(200, { 'Content-Type': 'application/json' });
