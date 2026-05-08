@@ -35,7 +35,7 @@ export interface UsageRecord {
 
 export interface AgentSkill {
   systemPrompt: string | null
-  tools: unknown
+  tools: string[] | null
   config: unknown
 }
 
@@ -49,7 +49,11 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
   )
   const row = res.rows[0]
   if (!row) return null
-  return { systemPrompt: row.system_prompt, tools: row.tools, config: row.config }
+  const rawTools = row.tools
+  const tools = Array.isArray(rawTools)
+    ? (rawTools as string[])
+    : null
+  return { systemPrompt: row.system_prompt, tools, config: row.config }
 }
 
 export async function fetchAgentModelId(agentId: string): Promise<string | null> {

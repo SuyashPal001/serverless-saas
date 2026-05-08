@@ -52,6 +52,9 @@ export interface TenantAgentConfig {
   instructions: string // tenant system prompt from agent_skills
   connectedProviders: string[]
   maxTokens?: number | null
+  // Tool names from agent_skills.tools — gates which server tools are active.
+  // null/undefined = all server tools enabled (default-open for existing agents).
+  enabledTools?: string[] | null
 }
 
 export interface TenantAgentWithClient {
@@ -82,9 +85,15 @@ export async function createTenantAgent(
 
   // listTools() returns flat Record<serverName_toolName, Tool>
   // compatible with Agent `tools` field (ToolsInput)
-  // Merge with SERVER_TOOLS so vertex-proxy translates them to native provider capabilities
+  // Filter SERVER_TOOLS by enabledTools from agent_skills.tools.
+  // null/undefined = all server tools enabled (default-open for existing agents).
   const mcpTools = await mcpClient.listTools()
-  const tools = { ...mcpTools, ...SERVER_TOOLS }
+  const activeServerTools = config.enabledTools == null
+    ? SERVER_TOOLS
+    : Object.fromEntries(
+        Object.entries(SERVER_TOOLS).filter(([name]) => config.enabledTools!.includes(name))
+      )
+  const tools = { ...mcpTools, ...activeServerTools }
 
   // createGoogleGenerativeAI allows a custom baseURL at the provider level
   // Routes through vertex-proxy on :4001 which handles GCP auth + quota

@@ -41,6 +41,7 @@ export interface WorkflowContext {
     toolName?: string
   }>
   connectedProviders: string[]    // tenant's active integration providers
+  enabledTools: string[] | null   // from agent_skills.tools — gates server tools (null = all)
   highStakeTools: string[]        // tool names that are high or critical stakes
   requiresApprovalTools: string[] // tool names that need human approval before use
   blockedTools: string[]          // from policy — always blocked
@@ -70,6 +71,7 @@ export async function runMastraWorkflow(
     agentSlug: ctx.agentSlug,
     instructions: ctx.instructions,
     connectedProviders: ctx.connectedProviders,
+    enabledTools: ctx.enabledTools,
     maxTokens: ctx.maxTokensPerMessage ?? null,
   }
 
