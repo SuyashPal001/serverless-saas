@@ -99,15 +99,16 @@ export async function createTenantAgent(
     : Object.fromEntries(
         Object.entries(SERVER_TOOLS).filter(([name]) => config.enabledTools!.includes(name))
       )
-  // Exclude MCP tools whose base name (after stripping "serverName_" prefix) matches
-  // a SERVER_TOOL — those are handled natively by the LLM provider via vertex-proxy
-  // and must not be routed through the MCP gateway.
+  // Exclude MCP tools whose name matches a SERVER_TOOL — those are handled natively
+  // by the LLM provider via vertex-proxy and must not be routed through the MCP gateway.
+  // Handles both exact match (key === 'web_search') and prefixed form (key ends with '_web_search').
   const serverToolNames = new Set(Object.keys(activeServerTools))
   const filteredMcpTools = Object.fromEntries(
-    Object.entries(mcpTools).filter(([key]) => {
-      const baseName = key.includes('_') ? key.slice(key.indexOf('_') + 1) : key
-      return !serverToolNames.has(baseName)
-    })
+    Object.entries(mcpTools).filter(([key]) =>
+      !Array.from(serverToolNames).some(
+        (name) => key === name || key.endsWith(`_${name}`)
+      )
+    )
   )
   const tools = { ...filteredMcpTools, ...activeServerTools }
 
