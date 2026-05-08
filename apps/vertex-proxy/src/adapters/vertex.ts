@@ -169,7 +169,7 @@ function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
   // Native Gemini server tools — translated from OpenAI tool names
   const names = tools.map((t) => t.function?.name);
   if (names.includes('web_search')) {
-    result.push({ googleSearchRetrieval: {} } as unknown as Tool);
+    result.push({ googleSearch: {} } as unknown as Tool);
   }
   if (names.includes('code_execution')) {
     result.push({ codeExecution: {} } as unknown as Tool);

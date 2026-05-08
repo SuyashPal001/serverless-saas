@@ -93,7 +93,17 @@ export async function createTenantAgent(
     : Object.fromEntries(
         Object.entries(SERVER_TOOLS).filter(([name]) => config.enabledTools!.includes(name))
       )
-  const tools = { ...mcpTools, ...activeServerTools }
+  // Exclude MCP tools whose base name (after stripping "serverName_" prefix) matches
+  // a SERVER_TOOL — those are handled natively by the LLM provider via vertex-proxy
+  // and must not be routed through the MCP gateway.
+  const serverToolNames = new Set(Object.keys(activeServerTools))
+  const filteredMcpTools = Object.fromEntries(
+    Object.entries(mcpTools).filter(([key]) => {
+      const baseName = key.includes('_') ? key.slice(key.indexOf('_') + 1) : key
+      return !serverToolNames.has(baseName)
+    })
+  )
+  const tools = { ...filteredMcpTools, ...activeServerTools }
 
   // createGoogleGenerativeAI allows a custom baseURL at the provider level
   // Routes through vertex-proxy on :4001 which handles GCP auth + quota

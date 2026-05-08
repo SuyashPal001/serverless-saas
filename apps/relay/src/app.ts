@@ -968,6 +968,9 @@ async function runMastraTaskSteps(
     blockedTools: policy.blockedActions,
     allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,
+    onStepStart: async (stepId) => {
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
+    },
     onStepComplete: async (stepId, output) => {
       stepOutputs.push(output.summary)
       // Lambda toolResult schema is z.record(z.unknown()).optional() — omit when absent
@@ -1431,6 +1434,7 @@ async function runMastraWorkflowSteps(
     blockedTools: policy.blockedActions,
     allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,
+    onStepStart: async (_stepId) => { /* workflow steps have no separate start endpoint */ },
     onStepComplete: async (stepId, output) => {
       wfStepsCompleted.push({
         stepId,

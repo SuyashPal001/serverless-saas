@@ -49,6 +49,7 @@ export interface WorkflowContext {
   maxTokensPerMessage: number | null
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
+  onStepStart: (stepId: string) => Promise<void>
   onStepComplete: (
     stepId: string,
     output: z.infer<typeof StepOutputSchema>
@@ -136,6 +137,8 @@ export async function runMastraWorkflow(
           )
           return
         }
+
+        await ctx.onStepStart(step.id)
 
         const basePrompt = buildStepPrompt(
           ctx.taskTitle,
