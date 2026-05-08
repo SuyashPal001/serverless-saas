@@ -87,7 +87,13 @@ export async function createTenantAgent(
   // compatible with Agent `tools` field (ToolsInput)
   // Filter SERVER_TOOLS by enabledTools from agent_skills.tools.
   // null/undefined = all server tools enabled (default-open for existing agents).
-  const mcpTools = await mcpClient.listTools()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mcpTools: Record<string, any> = {}
+  try {
+    mcpTools = await mcpClient.listTools()
+  } catch (err) {
+    console.warn('[mastra] MCP listTools failed, continuing without MCP tools:', (err as Error).message)
+  }
   const activeServerTools = config.enabledTools == null
     ? SERVER_TOOLS
     : Object.fromEntries(

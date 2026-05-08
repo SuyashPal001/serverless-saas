@@ -47,6 +47,7 @@ export interface WorkflowContext {
   blockedTools: string[]          // from policy — always blocked
   allowedTools: string[]          // from policy — if non-empty, only these are permitted
   maxTokensPerMessage: number | null
+  attachmentContext?: string | null  // extracted text from task attachments
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepStart: (stepId: string) => Promise<void>
@@ -76,7 +77,21 @@ export async function runMastraWorkflow(
     maxTokens: ctx.maxTokensPerMessage ?? null,
   }
 
-  const { agent, mcpClient } = await createTenantAgent(agentConfig)
+  let agent: Awaited<ReturnType<typeof createTenantAgent>>['agent']
+  let mcpClient: Awaited<ReturnType<typeof createTenantAgent>>['mcpClient']
+  try {
+    const result = await createTenantAgent(agentConfig)
+    agent = result.agent
+    mcpClient = result.mcpClient
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[mastra] createTenantAgent failed:', message)
+    for (const step of ctx.steps) {
+      await ctx.onStepStart(step.id)
+      await ctx.onStepFail(step.id, `Agent initialization failed: ${message}`)
+    }
+    return
+  }
 
   // Governance note injected into the first step prompt so the agent knows
   // which tools require approval before it attempts to use them.
@@ -143,7 +158,8 @@ export async function runMastraWorkflow(
         const basePrompt = buildStepPrompt(
           ctx.taskTitle,
           ctx.taskDescription,
-          step
+          step,
+          ctx.attachmentContext
         )
         const prompt = isFirstStep ? governanceNote + basePrompt : basePrompt
         isFirstStep = false
@@ -241,12 +257,16 @@ function buildStepPrompt(
     title: string
     description?: string
     toolName?: string
-  }
+  },
+  attachmentContext?: string | null
 ): string {
   return [
     `Task: ${taskTitle}`,
     taskDescription
       ? `Context: ${taskDescription}`
+      : null,
+    attachmentContext
+      ? `\n## Attached Files\n${attachmentContext}`
       : null,
     ``,
     `Current step: ${step.title}`,

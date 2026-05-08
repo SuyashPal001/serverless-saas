@@ -968,6 +968,7 @@ async function runMastraTaskSteps(
     blockedTools: policy.blockedActions,
     allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,
+    attachmentContext: attachmentContext ?? null,
     onStepStart: async (stepId) => {
       await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
     },
