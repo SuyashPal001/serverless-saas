@@ -432,6 +432,68 @@ Phase 3 — after first product launch. Real product reveals what orchestration 
 
 ---
 
+---
+
+## ADR: Mastra Proper Orchestrator Adoption
+
+**Status:** Approved — implementing now
+
+### Context
+
+We have been using `@mastra/core` as a library only — creating `Agent`, `Memory`, `MCPClient` fresh per request and discarding them. No Mastra orchestrator. No observability. No Studio visibility. No evals.
+
+### Decision
+
+Refactor relay to use Mastra as a proper orchestrator:
+
+- `new Mastra({ storage, agents, observability })`
+- One platform-level Agent at startup
+- Dynamic tools via `requestContext` per tenant
+- Dynamic instructions via `requestContext`
+- Memory isolation via `MASTRA_RESOURCE_ID_KEY`
+- Mount `@mastra/hono` Studio for platform admin
+
+### What We Gain
+
+- **Full observability** — OTel spans per tool call, model latency, token counts
+- **Mastra Studio** — connected to real system, real traces, real memory browser
+- **Evals/Scorers** — output quality measurement
+- **Prompt versioning** — no code deploy needed
+- **Agent versioning** — A/B test prompts
+- **One agent instance** — not recreated per request
+- **Memory isolation** — enforced at framework level
+
+### What Stays the Same
+
+- JWT, PII, billing middleware — untouched
+- RAG injection — untouched
+- Tool governance — untouched
+- Step execution loop in `workflow.ts` — untouched
+- All non-Mastra routes — untouched
+- vertex-proxy routing — untouched
+- OpenClaw chat path — untouched
+
+### What Changes
+
+- `apps/relay/src/mastra/agent.ts` — main refactor
+- `apps/relay/src/mastra/memory.ts` — minor
+- `apps/relay/src/mastra/index.ts` — new singleton export
+- MCPClient disconnect moves to RequestContext pattern
+
+### Risk Areas
+
+- **MCPClient disconnect ownership** — needs wrapper pattern; singleton agent can't own per-request client lifecycle
+- **vertex-proxy model not visible in Studio picker** — acceptable, keep custom `createGoogleGenerativeAI({ baseURL })` routing
+- **`USE_MASTRA_TASKS` flag** — preserve deliberately; both paths must remain functional
+
+### OpenClaw Retirement
+
+- Chat path stays on OpenClaw permanently
+- Task path moves to proper Mastra orchestrator
+- OpenClaw task path retired when Mastra validated in production
+
+---
+
 ## License
 
 Mastra is **Apache 2.0** for all OSS features. This includes:
