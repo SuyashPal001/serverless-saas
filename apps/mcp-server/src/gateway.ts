@@ -242,6 +242,8 @@ const BUILTIN_TOOLS = [
   // Platform tools — always available regardless of integrations
   { name: 'web_search', description: 'Search the web for current information, news, facts, and real-time data. Returns relevant results with titles, URLs, and snippets.', provider: null,
     inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query' }, maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5, max: 10)' } }, required: ['query'] } },
+  { name: 'retrieve_documents', description: 'Search the tenant private knowledge base for relevant documents. Use when the user asks about their uploaded documents, policies, reports, CV, job descriptions, or any domain-specific knowledge. Always cite the source document name in your response.', provider: null,
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query to find relevant documents' } }, required: ['query'] } },
 ]
 
 interface RpcBody {
@@ -344,6 +346,32 @@ async function toolsCall(tenantId: string, name: string, args: Record<string, un
         10
       )
       return await executeWebSearch(query, maxResults)
+    }
+    case 'retrieve_documents': {
+      const apiBaseUrl = process.env.API_BASE_URL
+      if (!apiBaseUrl) {
+        return 'No relevant documents found in your knowledge base.'
+      }
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/v1/internal/retrieve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+          },
+          body: JSON.stringify({ query: args.query as string, tenantId }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!res.ok) {
+          console.warn(`[gateway] retrieve_documents failed: ${res.status}`)
+          return 'No relevant documents found in your knowledge base.'
+        }
+        const data = await res.json() as { context?: string }
+        return data.context?.trim() || 'No relevant documents found in your knowledge base.'
+      } catch (err) {
+        console.warn('[gateway] retrieve_documents error:', (err as Error).message)
+        return 'No relevant documents found in your knowledge base.'
+      }
     }
     default: {
       // Fall through to vendor proxy — find first integration with an mcp_server_url
