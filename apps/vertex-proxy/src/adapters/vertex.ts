@@ -166,15 +166,20 @@ function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
     result.push({ functionDeclarations });
   }
 
-  // Native Gemini server tools — translated from OpenAI tool names
+  // Native Gemini server tools — translated from OpenAI tool names.
+  // Gemini rejects mixing googleSearch with codeExecution or urlContext
+  // ("Multiple tools are supported only when they are all search tools").
+  // Priority: if web_search is requested, add only googleSearch and skip
+  // the other native tools to stay within Gemini's constraint.
   const names = tools.map((t) => t.function?.name);
-  if (names.includes('web_search')) {
+  const hasWebSearch = names.includes('web_search');
+  if (hasWebSearch) {
     result.push({ googleSearch: {} } as unknown as Tool);
   }
-  if (names.includes('code_execution')) {
+  if (!hasWebSearch && names.includes('code_execution')) {
     result.push({ codeExecution: {} } as unknown as Tool);
   }
-  if (names.includes('web_fetch')) {
+  if (!hasWebSearch && names.includes('web_fetch')) {
     result.push({ urlContext: {} } as unknown as Tool);
   }
 
