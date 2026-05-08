@@ -10,7 +10,7 @@ import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
 import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
-import { runMastraWorkflow } from './mastra/index.js'
+import { runMastraWorkflow, createTenantAgent } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
@@ -1725,86 +1725,33 @@ app.post('/api/tasks/plan', async (c) => {
 
   console.log(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} title="${title}"`)
 
-  let gatewayUrl: string
-  try {
-    gatewayUrl = await resolveGatewayUrl(tenantId, agentId)
-  } catch (err) {
-    console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} resolveGatewayUrl failed:`, (err as Error).message)
-    return c.json({ error: 'Agent unavailable', detail: (err as Error).message }, 503)
-  }
-
   const comments = await fetchTaskComments(taskId)
   const prompt = buildPlanningPrompt(agentName, title, description, acceptanceCriteria, comments, extraContext, planReferenceText, planLinks, planAttachmentContext)
 
+  // Fetch agent config — same pattern as execution path
+  const planSkill = await fetchAgentSkill(agentId)
+  const planInstructions = planSkill?.systemPrompt
+    ?? `You are ${agentName}, a helpful AI assistant.`
+  const planConnectedProviders = await fetchConnectedProviders(tenantId)
+
+  const { agent: planAgent, mcpClient: planMcpClient } = await createTenantAgent({
+    tenantId,
+    agentId,
+    agentSlug: agentId,
+    instructions: planInstructions,
+    connectedProviders: planConnectedProviders,
+    enabledTools: planSkill?.tools ?? null,
+  })
+
   let agentOutput = ''
   try {
-    await new Promise<void>((resolve, reject) => {
-      let settled = false
-      let deltaAccumulated = ''
-
-      const finish = (text: string): void => {
-        if (settled) return
-        settled = true
-        agentOutput = text
-        oc.close()
-        resolve()
-      }
-
-      const abort = (err: Error): void => {
-        if (settled) return
-        settled = true
-        try { oc.close() } catch {}
-        reject(err)
-      }
-
-      // 90-second hard timeout — if Gemini doesn't respond, fail fast
-      const timeoutHandle = setTimeout(() => {
-        console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} timeout after 90s — no response from agent`)
-        abort(new Error('Planning timed out — agent did not respond within 90 seconds'))
-      }, 90_000)
-
-      let oc: OpenClawClient
-      oc = new OpenClawClient({
-        tenantId,
-        actorId: agentId,
-        gatewayUrl,
-        // Accumulate streaming deltas — used as fallback when session.message key doesn't
-        // match (OpenClaw normalises the key) and lifecycle:end fires with empty accumulatedText.
-        onDelta(text: string) { deltaAccumulated += text },
-        // Primary completion: session.message (webchat path) or lifecycle:end (streaming path).
-        onDone(fullText: string) {
-          clearTimeout(timeoutHandle)
-          finish(fullText || deltaAccumulated)
-        },
-        // Fallback completion: sessions.changed phase=end always fires after a turn completes,
-        // even when session.message key mismatch caused onDone to be skipped.
-        // Only fires if we have accumulated delta text; otherwise wait for onClose to reject.
-        onTokens() {
-          if (!settled && deltaAccumulated) {
-            clearTimeout(timeoutHandle)
-            console.log(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} completing via sessions.changed fallback`)
-            finish(deltaAccumulated)
-          }
-        },
-        onClose() {
-          clearTimeout(timeoutHandle)
-          if (!settled) {
-            reject(new Error('OpenClaw closed without response'))
-          }
-        },
-        onError(err: Error) {
-          clearTimeout(timeoutHandle)
-          if (!settled) reject(err)
-        },
-      })
-      const sessionKey = `tasks:plan:${taskId}:${Date.now()}`
-      oc.connect()
-        .then(() => { oc.sendMessage(prompt, [], sessionKey) })
-        .catch((err: Error) => { clearTimeout(timeoutHandle); if (!settled) reject(err) })
-    })
+    const result = await planAgent.generate(prompt)
+    agentOutput = result.text ?? ''
   } catch (err) {
-    console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} OpenClaw error:`, (err as Error).message)
+    console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} Mastra error:`, (err as Error).message)
     return c.json({ error: 'Agent error', detail: (err as Error).message }, 502)
+  } finally {
+    await planMcpClient.disconnect()
   }
 
   if (!agentOutput) {
