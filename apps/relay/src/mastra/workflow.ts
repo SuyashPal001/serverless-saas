@@ -117,6 +117,10 @@ export async function runMastraWorkflow(
         toolName: rawStep.toolName ? normalizeToolName(rawStep.toolName) : rawStep.toolName,
       }
       try {
+        // Step must be running before any terminal transition (fail/complete).
+        // Policy checks below may exit early — all must come after onStepStart.
+        await ctx.onStepStart(step.id)
+
         // Policy: blocked tools — hard stop, fail the step
         if (step.toolName && ctx.blockedTools.includes(step.toolName)) {
           await ctx.onStepFail(
@@ -159,8 +163,6 @@ export async function runMastraWorkflow(
           )
           return
         }
-
-        await ctx.onStepStart(step.id)
 
         const stepOutputsSoFar = completedStepOutputs.slice()
         const basePrompt = buildStepPrompt(
