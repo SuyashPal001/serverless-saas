@@ -1744,9 +1744,16 @@ app.post('/api/tasks/plan', async (c) => {
     enabledTools: planSkill?.tools ?? null,
   })
 
+  // threadId must never be undefined — Mastra memory requires both threadId and resourceId.
+  // taskId is validated non-empty above; fallback is a safety net only.
+  const planThreadId = taskId || `plan:${tenantId}:${Date.now()}`
+  if (!planThreadId) throw new Error('threadId required for Mastra memory')
+
   let agentOutput = ''
   try {
-    const result = await planAgent.generate(prompt)
+    const result = await planAgent.generate(prompt, {
+      memory: { thread: planThreadId, resource: tenantId },
+    })
     agentOutput = result.text ?? ''
   } catch (err) {
     console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} Mastra error:`, (err as Error).message)
