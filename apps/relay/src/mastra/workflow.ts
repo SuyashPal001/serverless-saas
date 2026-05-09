@@ -337,11 +337,11 @@ function buildStepPrompt(
     `You MUST respond with valid JSON matching:`,
     `{`,
     `  "status": "done" | "needs_clarification" | "failed",`,
-    `  "summary": "what you did or found",`,
+    `  "summary": "REQUIRED: the actual output data the user needs. For jobs: include job title, company, location, salary, apply URL. For research: include specific facts and source URLs. For extracted data: include the actual extracted content. Never write a description of what you did — write the actual result.",`,
     `  "reasoning": "why you did it this way",`,
     `  "question": "only if needs_clarification",`,
     `  "toolCalled": "tool name if you used one",`,
-    `  "toolResult": "result summary if tool was used"`,
+    `  "toolResult": "the raw result from the tool call if used"`,
     `}`,
   ].filter(Boolean).join('\n')
 }
