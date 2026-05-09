@@ -87,14 +87,32 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
 
   console.log(`[vertex-proxy] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
 
+  const isStreaming = req.url?.includes('streamGenerateContent') ?? false;
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nativeRequest = (body ? JSON.parse(body) : {}) as any;
     console.log('[vertex-proxy] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
     const nativeModel = vertexAI.getGenerativeModel({ model: nativeModelName });
-    const result = await nativeModel.generateContent(nativeRequest);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(result.response));
+
+    if (isStreaming) {
+      console.log('[vertex-proxy] streaming via generateContentStream');
+      const streamResult = await nativeModel.generateContentStream(nativeRequest);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      for await (const chunk of streamResult.stream) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      const result = await nativeModel.generateContent(nativeRequest);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result.response));
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     console.error('[vertex-proxy] native Gemini error:', message);
