@@ -305,7 +305,7 @@ async function downloadMediaAttachment(att: Attachment, sessionId: string): Prom
 const API_BASE_URL = process.env.API_BASE_URL ?? ''
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? `${API_BASE_URL}/api/v1`
-const MASTRA_STUDIO_KEY = process.env.MASTRA_STUDIO_KEY ?? ''
+
 
 // Written by /rag/retrieve when it returns chunks; read by the SSE onDone handler.
 // Keyed by tenantId — safe because /rag/retrieve completes synchronously before the
@@ -2292,28 +2292,13 @@ app.post('/api/chat', async (c) => {
 
 
 // ─── Mastra Studio — platform admin observability ─────────────────────────────
-// Gated by MASTRA_STUDIO_KEY bearer token — not tenant-facing.
-// Provides real traces, memory browser, evals, and agent inspector.
-// Disabled if MASTRA_STUDIO_KEY is not set.
+// No bearer token gate — mastra studio CLI cannot send auth headers.
+// Security relies on relay port 3001 not being publicly exposed.
+// Put NGINX in front with IP allowlist if external access is needed.
 
-app.use('/studio/*', async (c, next) => {
-  if (!MASTRA_STUDIO_KEY) {
-    return c.json({ error: 'Mastra Studio not configured: set MASTRA_STUDIO_KEY to enable' }, 503)
-  }
-  const auth = c.req.header('Authorization') ?? ''
-  if (!auth.startsWith('Bearer ') || auth.slice(7) !== MASTRA_STUDIO_KEY) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  return next()
-})
-
-if (MASTRA_STUDIO_KEY) {
-  const studioServer = new MastraServer({ app, mastra, prefix: '/studio' })
-  await studioServer.init()
-  console.log('[studio] Mastra Studio mounted at /studio')
-} else {
-  console.log('[studio] Mastra Studio disabled — set MASTRA_STUDIO_KEY to enable')
-}
+const studioServer = new MastraServer({ app, mastra, prefix: '/studio' })
+await studioServer.init()
+console.log('[studio] Mastra Studio API mounted at /studio')
 
 export {
   app,
