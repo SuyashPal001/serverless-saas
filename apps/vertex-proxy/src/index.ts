@@ -164,6 +164,7 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   if (
     req.url?.includes('v1beta') ||
     req.url?.includes('generateContent') ||
+    req.url?.includes('streamGenerateContent') ||
     req.url?.includes('/v1/v1beta')
   ) {
     await handleNativeGemini(req, res);
