@@ -91,10 +91,12 @@ USE_MASTRA_TASKS === 'true'?
     ↓ yes
 runMastraTaskSteps(taskId, agentId, tenantId, steps, ...)
     ├── checkMessageQuota(tenantId)  — quota guard
-    ├── fetchAgentSkill(agentId)     — get instructions from agent_skills
+    ├── fetchAgentSkill(agentId)     — retained for interface compat only
+    │       (instructions field in WorkflowContext is ignored by platformAgent —
+    │        platformAgent resolves prompt from agent_templates at request time)
     └── build WorkflowContext
             ├── agentSlug = agentId  (fetchAgentSlug returns agentId unchanged)
-            ├── instructions = skill.systemPrompt ?? fallback
+            ├── instructions = skill.systemPrompt ?? fallback  ← NOT used by platformAgent
             ├── steps mapped: stepOrder → stepNumber
             ├── onStepComplete → callInternalTaskApi /complete
             ├── onStepFail → postTaskComment + /fail
@@ -102,12 +104,22 @@ runMastraTaskSteps(taskId, agentId, tenantId, steps, ...)
     ↓
 runMastraWorkflow(ctx)  (workflow.ts)
     ├── createTenantAgent(config)  (agent.ts)
-    │       ├── getMastraStore()                    — PostgresStore
+    │       ├── RequestContext stamped with tenantId + MASTRA_RESOURCE_ID_KEY
     │       ├── getMCPClientForTenant(tenantId)      — new MCPClient per task
     │       │       headers: x-internal-service-key + x-tenant-id: tenantId
-    │       ├── new Memory(...)                      — working + episodic memory
-    │       ├── tools = mcpClient.listTools()
-    │       └── new Agent({ id, instructions, model, memory, tools })
+    │       └── Proxy wraps platformAgent — injects requestContext into generate()
+    │
+    │   platformAgent (singleton — index.ts)
+    │       ├── instructions: fetchPlatformPrompt()  ← queries agent_templates at request time
+    │       │       SELECT system_prompt FROM agent_templates
+    │       │       WHERE status = 'published' ORDER BY version DESC LIMIT 1
+    │       │       fallback: 'You are Saarthi, a helpful AI assistant.'
+    │       ├── tools: dynamic via requestContext
+    │       │       ├── mcpClient.listTools()         — tenant-scoped MCP tools
+    │       │       └── SERVER_TOOLS (internet_search, code_execution, web_fetch)
+    │       ├── memory: getMastraMemory() singleton — isolated by MASTRA_RESOURCE_ID_KEY
+    │       └── model: vertex-proxy:4001 → Gemini
+    │
     └── for each step (sorted by stepNumber):
             agent.generate(prompt, {
               memory: { thread: 'task:id:step:n', resource: tenantId },
@@ -387,11 +399,73 @@ OpenClaw (chat path) reads two separate files per agent:
 - `IDENTITY.md` — written from `agent_skills.system_prompt` at container provision time
 - `SOUL.md` — static template with RAG query rewriting strategy
 
-**Mastra (task path) only uses `agent_skills.system_prompt`** — fetched at runtime via `fetchAgentSkill(agentId)`. This is the same content as `IDENTITY.md` (full personality + all 25 tool descriptions + behavioral rules).
+**Mastra (task path) uses the platform prompt** — fetched at request time via
+`fetchPlatformPrompt()` in `apps/relay/src/mastra/index.ts`. This queries
+`agent_templates WHERE status = 'published' ORDER BY version DESC LIMIT 1`.
+Falls back to `'You are Saarthi, a helpful AI assistant.'` if no published template exists.
+
+This is **not** `agent_skills.system_prompt`. The per-tenant skill prompt is retained
+for the OpenClaw path only. `fetchAgentSkill(agentId)` is still called in `app.ts`
+but its result is ignored by `platformAgent` — the platform template takes precedence.
 
 **SOUL.md integration — parked (Phase 3+):** SOUL.md adds RAG query rewriting guidance. On the Mastra task path, the agent calls `retrieve_documents` via MCP tool directly — the SOUL.md RAG guidance is not applicable. Revisit if RAG migrates to Python ai-service in Phase 3.
 
 **IDENTITY.md filesystem path:** `/opt/tenants/{tenantId}/{agentSlug}/workspace/IDENTITY.md`
+
+---
+
+## Prompt Management
+
+### Source of truth
+
+| Path | Source | Owner |
+|---|---|---|
+| Mastra task path | `agent_templates` table (`status = 'published'`, latest `version`) | Platform admin |
+| OpenClaw chat path | `agent_skills.system_prompt` per tenant | Tenant (editable) |
+| OpenClaw container | `IDENTITY.md` on disk at `/opt/tenants/{tenantId}/{agentSlug}/workspace/` | agent-server writes at provision time |
+
+### How the platform prompt reaches Mastra
+
+`platformAgent.instructions` is an async function — called on **every request**:
+```typescript
+instructions: async () => {
+  return fetchPlatformPrompt()  // queries agent_templates, falls back to static string
+}
+```
+
+No cache. No restart needed. Publish a new template in Mission Control → next task
+request picks it up automatically.
+
+### UI for managing prompts
+
+**Mission Control** (`/ops/agent-intelligence/templates`) — platform admin only.
+
+CRUD exposed via `GET/POST/PUT /api/v1/ops/agent-templates` and
+`POST /api/v1/ops/agent-templates/:id/publish`.
+
+Lifecycle: `draft` → `published` (archives previous) → `archived`.
+New version = new row (`version` increments). Published rows are immutable.
+Rollback = re-publish an archived row.
+
+### Mastra Studio role
+
+**Observability only** — traces, memory browser, evals, span viewer.
+
+Studio is **not** the prompt editor. It cannot see the vertex-proxy model in its
+picker (known limitation — acceptable). Do not use Studio to edit agent instructions;
+changes made in Studio do not persist to `agent_templates` and will be overwritten
+on next request.
+
+### agent_skills — current role
+
+`agent_skills.system_prompt` is **retained for the OpenClaw path only**:
+- OpenClaw containers read `IDENTITY.md` written from `agent_skills.system_prompt`
+- Tenants can customize their own skill prompt independently
+- Mastra ignores it — platform template takes precedence on the task path
+
+When a new platform template is published, a background job propagates it to
+`agent_skills.system_prompt` for tenants whose prompt still matches the previous
+published version (opt-out by divergence — customized prompts are not overwritten).
 
 ---
 
