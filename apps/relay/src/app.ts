@@ -922,6 +922,7 @@ async function runMastraTaskSteps(
   referenceText?: string | null,
   links?: string[] | null,
   attachmentContext?: string | null,
+  acceptanceCriteria?: string | null,
   traceId: string = crypto.randomUUID()
 ): Promise<void> {
   // Quota guard — same pattern as runTaskSteps
@@ -979,6 +980,7 @@ async function runMastraTaskSteps(
     allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,
     attachmentContext: attachmentContext ?? null,
+    acceptanceCriteria: acceptanceCriteria ?? null,
     onStepStart: async (stepId) => {
       await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
     },
@@ -1325,7 +1327,7 @@ app.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown }
+  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown; acceptanceCriteria?: unknown }
   try {
     body = await c.req.json()
   } catch {
@@ -1341,15 +1343,18 @@ app.post('/api/tasks/execute', async (c) => {
   const agentName = typeof body.agentName === 'string' && body.agentName.trim() ? body.agentName.trim() : 'Agent'
   const rawReferenceText = typeof body.referenceText === 'string' && body.referenceText.trim() ? body.referenceText.trim() : null
   const rawAttachmentContext = typeof body.attachmentContext === 'string' && body.attachmentContext.trim() ? body.attachmentContext.trim() : null
+  const rawAcceptanceCriteria = typeof body.acceptanceCriteria === 'string' && body.acceptanceCriteria.trim() ? body.acceptanceCriteria.trim() : null
   const links = Array.isArray(body.links) ? (body.links as unknown[]).filter((l): l is string => typeof l === 'string' && l.trim() !== '') : null
 
   const { sanitized: taskTitle, detections: taskTitleD } = filterPII(rawTaskTitle)
   const { sanitized: taskDescription, detections: taskDescD } = filterPII(rawTaskDescription)
   const execRefResult = rawReferenceText !== null ? filterPII(rawReferenceText) : null
   const execAttResult = rawAttachmentContext !== null ? filterPII(rawAttachmentContext) : null
+  const execAcResult = rawAcceptanceCriteria !== null ? filterPII(rawAcceptanceCriteria) : null
   const referenceText = execRefResult?.sanitized ?? null
   const attachmentContext = execAttResult?.sanitized ?? null
-  const execPiiDetections = [...taskTitleD, ...taskDescD, ...(execRefResult?.detections ?? []), ...(execAttResult?.detections ?? [])]
+  const acceptanceCriteria = execAcResult?.sanitized ?? null
+  const execPiiDetections = [...taskTitleD, ...taskDescD, ...(execRefResult?.detections ?? []), ...(execAttResult?.detections ?? []), ...(execAcResult?.detections ?? [])]
   if (execPiiDetections.length > 0) {
     const summary = execPiiDetections.reduce((acc, d) => { acc[d.type] = (acc[d.type] ?? 0) + d.count; return acc }, {} as Record<string, number>)
     console.log(`[pii-filter] tasks/execute taskId=${taskId} masked: ${Object.entries(summary).map(([t, c]) => `${t}×${c}`).join(' ')}`)
@@ -1371,7 +1376,7 @@ app.post('/api/tasks/execute', async (c) => {
   // 4. Fire-and-forget — return 200 immediately; step loop runs async
   const USE_MASTRA = process.env.USE_MASTRA_TASKS === 'true'
   if (USE_MASTRA) {
-    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, traceId).catch((err: Error) => {
+    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId).catch((err: Error) => {
       console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
     })
   } else {

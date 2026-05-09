@@ -48,6 +48,7 @@ export interface WorkflowContext {
   allowedTools: string[]          // from policy — if non-empty, only these are permitted
   maxTokensPerMessage: number | null
   attachmentContext?: string | null  // extracted text from task attachments
+  acceptanceCriteria?: string | null // definition of done — injected into every step prompt
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepStart: (stepId: string) => Promise<void>
@@ -106,6 +107,7 @@ export async function runMastraWorkflow(
     // Mirrors existing runTaskSteps() behavior
     // but uses Mastra agent instead of OpenClaw
     let isFirstStep = true
+    const completedStepOutputs: string[] = []
     for (const rawStep of ctx.steps.sort(
       (a, b) => a.stepNumber - b.stepNumber
     )) {
@@ -160,11 +162,14 @@ export async function runMastraWorkflow(
 
         await ctx.onStepStart(step.id)
 
+        const stepOutputsSoFar = completedStepOutputs.slice()
         const basePrompt = buildStepPrompt(
           ctx.taskTitle,
           ctx.taskDescription,
           step,
-          ctx.attachmentContext
+          ctx.attachmentContext,
+          ctx.acceptanceCriteria,
+          stepOutputsSoFar
         )
         const prompt = isFirstStep ? governanceNote + basePrompt : basePrompt
         isFirstStep = false
@@ -223,6 +228,11 @@ export async function runMastraWorkflow(
           inputTokens: usage?.inputTokens ?? 0,
           outputTokens: usage?.outputTokens ?? 0,
         })
+
+        // Track completed output for chaining into subsequent step prompts
+        if (parsed.status === 'done') {
+          completedStepOutputs.push(parsed.summary)
+        }
 
         // If agent needs clarification — stop execution
         // Same behavior as existing OpenClaw path
@@ -283,7 +293,9 @@ function buildStepPrompt(
     description?: string
     toolName?: string
   },
-  attachmentContext?: string | null
+  attachmentContext?: string | null,
+  acceptanceCriteria?: string | null,
+  previousStepOutputs?: string[]
 ): string {
   return [
     `Task: ${taskTitle}`,
@@ -292,6 +304,12 @@ function buildStepPrompt(
       : null,
     attachmentContext
       ? `\n## Attached Files\n${attachmentContext}`
+      : null,
+    acceptanceCriteria
+      ? `\n## Definition of Done\n${acceptanceCriteria}\n\nYou MUST verify your output meets these criteria before marking this step complete.`
+      : null,
+    previousStepOutputs && previousStepOutputs.length > 0
+      ? `\n## Previous Step Results\n${previousStepOutputs.map((o, i) => `Step ${i + 1}: ${o}`).join('\n')}`
       : null,
     ``,
     `Current step: ${step.title}`,
