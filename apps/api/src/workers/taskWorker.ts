@@ -208,27 +208,30 @@ async function handlePlanning(taskId: string, traceId: string, extraContext?: st
       ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0]
       : null;
 
-    let ragContext: string | null = null;
-    try {
-      ragContext = await getPastSuccessfulPlans(task.tenantId, task.title, task.description);
-      if (ragContext) {
-        log('info', 'RAG found similar past tasks, prepending context');
-      }
-    } catch (ragErr) {
-      log('warn', 'RAG lookup failed (non-fatal)', { error: (ragErr as Error).message });
+    const preRelayStart = Date.now();
+    log('info', 'starting pre-relay work');
+
+    const [ragContext, { attachmentContext }] = await Promise.all([
+      getPastSuccessfulPlans(task.tenantId, task.title, task.description).catch(ragErr => {
+        log('warn', 'RAG lookup failed (non-fatal)', { error: (ragErr as Error).message });
+        return null;
+      }),
+      extractAttachments(task.tenantId, task.attachmentFileIds ?? []),
+    ]);
+
+    if (ragContext) {
+      log('info', 'RAG found similar past tasks, prepending context');
     }
 
-    const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
+    log('info', 'pre-relay work done', { ms: Date.now() - preRelayStart });
 
-    const { attachmentContext } = await extractAttachments(
-      task.tenantId,
-      task.attachmentFileIds ?? []
-    );
+    const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
 
     // BUG-1+2: AbortSignal.timeout(55_000) prevents the Lambda from hanging
     // indefinitely on a slow/unresponsive relay. Without it, Node's default fetch
     // has no timeout; a hung relay would exhaust the Lambda timeout and leave the
     // task permanently stuck in 'planning' with no user-visible error.
+    log('info', 'relay call starting');
     const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
       method: 'POST',
       headers: {
