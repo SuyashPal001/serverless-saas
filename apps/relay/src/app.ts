@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
@@ -391,6 +392,13 @@ function fireKnowledgeGap(payload: {
 }
 
 const app = new Hono()
+
+app.use('/studio/*', cors({
+  origin: 'https://agent-studio.fitnearn.com',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-mastra-client-type'],
+  credentials: true,
+}))
 
 app.get('/health', (c) => c.json({ ok: true }))
 
