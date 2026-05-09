@@ -8,6 +8,7 @@
 
 import { Mastra } from '@mastra/core/mastra'
 import { MastraEditor } from '@mastra/editor'
+import { Observability, DefaultExporter } from '@mastra/observability'
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -189,6 +190,14 @@ export const mastra = new Mastra({
   agents: { saarthi: platformAgent },
   storage: getMastraStore(),
   editor: new MastraEditor(),
+  observability: new Observability({
+    configs: {
+      default: {
+        serviceName: 'saarthi-relay',
+        exporters: [new DefaultExporter()],
+      },
+    },
+  }),
 })
 
 // ---------------------------------------------------------------------------

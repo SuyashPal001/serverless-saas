@@ -20,6 +20,7 @@
     "@mastra/hono": "^1.4.13",
     "@mastra/mcp": "^1.7.0",
     "@mastra/memory": "^1.17.5",
+    "@mastra/observability": "^1.11.1",
     "@mastra/pg": "^1.10.0",
     "dotenv": "^16.4.7",
     "exa-js": "^2.12.1",
