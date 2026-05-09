@@ -219,6 +219,18 @@ export async function runMastraWorkflow(
         const stepLatencyMs = Date.now() - stepStartMs
         const usage = result.totalUsage ?? result.usage
 
+        // result.object is undefined when Gemini returns malformed/non-JSON output.
+        // Guard here — if we spread undefined into onStepComplete and then access
+        // parsed.status, it throws and the catch calls onStepFail on an already-
+        // completed step, producing a 409 that leaves the task stuck in_progress.
+        if (!result.object) {
+          await ctx.onStepFail(
+            step.id,
+            `Agent returned no structured output. Raw: ${String(result.text ?? '').slice(0, 200)}`
+          )
+          return
+        }
+
         const parsed = result.object as z.infer<
           typeof StepOutputSchema
         >
