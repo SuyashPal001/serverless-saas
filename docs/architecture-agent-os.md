@@ -352,3 +352,56 @@ Team builds first product on Phase 1 + Phase 2 foundation. Separate repo. Own ou
 ### Phase 4 — Scale and Open
 
 Proven products. Onboard other businesses. SLA, versioning, support process.
+
+---
+
+## Architectural Decisions (ADRs)
+
+### ADR-030: Platform Agent Template System
+
+**Date:** May 2026
+**Status:** Building now
+
+#### Decision
+
+Introduce an `agent_templates` table as a platform-level concept for managing Mastra agent system prompts centrally. Onboarding pulls the active published template instead of using a hardcoded string. Publishing a new template version propagates to all existing tenants via `agent_skills` update.
+
+#### Context
+
+The current Mastra agent configuration has a split-brain problem:
+
+- The **OpenClaw path** has `apps/agent-server/templates/IDENTITY.md` and `SOUL.md` — rich, structured, editable markdown files that the agent-server writes to each container at provision time.
+- The **Mastra path** has no equivalent. `onboarding.ts` hardcodes a 2-sentence system prompt directly as a TypeScript template literal. It is burned into `agent_skills.system_prompt` at tenant creation and never updated unless a tenant edits it manually.
+
+This means:
+- Improving agent behavior for all tenants requires a code deploy.
+- New tenants get a minimal 2-sentence prompt while the platform has a much richer `IDENTITY.md` — an inconsistency that grows over time.
+- There is no way to roll back a bad prompt change without a code deploy.
+- There is no audit trail for prompt changes.
+
+#### Design Decisions
+
+**Platform-scoped (no tenantId).** `agent_templates` is a platform-level table — no `tenant_id` column. It is owned by platform admins via Mission Control, not by tenants.
+
+**Draft / published / archived lifecycle.** Only one template row with `status = 'published'` is the active template at any time. New versions start as `draft`, are promoted to `published` (demoting the previous published row to `archived`), and can be archived when retired. Rollback = re-publish an archived version.
+
+**Versioned — new version = new row.** Each version is an immutable row. The `version` integer increments per `name` (e.g. `saarthi-default` v1, v2, v3). Old rows are retained permanently for audit and rollback. No in-place edits to published rows.
+
+**Onboarding pulls the active published template.** `POST /onboarding/complete` queries `WHERE name = 'saarthi-default' AND status = 'published'` and writes that content to `agent_skills.system_prompt`. If no published template exists, it falls back to the current hardcoded string (safe degradation).
+
+**Publish flow pushes to all existing tenants.** When a platform admin publishes a new template version via Mission Control, a background job updates `agent_skills.system_prompt` for all tenants whose skill `name = 'default'` and `systemPrompt` matches the previous published version. Tenants who have customized their prompt are not overwritten (opt-out by divergence).
+
+**`createdBy` tracks platform admin.** The `users.id` of the platform admin who created or published each version is recorded for audit.
+
+#### What This Does NOT Do
+
+- Does not change how tenant-specific prompt customization works — tenants can still edit their own `agent_skills` rows independently.
+- Does not affect the OpenClaw path — `IDENTITY.md` / `SOUL.md` continue to be managed as files in `apps/agent-server/templates/`.
+- Does not introduce versioning beyond `agent_templates.version` — `agent_skills.version` remains the per-tenant skill version mechanism.
+
+#### Consequences
+
+- Platform can update agent behavior across all tenants without a code deploy.
+- Mission Control gains a Template Editor page for drafting and publishing.
+- Full audit trail: who published what version at what time.
+- Rollback is a UI action, not a `git revert`.

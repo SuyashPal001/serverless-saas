@@ -207,3 +207,28 @@ export const agentToolAssignments = pgTable(
       .on(t.agentId, t.toolId),
   })
 )
+
+// ─── Agent Template System ────────────────────────────────────────────────────
+// Platform-level versioned agent prompts (ADR-030).
+// No tenantId — owned by platform admins via Mission Control.
+
+export const agentTemplateStatusEnum = pgEnum('agent_template_status', ['draft', 'published', 'archived'])
+
+export const agentTemplates = pgTable('agent_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  description: text('description'),
+  systemPrompt: text('system_prompt').notNull(),
+  tools: text('tools').array(),
+  model: text('model'),
+  version: integer('version').notNull().default(1),
+  status: agentTemplateStatusEnum('status').notNull().default('draft'),
+  config: jsonb('config'),
+  publishedAt: timestamp('published_at'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+})
+
+export type AgentTemplate = typeof agentTemplates.$inferSelect
+export type NewAgentTemplate = typeof agentTemplates.$inferInsert

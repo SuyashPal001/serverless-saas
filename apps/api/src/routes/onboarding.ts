@@ -6,10 +6,10 @@ import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents, agentTemplates } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
 import { apiKeys } from '@serverless-saas/database/schema/access';
-import { eq, isNull, and } from 'drizzle-orm';
+import { eq, isNull, and, desc } from 'drizzle-orm';
 import { provisionNotificationWorkflows } from '@serverless-saas/database/seeds/notification-workflows';
 import type { AppEnv } from '../types';
 
@@ -104,6 +104,31 @@ onboardingRoutes.post('/complete', async (c) => {
     // Step 7: Seed default agent (Saarthi) for new tenant
     // Note: if apiKeys insert fails, agents insert will throw FK error
     // No rollback — acceptable for MVP, add transaction wrapper later
+
+    // Resolve system prompt from active published template (ADR-030).
+    // Falls back to hardcoded string if no published template exists.
+    const [publishedTemplate] = await db
+        .select({
+            systemPrompt: agentTemplates.systemPrompt,
+            tools: agentTemplates.tools,
+            model: agentTemplates.model,
+        })
+        .from(agentTemplates)
+        .where(eq(agentTemplates.status, 'published'))
+        .orderBy(desc(agentTemplates.version))
+        .limit(1);
+
+    if (!publishedTemplate) {
+        console.warn('[onboarding] No published agent template found, using fallback prompt');
+    }
+
+    const resolvedSystemPrompt = publishedTemplate
+        ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
+        : `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`;
+
+    const resolvedTools = publishedTemplate?.tools ?? [];
+    const resolvedModel = publishedTemplate?.model ?? null;
+
     const rawKey = `ak_${randomBytes(32).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawKey).digest('hex');
 
@@ -123,6 +148,7 @@ onboardingRoutes.post('/complete', async (c) => {
         type: 'custom',
         status: 'active',
         apiKeyId: saarthiKey.id,
+        model: resolvedModel,
         createdBy: userId,
     }).returning();
 
@@ -130,7 +156,8 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: saarthiAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`,
+        systemPrompt: resolvedSystemPrompt,
+        tools: resolvedTools,
         status: 'active',
     });
 
