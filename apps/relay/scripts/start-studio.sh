@@ -12,7 +12,7 @@
 
 npx mastra studio \
   --port 3010 \
-  --server-host localhost \
-  --server-port 3001 \
-  --server-protocol http \
+  --server-host agent-saas.fitnearn.com \
+  --server-port 443 \
+  --server-protocol https \
   --server-api-prefix /studio
