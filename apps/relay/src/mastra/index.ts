@@ -19,6 +19,7 @@ import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 import { getMastraStore, getMastraMemory } from './memory.js'
 import { getMCPClientForTenant } from './tools.js'
+import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -81,12 +82,13 @@ export const SERVER_TOOLS = {
       const { results } = await exa.searchAndContents(query, {
         livecrawl: 'always',
         numResults: 5,
+        text: { maxCharacters: 3000 },
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return results.map((r: any) => ({
         title: r.title ?? null,
         url: r.url,
-        content: (r.text ?? '').slice(0, 800),
+        content: (r.text ?? '').slice(0, 3000),
         publishedDate: r.publishedDate,
       }))
     },
@@ -105,7 +107,42 @@ export const SERVER_TOOLS = {
     inputSchema: z.object({
       url: z.string().describe('The URL to fetch'),
     }),
-    execute: async () => ({ result: 'handled natively by the LLM provider' }),
+    execute: async ({ url }: { url: string }) => {
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 10_000)
+        let response: Response
+        try {
+          response = await fetch(url, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Saarthi/1.0)' },
+          })
+        } finally {
+          clearTimeout(timer)
+        }
+        if (!response.ok) {
+          return { content: '', url, success: false as const, error: `HTTP ${response.status}` }
+        }
+        const raw = await response.text()
+        // Strip HTML tags and collapse whitespace
+        const text = raw
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+          .slice(0, 5000)
+        return { content: text, url, success: true as const }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: '', url, success: false as const, error: message }
+      }
+    },
   }),
 }
 
@@ -192,6 +229,7 @@ export const platformAgent = new Agent({
 
 export const mastra = new Mastra({
   agents: { saarthi: platformAgent },
+  workflows: { taskExecution: taskExecutionWorkflow },
   storage: getMastraStore(),
   editor: new MastraEditor(),
   observability: new Observability({

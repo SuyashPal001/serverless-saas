@@ -59,6 +59,8 @@ export interface WorkflowContext {
   maxTokensPerMessage: number | null
   attachmentContext?: string | null  // extracted text from task attachments
   acceptanceCriteria?: string | null // definition of done — injected into every step prompt
+  referenceText?: string             // user-provided background text
+  links?: string[]                   // URLs the user attached to the task
   // Callbacks to report progress to Lambda API
   // These are the existing internal endpoints
   onStepStart: (stepId: string) => Promise<void>

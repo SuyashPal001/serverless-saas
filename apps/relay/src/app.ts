@@ -13,6 +13,7 @@ import { createConversation, saveUserMessage, saveAssistantMessage } from './per
 import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
 import { runMastraWorkflow, createTenantAgent, mastra } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
+import { taskExecutionWorkflow } from './mastra/workflows/taskExecution.js'
 import { MastraServer } from '@mastra/hono'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
@@ -981,6 +982,8 @@ async function runMastraTaskSteps(
     maxTokensPerMessage: policy.maxTokensPerMessage,
     attachmentContext: attachmentContext ?? null,
     acceptanceCriteria: acceptanceCriteria ?? null,
+    referenceText: referenceText ?? undefined,
+    links: links ?? undefined,
     onStepStart: async (stepId) => {
       await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
     },
@@ -1042,7 +1045,64 @@ async function runMastraTaskSteps(
   }
 
   try {
-    await runMastraWorkflow(ctx)
+    const run = await taskExecutionWorkflow.createRun()
+
+    // Mark all task board steps as started
+    for (const step of ctx.steps) {
+      await ctx.onStepStart(step.id)
+    }
+
+    const result = await run.start({
+      inputData: {
+        taskTitle: ctx.taskTitle,
+        taskDescription: ctx.taskDescription ?? '',
+        acceptanceCriteria: ctx.acceptanceCriteria ?? '',
+        tenantId: ctx.tenantId,
+        attachmentContext: ctx.attachmentContext ?? '',
+        referenceText: ctx.referenceText ?? '',
+        links: ctx.links ?? [],
+      },
+    })
+
+    if (result.status === 'success') {
+      const steps = ctx.steps
+
+      // Mark intermediate steps done with contextual messages — real output goes on the last step only
+      const stepMessages = [
+        'Analyzing task and generating search strategy...',
+        'Searching across multiple sources in parallel...',
+        'Merging and deduplicating results...',
+      ]
+      for (let i = 0; i < steps.length - 1; i++) {
+        await ctx.onStepComplete(steps[i].id, {
+          stepId: steps[i].id,
+          summary: stepMessages[i] ?? `Step ${i + 1} completed`,
+          status: 'done',
+          reasoning: '',
+          toolCalled: '',
+          toolResult: '',
+        })
+      }
+
+      // Last step gets the real workflow output
+      const lastStep = steps[steps.length - 1]
+      await ctx.onStepComplete(lastStep.id, {
+        stepId: lastStep.id,
+        summary: result.result?.summary ?? '',
+        status: result.result?.status ?? 'done',
+        reasoning: result.result?.reasoning ?? '',
+        toolCalled: 'internet_search',
+        toolResult: '',
+      })
+    } else {
+      earlyTermination = true
+      for (const step of ctx.steps) {
+        await ctx.onStepFail(
+          step.id,
+          (result as unknown as { error?: { message?: string } }).error?.message ?? 'Workflow failed'
+        )
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow error:`, message)
