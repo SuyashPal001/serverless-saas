@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { createTenantAgent, TenantAgentConfig } from
-  './agent.js'
+import { createTenantAgent, TenantAgentConfig } from './agent.js'
+import { formatterAgent } from './index.js'
 
 // Task step schema — matches our existing taskSteps table
 const StepInputSchema = z.object({
@@ -23,6 +23,16 @@ const StepOutputSchema = z.object({
   latencyMs: z.number().int().optional(),
   inputTokens: z.number().int().optional(),
   outputTokens: z.number().int().optional(),
+})
+
+// Schema for the Pass 2 formatting call — relay-injected fields (stepId, latencyMs,
+// inputTokens, outputTokens) are excluded and merged in after generateObject returns.
+const StepFormatSchema = z.object({
+  status: z.enum(['done', 'needs_clarification', 'failed']),
+  summary: z.string(),
+  reasoning: z.string().optional(),
+  question: z.string().optional(),
+  toolCalled: z.string().optional(),
 })
 
 export interface WorkflowContext {
@@ -177,19 +187,19 @@ export async function runMastraWorkflow(
         isFirstStep = false
 
         const stepStartMs = Date.now()
-        let result
+
+        // Pass 1 — free generation with tools.
+        // No structuredOutput so Gemini can use functionDeclarations (tool calls).
+        // Mastra handles the tool-call loop and returns the final text in result.text.
+        let pass1Result
         let genAttempts = 0
         while (genAttempts < 2) {
           try {
-            result = await agent.generate(prompt, {
+            pass1Result = await agent.generate(prompt, {
               // Scope memory to this task session
-              // memory.thread = threadId, memory.resource = resourceId
               memory: {
                 thread: `task:${ctx.taskId}:step:${step.stepNumber}`,
                 resource: ctx.tenantId,
-              },
-              structuredOutput: {
-                schema: StepOutputSchema,
               },
               ...(ctx.maxTokensPerMessage
                 ? { modelSettings: { maxOutputTokens: ctx.maxTokensPerMessage } }
@@ -215,33 +225,53 @@ export async function runMastraWorkflow(
             }
           }
         }
-        if (!result) throw new Error('agent.generate failed after retry')
+        if (!pass1Result) throw new Error('agent.generate failed after retry')
         const stepLatencyMs = Date.now() - stepStartMs
-        const usage = result.totalUsage ?? result.usage
+        const pass1Usage = pass1Result.totalUsage ?? pass1Result.usage
 
-        // result.object is undefined when Gemini returns malformed/non-JSON output.
-        // Guard here — if we spread undefined into onStepComplete and then access
-        // parsed.status, it throws and the catch calls onStepFail on an already-
-        // completed step, producing a 409 that leaves the task stuck in_progress.
-        if (!result.object) {
+        // Pass 2 — format into StepFormatSchema using a no-tools agent.
+        // formatterAgent has tools:{} so Gemini uses responseSchema without conflict
+        // from functionDeclarations (the two are mutually exclusive in the Gemini API).
+        const agentText = pass1Result.text ?? '(no output)'
+        const formatPrompt = [
+          `An AI agent executed this task step and produced the output below.`,
+          `Step: ${step.title}`,
+          step.description ? `Details: ${step.description}` : null,
+          ``,
+          `--- Agent output ---`,
+          agentText,
+          `--- End output ---`,
+          ``,
+          `Convert this into the required JSON format:`,
+          `- status: "done" if completed successfully, "failed" if it could not complete, "needs_clarification" if a question must be answered first`,
+          `- summary: the actual data the user needs — for jobs: list each with title, company, location, salary, apply URL; for research: key findings with source URLs. Human-readable text, never raw JSON.`,
+          `- reasoning: brief explanation of approach`,
+          `- question: only if status is "needs_clarification"`,
+          `- toolCalled: name of the tool used, if identifiable from the output`,
+        ].filter(Boolean).join('\n')
+
+        const pass2Result = await formatterAgent.generate(formatPrompt, {
+          structuredOutput: { schema: StepFormatSchema },
+        })
+        const pass2Usage = pass2Result.totalUsage ?? pass2Result.usage
+
+        if (!pass2Result.object) {
           await ctx.onStepFail(
             step.id,
-            `Agent returned no structured output. Raw: ${String(result.text ?? '').slice(0, 200)}`
+            `Formatter returned no structured output. Raw: ${String(pass2Result.text ?? '').slice(0, 200)}`
           )
           return
         }
 
-        const parsed = result.object as z.infer<
-          typeof StepOutputSchema
-        >
-
-        await ctx.onStepComplete(step.id, {
-          ...parsed,
+        const parsed: z.infer<typeof StepOutputSchema> = {
+          ...(pass2Result.object as z.infer<typeof StepFormatSchema>),
           stepId: step.id,
           latencyMs: stepLatencyMs,
-          inputTokens: usage?.inputTokens ?? 0,
-          outputTokens: usage?.outputTokens ?? 0,
-        })
+          inputTokens: (pass1Usage?.inputTokens ?? 0) + (pass2Usage?.inputTokens ?? 0),
+          outputTokens: (pass1Usage?.outputTokens ?? 0) + (pass2Usage?.outputTokens ?? 0),
+        }
+
+        await ctx.onStepComplete(step.id, parsed)
 
         // Track completed output for chaining into subsequent step prompts
         if (parsed.status === 'done') {

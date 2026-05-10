@@ -124,6 +124,13 @@ const SERVER_TOOL_NAMES = new Set([...Object.keys(SERVER_TOOLS), 'web_search'])
 // model:        routes through vertex-proxy at VERTEX_PROXY_URL.
 // ---------------------------------------------------------------------------
 
+// Exported so workflow.ts can reuse it for the Pass 2 formatting call
+// (generateObject with no tools — avoids Gemini responseSchema + functionDeclarations conflict).
+export const saarthiModel = createGoogleGenerativeAI({
+  baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
+  apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
+})(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+
 export const platformAgent = new Agent({
   id: 'saarthi',
   name: 'Saarthi',
@@ -174,10 +181,7 @@ export const platformAgent = new Agent({
 
   memory: getMastraMemory(),
 
-  model: createGoogleGenerativeAI({
-    baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
-    apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
-  })(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash'),
+  model: saarthiModel,
 })
 
 // ---------------------------------------------------------------------------
@@ -201,6 +205,17 @@ export const mastra = new Mastra({
 })
 
 // ---------------------------------------------------------------------------
+// No-tools formatter agent for Pass 2 of step execution.
+// Zero tools means Gemini uses responseSchema (structured output) without conflict
+// from functionDeclarations — the two are mutually exclusive in the Gemini API.
+export const formatterAgent = new Agent({
+  id: 'saarthi-formatter',
+  name: 'Saarthi Formatter',
+  instructions: 'You are a structured data formatter. Convert agent output to JSON exactly as specified.',
+  tools: {},
+  model: saarthiModel,
+})
+
 // Backward-compatible re-exports — app.ts / workflow.ts import unchanged.
 // ---------------------------------------------------------------------------
 
