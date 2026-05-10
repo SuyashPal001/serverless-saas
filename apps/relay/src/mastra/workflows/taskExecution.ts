@@ -308,17 +308,24 @@ export const approvalStep = createStep({
   // Same schema on both sides preserves the array type so .foreach() works without as any.
   inputSchema: planOutputSchema,
   outputSchema: planOutputSchema,
-  execute: async ({ inputData, getInitData, ...ctx }) => {
+  execute: async ({ inputData, getInitData, resumeData, ...ctx }) => {
     const initData = getInitData() as z.infer<typeof workflowInputSchema>
-    // suspend is injected by Mastra at runtime but not in the public TS types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const suspend = (ctx as any).suspend as ((payload: unknown) => Promise<void>) | undefined
 
+    // Auto-approve: skip suspension entirely
     if (initData.autoApprove !== false) {
       return inputData
     }
 
-    // Suspend — execution pauses here until workflow.resume(runId, payload) is called
+    // Resuming — user has already approved (resumeData is present)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (resumeData && (resumeData as any).approved) {
+      return inputData
+    }
+
+    // First execution — suspend until resume() is called externally
+    // suspend is injected by Mastra at runtime but not in the public TS types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const suspend = (ctx as any).suspend as ((payload: unknown) => Promise<void>) | undefined
     if (suspend) {
       await suspend({
         message: 'Please review the search plan and approve to continue',

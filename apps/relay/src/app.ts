@@ -1512,14 +1512,61 @@ app.post('/api/tasks/:taskId/resume', async (c) => {
   )
   const runningSteps = stepsRes.rows
 
-  // 3. Reconstruct run from storage and resume
-  let resumeResult: { status: string; result?: { summary?: string; status?: string; reasoning?: string; inputTokens?: number; outputTokens?: number }; error?: { message?: string } }
+  // 3. Reconstruct run from storage and resume.
+  // run.resume() is fire-and-forget — it kicks off the workflow but returns immediately.
+  // Poll the Studio runs API until the run reaches a terminal state (max 10 min).
+  // After resume, the workflow runs parallel searches + compose — this takes several minutes.
+  type ResumeResult = { status: string; result?: { summary?: string; status?: string; reasoning?: string; inputTokens?: number; outputTokens?: number }; error?: { message?: string } }
+  let resumeResult: ResumeResult = { status: 'pending' }
   try {
-    const run = await taskExecutionWorkflow.createRun({ runId: mastraRunId })
-    resumeResult = await run.resume({
-      step: 'approval',
-      resumeData: { approved: true },
-    }) as typeof resumeResult
+    // Use the Studio HTTP API to resume — the TypeScript run.resume() doesn't
+    // correctly transition the persisted snapshot state, but the Studio REST API does.
+    const relayPort = process.env.PORT ?? '3001'
+    const resumeUrl = `http://localhost:${relayPort}/studio/workflows/taskExecution/resume?runId=${mastraRunId}`
+    const resumeRes = await fetch(resumeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'approval', resumeData: { approved: true } }),
+    })
+    if (!resumeRes.ok) {
+      const resumeText = await resumeRes.text()
+      throw new Error(`Studio resume returned ${resumeRes.status}: ${resumeText}`)
+    }
+    console.log(`[mastra/resume] Studio resume triggered runId=${mastraRunId}`)
+
+    // Poll for completion (max 10 min at 10s intervals)
+    const pollUrl = `http://localhost:${relayPort}/studio/workflows/taskExecution/runs/${mastraRunId}`
+    let settled = false
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 10000))
+      let pollData: Record<string, unknown>
+      try {
+        const pollRes = await fetch(pollUrl)
+        if (!pollRes.ok) { console.warn(`[mastra/resume] poll ${i + 1} non-ok: ${pollRes.status}`); continue }
+        pollData = await pollRes.json() as Record<string, unknown>
+      } catch (pollErr) {
+        console.warn(`[mastra/resume] poll ${i + 1} fetch error:`, (pollErr as Error).message)
+        continue
+      }
+      const runStatus = pollData.status as string | undefined
+      console.log(`[mastra/resume] poll ${i + 1} runId=${mastraRunId} status=${runStatus}`)
+      if (runStatus === 'success') {
+        resumeResult = { status: 'success', result: pollData.result as ResumeResult['result'] }
+        settled = true
+        break
+      }
+      if (runStatus === 'failed' || runStatus === 'error') {
+        const errMsg = typeof pollData.error === 'object' && pollData.error !== null
+          ? ((pollData.error as Record<string, unknown>).message as string | undefined) ?? JSON.stringify(pollData.error)
+          : String(pollData.error ?? 'Workflow failed after resume')
+        resumeResult = { status: 'failed', error: { message: errMsg } }
+        settled = true
+        break
+      }
+    }
+    if (!settled) {
+      resumeResult = { status: 'failed', error: { message: 'Workflow resume timed out after 10 minutes' } }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} resume error:`, message)
