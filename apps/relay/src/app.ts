@@ -10,7 +10,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, checkTokenQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
 import { runMastraWorkflow, createTenantAgent, mastra } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { taskExecutionWorkflow } from './mastra/workflows/taskExecution.js'
@@ -935,6 +935,15 @@ async function runMastraTaskSteps(
     return
   }
 
+  // Token quota gate — checks cumulative input+output tokens this month
+  const tokenQuota = await checkTokenQuota(tenantId)
+  if (!tokenQuota.allowed) {
+    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} token quota exceeded used=${tokenQuota.used} limit=${tokenQuota.limit}`)
+    await postTaskComment(taskId, `❌ Token quota exceeded for your plan (${tokenQuota.used?.toLocaleString()}/${tokenQuota.limit?.toLocaleString()} tokens used this month). Upgrade to continue.`, agentId)
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Token quota exceeded for your plan. Upgrade to continue.' }, traceId)
+    return
+  }
+
   const skill = await fetchAgentSkill(agentId)
   const instructions = skill?.systemPrompt
     ?? `You are ${agentName}, a helpful AI assistant.`
@@ -1083,6 +1092,11 @@ async function runMastraTaskSteps(
           toolResult: '',
         })
       }
+
+      // Extract token totals from the final step output (composeStep accumulates all step tokens)
+      totalInputTokens = result.result?.inputTokens ?? 0
+      totalOutputTokens = result.result?.outputTokens ?? 0
+      console.log(`[mastra] tenantId=${tenantId} taskId=${taskId} tokens in=${totalInputTokens} out=${totalOutputTokens}`)
 
       // Last step gets the real workflow output
       const lastStep = steps[steps.length - 1]

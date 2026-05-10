@@ -320,6 +320,78 @@ export async function fetchWorkingMemory(
   }
 }
 
+export async function checkTokenQuota(tenantId: string): Promise<QuotaCheckResult> {
+  const p = getPool()
+  try {
+    const subRes = await p.query<{ plan: string }>(
+      `SELECT plan FROM subscriptions
+       WHERE tenant_id = $1 AND status IN ('active', 'trialing')
+       LIMIT 1`,
+      [tenantId],
+    )
+    const plan = subRes.rows[0]?.plan ?? 'free'
+
+    const overrideRes = await p.query<{ value_limit: number | null; unlimited: boolean }>(
+      `SELECT tfo.value_limit, tfo.unlimited
+       FROM tenant_feature_overrides tfo
+       JOIN features f ON f.id = tfo.feature_id
+       WHERE tfo.tenant_id = $1
+         AND f.key = 'llm_tokens'
+         AND tfo.revoked_at IS NULL
+         AND tfo.deleted_at IS NULL
+         AND (tfo.expires_at IS NULL OR tfo.expires_at > NOW())
+       LIMIT 1`,
+      [tenantId],
+    )
+
+    let valueLimit: number | null = null
+    let unlimited = false
+
+    if (overrideRes.rows.length > 0) {
+      valueLimit = overrideRes.rows[0].value_limit
+      unlimited = overrideRes.rows[0].unlimited
+    } else {
+      const planRes = await p.query<{ value_limit: number | null; unlimited: boolean }>(
+        `SELECT pe.value_limit, pe.unlimited
+         FROM plan_entitlements pe
+         JOIN features f ON f.id = pe.feature_id
+         WHERE pe.plan = $1
+           AND f.key = 'llm_tokens'
+           AND f.status = 'active'
+         LIMIT 1`,
+        [plan],
+      )
+      if (planRes.rows.length > 0) {
+        valueLimit = planRes.rows[0].value_limit
+        unlimited = planRes.rows[0].unlimited
+      }
+    }
+
+    if (unlimited) return { allowed: true, used: 0, limit: null, unlimited: true }
+
+    const usageRes = await p.query<{ used: string }>(
+      `SELECT COALESCE(SUM(quantity), 0) AS used
+       FROM usage_records
+       WHERE tenant_id = $1
+         AND metric IN ('input_tokens', 'output_tokens')
+         AND recorded_at >= date_trunc('month', NOW())`,
+      [tenantId],
+    )
+    const used = parseInt(usageRes.rows[0]?.used ?? '0', 10)
+
+    if (valueLimit === null) {
+      // Missing entitlement config — fail open
+      console.warn(`[quota] no llm_tokens entitlement for tenantId=${tenantId} plan=${plan} — allowing`)
+      return { allowed: true, used, limit: null, unlimited: false }
+    }
+
+    return { allowed: used < valueLimit, used, limit: valueLimit, unlimited: false }
+  } catch (err) {
+    console.error('[quota] checkTokenQuota error:', (err as Error).message)
+    return { allowed: true, used: 0, limit: null, unlimited: false }
+  }
+}
+
 export function recordUsage(record: UsageRecord): void {
   const { tenantId, actorId, apiKeyId = null, inputTokens, outputTokens } = record
   const p = getPool()

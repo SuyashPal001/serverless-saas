@@ -35,17 +35,23 @@ const planOutputSchema = z.array(z.object({ query: z.string() }))
 const searchOutputSchema = z.object({
   results: z.array(resultItemSchema),
   status: z.enum(['done', 'failed']),
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
 })
 
 const mergeOutputSchema = z.object({
   results: z.array(resultItemSchema),
   totalFound: z.number(),
+  totalInputTokens: z.number(),
+  totalOutputTokens: z.number(),
 })
 
 const composeOutputSchema = z.object({
   summary: z.string(),
   status: z.enum(['done', 'needs_clarification', 'failed']),
   reasoning: z.string().optional(),
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
 })
 
 // ─── Step 1: planStep ────────────────────────────────────────────────────────
@@ -127,15 +133,19 @@ export const searchStep = createStep({
     ].join('\n')
 
     let pass1Text = ''
+    let pass1InputTokens = 0
+    let pass1OutputTokens = 0
     try {
       const pass1 = await platformAgent.generate(pass1Prompt, {
         activeTools: ['internet_search'],
       })
       pass1Text = pass1.text ?? ''
+      pass1InputTokens = pass1.usage?.inputTokens ?? 0
+      pass1OutputTokens = pass1.usage?.outputTokens ?? 0
       console.log(`[searchStep] query="${query}" pass1 length=${pass1Text.length}`)
     } catch (err) {
       console.error(`[searchStep] pass1 error for query="${query}":`, (err as Error).message)
-      return { results: [], status: 'failed' as const }
+      return { results: [], status: 'failed' as const, inputTokens: 0, outputTokens: 0 }
     }
 
     // Pass 2 — extract structured results from pass1 text
@@ -157,15 +167,21 @@ export const searchStep = createStep({
       })
       console.log('[searchStep] pass2.object:', pass2.object ? 'populated' : 'null')
       if (pass2.object) {
-        const result = pass2.object as z.infer<typeof searchOutputSchema>
-        console.log(`[searchStep] query="${query}" results found: ${result.results.length}`)
-        return result
+        const extracted = pass2.object as z.infer<typeof searchOutputSchema>
+        const pass2InputTokens = pass2.usage?.inputTokens ?? 0
+        const pass2OutputTokens = pass2.usage?.outputTokens ?? 0
+        console.log(`[searchStep] query="${query}" results found: ${extracted.results.length}`)
+        return {
+          ...extracted,
+          inputTokens: pass1InputTokens + pass2InputTokens,
+          outputTokens: pass1OutputTokens + pass2OutputTokens,
+        }
       }
     } catch (err) {
       console.error(`[searchStep] pass2 error for query="${query}":`, (err as Error).message)
     }
 
-    return { results: [], status: 'done' as const }
+    return { results: [], status: 'done' as const, inputTokens: pass1InputTokens, outputTokens: pass1OutputTokens }
   },
 })
 
@@ -196,9 +212,16 @@ export const mergeStep = createStep({
       return true
     })
 
-    console.log(`[mergeStep] total after dedup: ${dedupedResults.length} (from ${allResults.length} raw)`)
+    const totalInputTokens = Array.isArray(searchResults)
+      ? searchResults.reduce((sum, r) => sum + (r?.inputTokens ?? 0), 0)
+      : 0
+    const totalOutputTokens = Array.isArray(searchResults)
+      ? searchResults.reduce((sum, r) => sum + (r?.outputTokens ?? 0), 0)
+      : 0
 
-    return { results: dedupedResults, totalFound: dedupedResults.length }
+    console.log(`[mergeStep] total after dedup: ${dedupedResults.length} (from ${allResults.length} raw) tokens in=${totalInputTokens} out=${totalOutputTokens}`)
+
+    return { results: dedupedResults, totalFound: dedupedResults.length, totalInputTokens, totalOutputTokens }
   },
 })
 
@@ -236,18 +259,30 @@ export const composeStep = createStep({
       `- Write the complete formatted output in the summary field. Do not write an intro line and stop. Include every result with all available fields. The summary IS the final output the user reads.`,
     ].filter(Boolean).join('\n')
 
+    const searchInputTokens = mergeResult?.totalInputTokens ?? 0
+    const searchOutputTokens = mergeResult?.totalOutputTokens ?? 0
+
     try {
       const result = await platformAgent.generate(prompt, {
         activeTools: [],
         structuredOutput: { schema: composeOutputSchema },
       })
+      const composeInputTokens = result.usage?.inputTokens ?? 0
+      const composeOutputTokens = result.usage?.outputTokens ?? 0
       if (result.object) {
-        return result.object as z.infer<typeof composeOutputSchema>
+        const obj = result.object as z.infer<typeof composeOutputSchema>
+        return {
+          ...obj,
+          inputTokens: searchInputTokens + composeInputTokens,
+          outputTokens: searchOutputTokens + composeOutputTokens,
+        }
       }
       return {
         summary: result.text ?? '(no output)',
         status: 'done' as const,
         reasoning: undefined,
+        inputTokens: searchInputTokens + composeInputTokens,
+        outputTokens: searchOutputTokens + composeOutputTokens,
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -255,6 +290,8 @@ export const composeStep = createStep({
         summary: `Compose failed: ${message}`,
         status: 'failed' as const,
         reasoning: message,
+        inputTokens: searchInputTokens,
+        outputTokens: searchOutputTokens,
       }
     }
   },
