@@ -997,6 +997,7 @@ async function runMastraTaskSteps(
         `/internal/tasks/${taskId}/steps/${stepId}/complete`,
         {
           agentOutput: output.summary,
+          summary: output.summary,
           reasoning: output.reasoning ?? undefined,
           actualToolUsed: output.toolCalled ?? undefined,
           ...(toolResult !== undefined && { toolResult }),
