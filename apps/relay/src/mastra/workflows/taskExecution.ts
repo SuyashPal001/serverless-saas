@@ -6,12 +6,12 @@ import { platformAgent, formatterAgent } from '../index.js'
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
-const jobSchema = z.object({
+const resultItemSchema = z.object({
   title: z.string(),
-  company: z.string(),
-  location: z.string(),
-  salary: z.string().optional(),
-  applyUrl: z.string().optional(),
+  source: z.string().optional(),
+  location: z.string().optional(),
+  url: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
 })
 
 // ─── Workflow input ───────────────────────────────────────────────────────────
@@ -33,12 +33,12 @@ const workflowInputSchema = z.object({
 const planOutputSchema = z.array(z.object({ query: z.string() }))
 
 const searchOutputSchema = z.object({
-  jobs: z.array(jobSchema),
+  results: z.array(resultItemSchema),
   status: z.enum(['done', 'failed']),
 })
 
 const mergeOutputSchema = z.object({
-  jobs: z.array(jobSchema),
+  results: z.array(resultItemSchema),
   totalFound: z.number(),
 })
 
@@ -106,7 +106,7 @@ export const planStep = createStep({
 // ─── Step 2: searchStep ──────────────────────────────────────────────────────
 // Runs once per query via .foreach(). Two-pass to avoid Gemini conflict:
 // Pass 1 — tool call (internet_search), no structuredOutput → free text
-// Pass 2 — formatterAgent with structuredOutput, no tools → jobs array
+// Pass 2 — formatterAgent with structuredOutput, no tools → results array
 
 export const searchStep = createStep({
   id: 'search',
@@ -121,8 +121,8 @@ export const searchStep = createStep({
       `Task: ${taskTitle}`,
       `Search query: ${query}`,
       ``,
-      `Use internet_search to find job listings matching this query.`,
-      `For each listing found, extract: job title, company, location, salary (if shown), apply URL.`,
+      `Use internet_search to find results matching this query.`,
+      `For each result found, extract: title, source, location (if shown), url, and any other relevant metadata.`,
       `Present all results clearly.`,
     ].join('\n')
 
@@ -135,74 +135,75 @@ export const searchStep = createStep({
       console.log(`[searchStep] query="${query}" pass1 length=${pass1Text.length}`)
     } catch (err) {
       console.error(`[searchStep] pass1 error for query="${query}":`, (err as Error).message)
-      return { jobs: [], status: 'failed' as const }
+      return { results: [], status: 'failed' as const }
     }
 
-    // Pass 2 — extract structured jobs from pass1 text
+    // Pass 2 — extract structured results from pass1 text
     const pass2Prompt = [
-      `Extract all job listings from the text below into a JSON array.`,
+      `Extract all results from the text below into a JSON array.`,
       ``,
       `--- Search results ---`,
       pass1Text.slice(0, 4000),
       `--- End ---`,
       ``,
-      `Return: { "jobs": [...], "status": "done" | "failed" }`,
-      `Each job: title (string), company (string), location (string), salary? (string), applyUrl? (string)`,
-      `If no jobs found, return jobs: [].`,
+      `Return: { "results": [...], "status": "done" | "failed" }`,
+      `Each result: title (string), source (string), location? (string), url? (string), metadata? (object with string values)`,
+      `If no results found, return results: [].`,
     ].join('\n')
 
     try {
       const pass2 = await formatterAgent.generate(pass2Prompt, {
         structuredOutput: { schema: searchOutputSchema },
       })
+      console.log('[searchStep] pass2.object:', pass2.object ? 'populated' : 'null')
       if (pass2.object) {
         const result = pass2.object as z.infer<typeof searchOutputSchema>
-        console.log(`[searchStep] query="${query}" jobs found: ${result.jobs.length}`)
+        console.log(`[searchStep] query="${query}" results found: ${result.results.length}`)
         return result
       }
     } catch (err) {
       console.error(`[searchStep] pass2 error for query="${query}":`, (err as Error).message)
     }
 
-    return { jobs: [], status: 'done' as const }
+    return { results: [], status: 'done' as const }
   },
 })
 
 // ─── Step 3: mergeStep ────────────────────────────────────────────────────────
 // After .foreach(), inputData is searchOutputSchema[] — all search results as array.
-// Combines and deduplicates all jobs.
+// Combines and deduplicates all results.
 
 export const mergeStep = createStep({
   id: 'merge-results',
   inputSchema: z.array(searchOutputSchema),
   outputSchema: mergeOutputSchema,
   execute: async ({ inputData }) => {
-    const results = inputData as Array<z.infer<typeof searchOutputSchema>>
-    console.log('[mergeStep] received results count:', Array.isArray(results) ? results.length : 'not-array')
+    const searchResults = inputData as Array<z.infer<typeof searchOutputSchema>>
+    console.log('[mergeStep] received results count:', Array.isArray(searchResults) ? searchResults.length : 'not-array')
 
-    const allJobs = Array.isArray(results)
-      ? results.filter(r => r?.status === 'done').flatMap(r => r?.jobs ?? [])
+    const allResults = Array.isArray(searchResults)
+      ? searchResults.filter(r => r?.status === 'done').flatMap(r => r?.results ?? [])
       : []
 
-    // Deduplicate by applyUrl if present, otherwise company::title
+    // Deduplicate by url if present, otherwise source::title
     const seen = new Set<string>()
-    const deduped = allJobs.filter(j => {
-      const key = j.applyUrl
-        ? j.applyUrl.toLowerCase()
-        : `${j.company}::${j.title}`.toLowerCase()
+    const dedupedResults = allResults.filter(item => {
+      const key = item.url
+        ? item.url.toLowerCase()
+        : `${item.source}::${item.title}`.toLowerCase()
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
 
-    console.log(`[mergeStep] total after dedup: ${deduped.length} (from ${allJobs.length} raw)`)
+    console.log(`[mergeStep] total after dedup: ${dedupedResults.length} (from ${allResults.length} raw)`)
 
-    return { jobs: deduped, totalFound: deduped.length }
+    return { results: dedupedResults, totalFound: dedupedResults.length }
   },
 })
 
 // ─── Step 4: composeStep ──────────────────────────────────────────────────────
-// Formats merged jobs into clean readable output. No tools.
+// Formats merged results into clean readable output. No tools.
 
 export const composeStep = createStep({
   id: 'compose-output',
@@ -215,25 +216,24 @@ export const composeStep = createStep({
     const mergeResult = getStepResult(mergeStep)
     console.log('[composeStep] mergeResult:', JSON.stringify(mergeResult))
 
-    const jobs = mergeResult?.jobs ?? []
-    const jobsText = jobs.length > 0
-      ? JSON.stringify(jobs)
-      : '(no job listings found)'
+    const results = mergeResult?.results ?? []
+    const resultsText = results.length > 0
+      ? JSON.stringify(results)
+      : '(no results found)'
 
     const prompt = [
       `Task: ${taskTitle}`,
       acceptanceCriteria ? `\nDefinition of done:\n${acceptanceCriteria}` : null,
       ``,
-      `Here are the job listings found:`,
+      `Here are the results found:`,
       `---`,
-      jobsText,
+      resultsText,
       `---`,
       ``,
-      `Format this into a clean, readable list for the user.`,
-      `- Present each job as a clear entry with title, company, location, salary (if available), apply URL (if available)`,
+      `Format this into a clean, readable summary for the user.`,
+      `- Present each result clearly with all available fields`,
       `- Do not include raw JSON or technical artifacts`,
-      `- If apply URLs are missing, note that`,
-      `- Write the complete formatted list in the summary field. Do not write an intro line and stop. Include every job with all available fields. The summary IS the final output the user reads.`,
+      `- Write the complete formatted output in the summary field. Do not write an intro line and stop. Include every result with all available fields. The summary IS the final output the user reads.`,
     ].filter(Boolean).join('\n')
 
     try {
