@@ -99,6 +99,7 @@ export const agentTasks = pgTable('agent_tasks', {
   links: jsonb('links').$type<string[]>().default([]),
   attachmentFileIds: text('attachment_file_ids').array().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
+  mastraRunId: text('mastra_run_id'),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   embedding: vector('embedding'),

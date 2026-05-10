@@ -10,7 +10,7 @@ import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
 import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, checkTokenQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory } from './usage.js'
+import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, checkTokenQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory, getPool } from './usage.js'
 import { runMastraWorkflow, createTenantAgent, mastra } from './mastra/index.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { taskExecutionWorkflow } from './mastra/workflows/taskExecution.js'
@@ -1056,6 +1056,9 @@ async function runMastraTaskSteps(
   try {
     const run = await taskExecutionWorkflow.createRun()
 
+    // Save runId immediately — needed to resume if workflow suspends at approvalStep
+    await callInternalTaskApi(`/internal/tasks/${taskId}/mastra-run`, { mastraRunId: run.runId }, traceId)
+
     // Mark all task board steps as started
     for (const step of ctx.steps) {
       await ctx.onStepStart(step.id)
@@ -1072,6 +1075,13 @@ async function runMastraTaskSteps(
         links: ctx.links ?? [],
       },
     })
+
+    if ((result as unknown as { status: string }).status === 'suspended') {
+      // Workflow paused at approvalStep — put task in awaiting_approval, do not fail steps
+      console.log(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow suspended — awaiting approval`)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/suspend`, {}, traceId)
+      return
+    }
 
     if (result.status === 'success') {
       const steps = ctx.steps
@@ -1461,6 +1471,114 @@ app.post('/api/tasks/execute', async (c) => {
   }
 
   return c.json({ ok: true, taskId })
+})
+
+// ─── Mastra workflow resume endpoint ──────────────────────────────────────────
+// Called by the Lambda API after the user approves a suspended workflow.
+// Reconstructs the workflow run from storage using the saved mastraRunId,
+// resumes from approvalStep, and handles step completion inline.
+
+app.post('/api/tasks/:taskId/resume', async (c) => {
+  const serviceKey = c.req.header('x-internal-service-key') ?? ''
+  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const taskId = c.req.param('taskId')
+  const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
+  const p = getPool()
+
+  // 1. Fetch task — need mastraRunId, tenantId, agentId, and running steps
+  const taskRes = await p.query<{
+    mastra_run_id: string | null
+    tenant_id: string
+    agent_id: string | null
+  }>(
+    `SELECT mastra_run_id, tenant_id, agent_id FROM agent_tasks WHERE id = $1 LIMIT 1`,
+    [taskId]
+  )
+  const task = taskRes.rows[0]
+  if (!task) return c.json({ error: 'Task not found' }, 404)
+  if (!task.mastra_run_id) return c.json({ error: 'No suspended workflow run for this task' }, 404)
+
+  const { mastra_run_id: mastraRunId, tenant_id: tenantId, agent_id: agentId } = task
+
+  // 2. Fetch running steps — needed to call complete/fail after resume
+  const stepsRes = await p.query<{ id: string; step_number: number; title: string }>(
+    `SELECT id, step_number, title FROM task_steps
+     WHERE task_id = $1 AND status IN ('running', 'pending')
+     ORDER BY step_number ASC`,
+    [taskId]
+  )
+  const runningSteps = stepsRes.rows
+
+  // 3. Reconstruct run from storage and resume
+  let resumeResult: { status: string; result?: { summary?: string; status?: string; reasoning?: string; inputTokens?: number; outputTokens?: number }; error?: { message?: string } }
+  try {
+    const run = await taskExecutionWorkflow.createRun({ runId: mastraRunId })
+    resumeResult = await run.resume({
+      step: 'approval',
+      resumeData: { approved: true },
+    }) as typeof resumeResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} resume error:`, message)
+    await postTaskComment(taskId, `❌ Resume failed: ${message}`, agentId ?? 'system')
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    return c.json({ error: message }, 500)
+  }
+
+  if (resumeResult.status === 'success') {
+    const totalInputTokens = resumeResult.result?.inputTokens ?? 0
+    const totalOutputTokens = resumeResult.result?.outputTokens ?? 0
+    console.log(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} success tokens in=${totalInputTokens} out=${totalOutputTokens}`)
+
+    const stepMessages = [
+      'Analyzing task and generating search strategy...',
+      'Searching across multiple sources in parallel...',
+      'Merging and deduplicating results...',
+    ]
+
+    for (let i = 0; i < runningSteps.length - 1; i++) {
+      await callInternalTaskApi(
+        `/internal/tasks/${taskId}/steps/${runningSteps[i].id}/complete`,
+        {
+          agentOutput: stepMessages[i] ?? `Step ${i + 1} completed`,
+          summary: stepMessages[i] ?? `Step ${i + 1} completed`,
+        },
+        traceId
+      )
+    }
+
+    if (runningSteps.length > 0) {
+      const lastStep = runningSteps[runningSteps.length - 1]
+      await callInternalTaskApi(
+        `/internal/tasks/${taskId}/steps/${lastStep.id}/complete`,
+        {
+          agentOutput: resumeResult.result?.summary ?? '',
+          summary: resumeResult.result?.summary ?? '',
+          reasoning: resumeResult.result?.reasoning ?? undefined,
+          actualToolUsed: 'internet_search',
+        },
+        traceId
+      )
+    }
+
+    await postTaskComment(taskId, `✅ All steps completed.`, agentId ?? 'system')
+    await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
+    recordUsage({ tenantId, actorId: agentId ?? 'system', inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+  } else {
+    const message = resumeResult.error?.message ?? 'Workflow failed after resume'
+    console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} workflow failed:`, message)
+    for (const step of runningSteps) {
+      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${step.id}/fail`, { error: message }, traceId)
+    }
+    await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId ?? 'system')
+    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    return c.json({ error: message }, 500)
+  }
+
+  return c.json({ ok: true })
 })
 
 // ─── Workflow execution endpoint ──────────────────────────────────────────────

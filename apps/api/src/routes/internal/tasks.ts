@@ -581,6 +581,62 @@ internalTasksRoute.post('/:taskId/clarify', async (c) => {
   return c.json({ success: true });
 });
 
+// POST /internal/tasks/:taskId/mastra-run — save mastraRunId after workflow createRun()
+internalTasksRoute.post('/:taskId/mastra-run', async (c) => {
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
+
+  const taskId = c.req.param('taskId');
+
+  const bodySchema = z.object({
+    mastraRunId: z.string().min(1),
+  });
+
+  const parsed = bodySchema.safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
+
+  const task = (await db.select({ id: agentTasks.id }).from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  await db.update(agentTasks)
+    .set({ mastraRunId: parsed.data.mastraRunId, updatedAt: new Date() })
+    .where(eq(agentTasks.id, taskId));
+
+  return c.json({ success: true });
+});
+
+// POST /internal/tasks/:taskId/suspend — set task to awaiting_approval when Mastra workflow suspends
+internalTasksRoute.post('/:taskId/suspend', async (c) => {
+  if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);
+
+  const taskId = c.req.param('taskId');
+
+  const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+
+  const { tenantId } = task;
+
+  await db.update(agentTasks)
+    .set({ status: 'awaiting_approval', blockedReason: null, updatedAt: new Date() })
+    .where(eq(agentTasks.id, taskId));
+
+  await db.insert(taskEvents).values({
+    taskId,
+    tenantId,
+    actorType: 'system',
+    actorId: 'system',
+    eventType: 'status_changed',
+    payload: { from: task.status, to: 'awaiting_approval', source: 'mastra_workflow' },
+  });
+
+  try {
+    await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'awaiting_approval' });
+  } catch (wsErr) {
+    console.error('WS push failed (non-fatal):', wsErr);
+  }
+
+  return c.json({ success: true });
+});
+
 // POST /internal/tasks/:taskId/comments — agent posting a comment
 internalTasksRoute.post('/:taskId/comments', async (c) => {
   if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) return c.json({ error: 'Unauthorized' }, 401);

@@ -436,6 +436,52 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
     return c.json({ data: { task: updatedTask } });
 });
 
+// PUT /tasks/:taskId/workflow/approve — approve a suspended Mastra workflow at approvalStep
+tasksRoutes.put('/:taskId/workflow/approve', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const taskId = c.req.param('taskId');
+
+    const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId })
+        .from(agentTasks)
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
+        .limit(1))[0];
+
+    if (!task) return c.json({ error: 'Task not found' }, 404);
+    if (task.status !== 'awaiting_approval') {
+        return c.json({ error: 'Task is not awaiting workflow approval' }, 400);
+    }
+
+    const relayUrl = process.env.RELAY_URL;
+    if (!relayUrl) {
+        return c.json({ error: 'Relay not configured' }, 503);
+    }
+
+    const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+            'x-trace-id': c.get('traceId') ?? randomUUID(),
+        },
+        body: JSON.stringify({}),
+    });
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.error(`[tasks/workflow/approve] relay resume failed ${res.status}: ${text}`);
+        return c.json({ error: 'Failed to resume workflow' }, 502);
+    }
+
+    return c.json({ success: true });
+});
+
 // POST /tasks/:taskId/plan — manually trigger planning (task must be in todo)
 tasksRoutes.post('/:taskId/plan', async (c) => {
     const requestContext = c.get('requestContext') as any;
