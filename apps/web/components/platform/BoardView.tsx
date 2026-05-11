@@ -310,12 +310,18 @@ function TaskCard({
 
 // ─── CreateTaskDialog ─────────────────────────────────────────────────────────
 
-function CreateTaskDialog({
+export function CreateTaskDialog({
     open,
     onOpenChange,
+    defaultMilestoneId,
+    defaultPlanId,
+    defaultParentTaskId,
 }: {
     open: boolean
     onOpenChange: (v: boolean) => void
+    defaultMilestoneId?: string
+    defaultPlanId?: string
+    defaultParentTaskId?: string
 }) {
     const queryClient = useQueryClient()
 
@@ -342,6 +348,9 @@ function CreateTaskDialog({
     const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
     const [selectedPriority, setSelectedPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
     const [hoursEditing, setHoursEditing] = useState(false)
+    const milestoneId = defaultMilestoneId ?? null
+    const planId = defaultPlanId ?? null
+    const parentTaskId = defaultParentTaskId ?? null
 
     const {
         register,
@@ -416,9 +425,15 @@ function CreateTaskDialog({
             links?: string[]
             referenceText?: string
             attachmentFileIds?: string[]
+            milestoneId?: string | null
+            planId?: string | null
+            parentTaskId?: string | null
         }) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            if (milestoneId) {
+                queryClient.invalidateQueries({ queryKey: ['milestoneTasks', milestoneId] })
+            }
             toast.success('Task created')
             reset()
             setLinks([])
@@ -448,6 +463,9 @@ function CreateTaskDialog({
             links: links.map(l => l.url),
             referenceText: referenceText || undefined,
             attachmentFileIds: attachmentFileIds.map(f => f.fileId),
+            milestoneId,
+            planId,
+            parentTaskId,
         })
     }
 
@@ -938,7 +956,13 @@ function KanbanColumn({
 
 // ─── BoardView ────────────────────────────────────────────────────────────────
 
-export function BoardView() {
+export function BoardView({
+    defaultMilestoneId,
+    defaultPlanId,
+}: {
+    defaultMilestoneId?: string
+    defaultPlanId?: string
+} = {}) {
     const params = useParams()
     const tenantSlug = params.tenant as string
     const queryClient = useQueryClient()
@@ -947,21 +971,28 @@ export function BoardView() {
     const [statusFilter, setStatusFilter] = useState<Task['status'] | 'all'>('all')
     const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
 
+    const tasksUrl = defaultMilestoneId
+        ? `/api/v1/milestones/${defaultMilestoneId}/tasks`
+        : '/api/v1/tasks'
+    const tasksQueryKey = defaultMilestoneId
+        ? ['milestoneTasks', defaultMilestoneId]
+        : ['tasks']
+
     const { data, isLoading, isError, error } = useQuery<TasksResponse>({
-        queryKey: ['tasks'],
-        queryFn: () => api.get<TasksResponse>('/api/v1/tasks'),
+        queryKey: tasksQueryKey,
+        queryFn: () => api.get<TasksResponse>(tasksUrl),
     })
 
     const updateTaskStatus = useMutation({
-        mutationFn: ({ taskId, status, sortOrder }: { taskId: string, status: Task['status'], sortOrder?: number }) => 
+        mutationFn: ({ taskId, status, sortOrder }: { taskId: string, status: Task['status'], sortOrder?: number }) =>
             api.patch(`/api/v1/tasks/${taskId}`, { status, sortOrder }),
         onMutate: async ({ taskId, status, sortOrder }) => {
-            await queryClient.cancelQueries({ queryKey: ['tasks'] })
-            const previousTasks = queryClient.getQueryData<TasksResponse>(['tasks'])
+            await queryClient.cancelQueries({ queryKey: tasksQueryKey })
+            const previousTasks = queryClient.getQueryData<TasksResponse>(tasksQueryKey)
             if (previousTasks) {
-                queryClient.setQueryData<TasksResponse>(['tasks'], {
+                queryClient.setQueryData<TasksResponse>(tasksQueryKey, {
                     ...previousTasks,
-                    data: previousTasks.data.map((t: Task) => 
+                    data: previousTasks.data.map((t: Task) =>
                         t.id === taskId ? { ...t, status, sortOrder: sortOrder ?? t.sortOrder } : t
                     )
                 })
@@ -970,18 +1001,21 @@ export function BoardView() {
         },
         onError: (err, __, context) => {
             if (context?.previousTasks) {
-                queryClient.setQueryData(['tasks'], context.previousTasks)
+                queryClient.setQueryData(tasksQueryKey, context.previousTasks)
             }
             toast.error('Failed to move task')
         },
         onSettled: (_, __, variables) => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             queryClient.invalidateQueries({ queryKey: ['task', variables.taskId] })
+            if (defaultMilestoneId) {
+                queryClient.invalidateQueries({ queryKey: ['milestoneTasks', defaultMilestoneId] })
+            }
         }
     })
 
     const onDropTask = (taskId: string, newStatus: Task['status'], targetTaskId?: string, position?: 'before' | 'after') => {
-        const tasks = queryClient.getQueryData<TasksResponse>(['tasks'])?.data ?? []
+        const tasks = queryClient.getQueryData<TasksResponse>(tasksQueryKey)?.data ?? []
         const taskToMove = tasks.find(t => t.id === taskId)
         if (!taskToMove) return
 
@@ -1195,7 +1229,12 @@ export function BoardView() {
                 </div>
             </div>
 
-            <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} />
+            <CreateTaskDialog
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                defaultMilestoneId={defaultMilestoneId}
+                defaultPlanId={defaultPlanId}
+            />
         </TooltipProvider>
     )
 }

@@ -3,8 +3,12 @@ export type Attachment = { fileId: string; name: string; size: number; type: str
 
 export type Task = {
     id: string
+    sequenceId?: number | null
     agentId: string | null
     assigneeId: string | null
+    parentTaskId?: string | null
+    milestoneId?: string | null
+    planId?: string | null
     title: string
     description?: string | null
     referenceText?: string | null

@@ -16,6 +16,7 @@ import {
     Palette,
     UserCircle,
     KanbanSquare,
+    LayoutList,
 } from "lucide-react";
 import React from 'react';
 
@@ -67,6 +68,11 @@ export function getSidebarItems(
             label: "Board",
             href: `${base}/board`,
             icon: KanbanSquare,
+        });
+        items.push({
+            label: "Plans",
+            href: `${base}/plans`,
+            icon: LayoutList,
         });
         items.push({
             label: "Files",
