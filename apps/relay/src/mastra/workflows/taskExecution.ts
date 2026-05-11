@@ -1,7 +1,11 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt'
 import { z } from 'zod'
 
 import { platformAgent, formatterAgent } from '../index.js'
+import { saarthiModel } from '../model.js'
+import { dodVerifyStep } from './steps/dodVerifyStep.js'
+import { dodPassScorer } from './scorers.js'
 
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
@@ -46,12 +50,25 @@ const mergeOutputSchema = z.object({
   totalOutputTokens: z.number(),
 })
 
+// dodVerifyStep feeds composeStep: passed, criteriaMet, criteriaUnmet + passthrough fields
+const composeInputSchema = z.object({
+  passed: z.boolean(),
+  failureReason: z.string().optional(),
+  criteriaMet: z.array(z.string()),
+  criteriaUnmet: z.array(z.string()),
+  resultCount: z.number(),
+  mergedResults: z.array(resultItemSchema),
+  totalInputTokens: z.number(),
+  totalOutputTokens: z.number(),
+})
+
 const composeOutputSchema = z.object({
   summary: z.string(),
   status: z.enum(['done', 'needs_clarification', 'failed']),
   reasoning: z.string().optional(),
   inputTokens: z.number().optional(),
   outputTokens: z.number().optional(),
+  dodPassed: z.boolean(),
 })
 
 // ─── Step 1: planStep ────────────────────────────────────────────────────────
@@ -227,26 +244,42 @@ export const mergeStep = createStep({
 
 // ─── Step 4: composeStep ──────────────────────────────────────────────────────
 // Formats merged results into clean readable output. No tools.
+// Reads DoD status from dodVerifyStep and includes it in the summary.
 
 export const composeStep = createStep({
   id: 'compose-output',
-  inputSchema: z.object({}),
+  inputSchema: composeInputSchema,
   outputSchema: composeOutputSchema,
-  execute: async ({ getInitData, getStepResult }) => {
+  scorers: {
+    answerRelevancy: {
+      scorer: createAnswerRelevancyScorer({ model: saarthiModel }),
+      sampling: { type: 'ratio', rate: 0.5 },
+    },
+    dodPass: {
+      scorer: dodPassScorer,
+    },
+  },
+  execute: async ({ inputData, getInitData }) => {
     const initData = getInitData<z.infer<typeof workflowInputSchema>>()
-    const { taskTitle, acceptanceCriteria } = initData
+    const { taskTitle } = initData
 
-    const mergeResult = getStepResult(mergeStep)
-    console.log('[composeStep] mergeResult:', JSON.stringify(mergeResult))
+    const { passed, criteriaMet, criteriaUnmet, failureReason, mergedResults, totalInputTokens, totalOutputTokens } = inputData
 
-    const results = mergeResult?.results ?? []
-    const resultsText = results.length > 0
-      ? JSON.stringify(results)
+    console.log(`[composeStep] dodPassed=${passed} resultCount=${mergedResults.length}`)
+
+    const resultsText = mergedResults.length > 0
+      ? JSON.stringify(mergedResults)
       : '(no results found)'
+
+    // DoD status note for the compose prompt
+    const dodStatusNote = passed
+      ? `✓ Meets acceptance criteria${criteriaMet.length > 0 ? ': ' + criteriaMet.join('; ') : ''}`
+      : `⚠ Note: ${failureReason ?? 'Did not meet acceptance criteria'}${criteriaUnmet.length > 0 ? ' — Unmet: ' + criteriaUnmet.join('; ') : ''}`
 
     const prompt = [
       `Task: ${taskTitle}`,
-      acceptanceCriteria ? `\nDefinition of done:\n${acceptanceCriteria}` : null,
+      ``,
+      `DoD Status: ${dodStatusNote}`,
       ``,
       `Here are the results found:`,
       `---`,
@@ -259,12 +292,11 @@ export const composeStep = createStep({
       `- Write the complete formatted output in the summary field. Do not write an intro line and stop. Include every result with all available fields. The summary IS the final output the user reads.`,
     ].filter(Boolean).join('\n')
 
-    const searchInputTokens = mergeResult?.totalInputTokens ?? 0
-    const searchOutputTokens = mergeResult?.totalOutputTokens ?? 0
+    const searchInputTokens = totalInputTokens
+    const searchOutputTokens = totalOutputTokens
 
     try {
-      const result = await platformAgent.generate(prompt, {
-        activeTools: [],
+      const result = await formatterAgent.generate(prompt, {
         structuredOutput: { schema: composeOutputSchema },
       })
       const composeInputTokens = result.usage?.inputTokens ?? 0
@@ -273,6 +305,7 @@ export const composeStep = createStep({
         const obj = result.object as z.infer<typeof composeOutputSchema>
         return {
           ...obj,
+          dodPassed: passed,
           inputTokens: searchInputTokens + composeInputTokens,
           outputTokens: searchOutputTokens + composeOutputTokens,
         }
@@ -281,6 +314,7 @@ export const composeStep = createStep({
         summary: result.text ?? '(no output)',
         status: 'done' as const,
         reasoning: undefined,
+        dodPassed: passed,
         inputTokens: searchInputTokens + composeInputTokens,
         outputTokens: searchOutputTokens + composeOutputTokens,
       }
@@ -290,6 +324,7 @@ export const composeStep = createStep({
         summary: `Compose failed: ${message}`,
         status: 'failed' as const,
         reasoning: message,
+        dodPassed: passed,
         inputTokens: searchInputTokens,
         outputTokens: searchOutputTokens,
       }
@@ -340,7 +375,7 @@ export const approvalStep = createStep({
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 // planStep returns z.array(z.object({ query })) which satisfies .foreach()'s
 // TPrevSchema extends any[] constraint — no as any needed on foreach.
-// mergeStep and composeStep use z.object({}) inputSchema → as any required.
+// mergeStep, dodVerifyStep, composeStep use as any due to type narrowing limits.
 
 export const taskExecutionWorkflow = createWorkflow({
   id: 'task-execution',
@@ -352,6 +387,8 @@ export const taskExecutionWorkflow = createWorkflow({
   .foreach(searchStep, { concurrency: 3 })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(mergeStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(dodVerifyStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(composeStep as any)
   .commit()

@@ -11,7 +11,6 @@ import { MastraEditor } from '@mastra/editor'
 import { Observability, DefaultExporter } from '@mastra/observability'
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createTool } from '@mastra/core/tools'
 import { MCPClient } from '@mastra/mcp'
 import { z } from 'zod'
@@ -20,6 +19,8 @@ import pg from 'pg'
 import { getMastraStore, getMastraMemory } from './memory.js'
 import { getMCPClientForTenant } from './tools.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
+import { dodPassScorer } from './workflows/scorers.js'
+import { saarthiModel as _saarthiModel } from './model.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -161,12 +162,12 @@ const SERVER_TOOL_NAMES = new Set([...Object.keys(SERVER_TOOLS), 'web_search'])
 // model:        routes through vertex-proxy at VERTEX_PROXY_URL.
 // ---------------------------------------------------------------------------
 
-// Exported so workflow.ts can reuse it for the Pass 2 formatting call
-// (generateObject with no tools — avoids Gemini responseSchema + functionDeclarations conflict).
-export const saarthiModel = createGoogleGenerativeAI({
-  baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
-  apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
-})(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+// Re-export saarthiModel from model.ts — defined there to avoid circular TDZ.
+// taskExecution.ts also imports directly from model.ts so it's available at
+// module init time (scorer creation) without going through the circular dep chain.
+export { saarthiModel } from './model.js'
+// Keep a local alias for the Agent definitions below.
+const saarthiModel = _saarthiModel
 
 export const platformAgent = new Agent({
   id: 'saarthi',
@@ -231,6 +232,7 @@ export const mastra = new Mastra({
   agents: { saarthi: platformAgent },
   workflows: { taskExecution: taskExecutionWorkflow },
   storage: getMastraStore(),
+  scorers: { dodPass: dodPassScorer },
   editor: new MastraEditor(),
   observability: new Observability({
     configs: {
