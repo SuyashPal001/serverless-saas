@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
     Bot, User, ChevronDown, Clock, Target, LayoutList, Calendar,
     Link2, Paperclip, FileText, CheckCircle, Play, XCircle, X, Pencil,
-    Copy, ExternalLink,
+    Copy, ExternalLink, Sparkles,
 } from 'lucide-react'
 import { extractDomain } from './outputHelpers'
 import {
@@ -156,6 +156,7 @@ export function TaskSidebar({
     taskOperations,
 }: TaskSidebarProps) {
     const { isEditing, draftStatus, draftPriority, draftAssigneeKey, setDraftStatus, setDraftPriority, setDraftAssigneeKey } = editState
+    const [assigneeOpen, setAssigneeOpen] = useState(false)
     const [newLink, setNewLink] = useState('')
 
     const completedSteps = steps.filter(s => s.status === 'done').length
@@ -263,7 +264,7 @@ export function TaskSidebar({
                     </div>
                     <div className="text-xs text-foreground flex-1">
                         {isEditing ? (
-                            <DropdownMenu>
+                            <DropdownMenu open={assigneeOpen} onOpenChange={setAssigneeOpen}>
                                 <DropdownMenuTrigger asChild>
                                     <div className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 outline-none select-none">
                                         <span>
@@ -307,6 +308,17 @@ export function TaskSidebar({
                         )}
                     </div>
                 </div>
+
+                {/* Agent hint — shown only when no agent assigned and task is actionable */}
+                {!task.agentId && (task.status === 'backlog' || task.status === 'todo') && (
+                    <button
+                        onClick={() => setAssigneeOpen(true)}
+                        className="flex items-center gap-1.5 py-1.5 pl-1 text-left hover:opacity-80 transition-opacity"
+                    >
+                        <Sparkles className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                        <span className="text-xs text-muted-foreground/50">Assign an agent to auto-execute</span>
+                    </button>
+                )}
 
                 {/* Est. Hours */}
                 <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
