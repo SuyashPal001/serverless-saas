@@ -268,7 +268,7 @@ async function handlePlanning(taskId: string, traceId: string, extraContext?: st
       questions?: string[];
     };
     try {
-      body = await response.json();
+      body = await response.json() as typeof body;
     } catch (jsonErr) {
       throw new Error(`Relay returned malformed JSON: ${(jsonErr as Error).message}`);
     }
@@ -314,9 +314,9 @@ async function handlePlanning(taskId: string, traceId: string, extraContext?: st
         description: step.description,
         toolName: step.toolName ?? null,
         reasoning: step.reasoning ?? null,
-        confidenceScore: step.confidenceScore ?? null,
+        confidenceScore: step.confidenceScore != null ? String(step.confidenceScore) : null,
         status: 'pending' as const,
-        ...(feedbackHistoryMap?.[step.title] ? { feedbackHistory: feedbackHistoryMap[step.title] } : {}),
+        feedbackHistory: feedbackHistoryMap?.[step.title] ?? [],
       }))
     ).returning({
       id: taskSteps.id,

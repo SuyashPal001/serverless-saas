@@ -291,18 +291,18 @@ tasksRoutes.put('/:taskId/plan/approve', async (c) => {
         });
 
         // Collect feedback from pending steps before deleting them
-        const pendingSteps = await db.select()
+        const pendingSteps: (typeof taskSteps.$inferSelect)[] = await db.select()
             .from(taskSteps)
             .where(and(eq(taskSteps.taskId, taskId), eq(taskSteps.status, 'pending')));
 
         const stepFeedbackContext = pendingSteps
-            .filter(s => s.humanFeedback)
-            .map(s => `- Step "${s.title}": ${s.humanFeedback}`)
+            .filter((s) => s.humanFeedback)
+            .map((s) => `- Step "${s.title}": ${s.humanFeedback}`)
             .join('\n');
 
         // Write feedbackHistory to each step before hard delete, then build carry-forward map
         const feedbackHistoryMap: Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> = {};
-        const stepsWithFeedback = pendingSteps.filter(s => s.humanFeedback);
+        const stepsWithFeedback = pendingSteps.filter((s) => s.humanFeedback);
         if (stepsWithFeedback.length > 0) {
             const replannedAt = new Date().toISOString();
             await Promise.all(stepsWithFeedback.map(async (s) => {
