@@ -58,8 +58,12 @@ import {
 
 type Task = {
     id: string
+    sequenceId: number | null
     agentId: string | null
     assigneeId: string | null
+    milestoneId: string | null
+    planId: string | null
+    parentTaskId: string | null
     title: string
     description?: string | null
     status: 'backlog' | 'todo' | 'in_progress' | 'awaiting_approval' | 'review' | 'blocked' | 'done' | 'cancelled'
@@ -1033,8 +1037,11 @@ export function BoardView() {
     const agents = agentsData?.data ?? []
     const members = membersData?.members ?? []
 
+    // sequenceId is now a real DB column — fall back to createdAt sort index
+    // only for legacy tasks that predate migration 0021 (sequenceId IS NULL)
     const tasksByCreatedAt = [...tasks].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    const taskNumberMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
+    const fallbackIndexMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
+    const taskNumberMap = new Map(tasks.map(t => [t.id, t.sequenceId ?? fallbackIndexMap.get(t.id) ?? 1]))
 
     const filteredTasks = tasks
         .filter(task => {

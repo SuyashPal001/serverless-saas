@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index, uniqueIndex, customType } from 'drizzle-orm/pg-core';
 import { json, jsonb } from 'drizzle-orm/pg-core';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() { return 'vector(768)'; },
@@ -100,15 +101,23 @@ export const agentTasks = pgTable('agent_tasks', {
   attachmentFileIds: text('attachment_file_ids').array().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
   mastraRunId: text('mastra_run_id'),
+  // PM hierarchy fields (added migration 0021)
+  // milestoneId/planId are plain uuid — FK constraints in migration SQL to avoid circular imports with pm.ts
+  sequenceId:   integer('sequence_id'),
+  milestoneId:  uuid('milestone_id'),
+  planId:       uuid('plan_id'),
+  parentTaskId: uuid('parent_task_id').references((): AnyPgColumn => agentTasks.id),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   embedding: vector('embedding'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (t) => ({
-  tenantStatusIdx: index('agent_tasks_tenant_status_idx').on(t.tenantId, t.status),
-  tenantAgentIdx: index('agent_tasks_tenant_agent_idx').on(t.tenantId, t.agentId),
+  tenantStatusIdx:  index('agent_tasks_tenant_status_idx').on(t.tenantId, t.status),
+  tenantAgentIdx:   index('agent_tasks_tenant_agent_idx').on(t.tenantId, t.agentId),
   tenantCreatedByIdx: index('agent_tasks_tenant_created_by_idx').on(t.tenantId, t.createdBy),
+  milestoneIdx:     index('agent_tasks_milestone_idx').on(t.milestoneId),
+  planIdx:          index('agent_tasks_plan_idx').on(t.planId),
 }));
 
 export const taskSteps = pgTable('task_steps', {

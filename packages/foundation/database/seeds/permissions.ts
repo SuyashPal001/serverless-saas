@@ -27,6 +27,8 @@ export const RESOURCES: Record<string, Action[]> = {
     conversations: ['create', 'read', 'update', 'delete'],
     messages: ['create', 'read'],
     analytics: ['read'],
+    project_plans: ['create', 'read', 'update', 'delete'],
+    project_milestones: ['create', 'read', 'update', 'delete'],
 };
 
 export async function seedPermissions(db: typeof DB) {

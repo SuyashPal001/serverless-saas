@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql, inArray } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { publishToQueue } from '../lib/sqs';
 import { agentTasks, taskSteps, taskEvents, taskComments, agents } from '@serverless-saas/database/schema/agents';
@@ -927,6 +927,100 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
     }
 
     return c.json({ data: comment }, 201);
+});
+
+// POST /tasks/bulk — bulk create tasks
+tasksRoutes.post('/bulk', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
+
+    if (!hasPermission(permissions, 'agent_tasks', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({
+        tasks: z.array(z.object({
+            title:       z.string().min(1).max(200),
+            description: z.string().optional(),
+            milestoneId: z.string().uuid().optional(),
+            planId:      z.string().uuid().optional(),
+            priority:    z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+            assigneeId:  z.string().uuid().optional(),
+        })).min(1).max(50),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const rows = result.data.tasks.map(t => ({
+        tenantId,
+        createdBy:   userId,
+        title:       t.title,
+        description: t.description ?? null,
+        milestoneId: t.milestoneId ?? null,
+        planId:      t.planId ?? null,
+        priority:    (t.priority ?? 'medium') as 'low' | 'medium' | 'high' | 'urgent',
+        assigneeId:  t.assigneeId ?? null,
+        status:      'backlog' as const,
+        acceptanceCriteria: [],
+        links:       [] as string[],
+        attachmentFileIds: [] as string[],
+    }));
+
+    const created = await db.insert(agentTasks).values(rows).returning();
+
+    return c.json({ data: created }, 201);
+});
+
+// PATCH /tasks/bulk — bulk update tasks
+tasksRoutes.patch('/bulk', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'agent_tasks', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({
+        task_ids:   z.array(z.string().uuid()).min(1).max(100),
+        properties: z.object({
+            status:     z.enum(['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
+            priority:   z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+            assigneeId: z.string().uuid().nullable().optional(),
+            milestoneId: z.string().uuid().nullable().optional(),
+            planId:      z.string().uuid().nullable().optional(),
+        }).refine(obj => Object.keys(obj).length > 0, { message: 'At least one property required' }),
+    });
+
+    const result = schema.safeParse(await c.req.json());
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const { task_ids, properties } = result.data;
+
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (properties.status     !== undefined) updates.status     = properties.status;
+    if (properties.priority   !== undefined) updates.priority   = properties.priority;
+    if (properties.assigneeId !== undefined) updates.assigneeId = properties.assigneeId;
+    if (properties.milestoneId !== undefined) updates.milestoneId = properties.milestoneId;
+    if (properties.planId     !== undefined) updates.planId     = properties.planId;
+
+    const updated = await db
+        .update(agentTasks)
+        .set(updates)
+        .where(and(
+            inArray(agentTasks.id, task_ids),
+            eq(agentTasks.tenantId, tenantId),
+        ))
+        .returning({ id: agentTasks.id });
+
+    return c.json({ data: { updated: updated.length } });
 });
 
 // POST /tasks/:taskId/vote — upvote or downvote a task

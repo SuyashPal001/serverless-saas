@@ -47,6 +47,8 @@ import documentsRoutes from './routes/documents';
 import internalRetrieveRoute from './routes/internal/retrieve';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import { tasksRoutes } from './routes/tasks';
+import { plansRoutes } from './routes/plans';
+import { milestonesRoutes } from './routes/milestones';
 import internalEvalsRoute from './routes/internal/evals';
 import internalToolCallsRoute from './routes/internal/tool-calls';
 import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
@@ -195,6 +197,8 @@ api.route('/workspaces', workspacesRoutes);
 api.route('/llm-providers', llmProvidersRoutes);
 api.route('/documents', documentsRoutes);
 api.route('/tasks', tasksRoutes);
+api.route('/plans', plansRoutes);
+api.route('/milestones', milestonesRoutes);
 
 const internalApi = new Hono<AppEnv>();
 internalApi.route('/internal', internalRetrieveRoute);
