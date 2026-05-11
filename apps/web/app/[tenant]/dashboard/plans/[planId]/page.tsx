@@ -557,6 +557,19 @@ export default function PlanDetailPage() {
     const tenantSlug = params.tenant as string
     const planId = params.planId as string
     const { tenantId } = useTenant()
+    const queryClient = useQueryClient()
+
+    const [editingTitle, setEditingTitle] = useState(false)
+    const [editingDesc, setEditingDesc] = useState(false)
+    const [draftTitle, setDraftTitle] = useState('')
+    const [draftDesc, setDraftDesc] = useState('')
+
+    const patchPlan = useMutation({
+        mutationFn: (updates: { title?: string; description?: string | null }) =>
+            api.patch(`/api/v1/plans/${planId}`, updates),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: pmKeys.plan(planId) }),
+        onError: () => toast.error('Failed to save plan'),
+    })
 
     const { data: planData, isLoading, isError } = useQuery<{ data: Plan }>({
         queryKey: pmKeys.plan(planId),
@@ -604,16 +617,48 @@ export default function PlanDetailPage() {
 
             {/* Header */}
             <div className="flex items-start justify-between gap-4 mb-1">
-                <div>
+                <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-muted-foreground/50 uppercase tracking-tighter">PLN-{plan.sequenceId}</span>
                         <span className={cn('text-xs px-2 py-0.5 rounded font-medium', planCfg.bg, planCfg.color)}>
                             {planCfg.label}
                         </span>
                     </div>
-                    <h1 className="text-xl font-semibold text-foreground">{plan.title}</h1>
-                    {plan.description && (
-                        <p className="text-sm text-muted-foreground/70 mt-1">{plan.description}</p>
+                    {editingTitle ? (
+                        <input
+                            autoFocus
+                            value={draftTitle}
+                            onChange={e => setDraftTitle(e.target.value)}
+                            onBlur={() => { const t = draftTitle.trim(); if (t && t !== plan.title) patchPlan.mutate({ title: t }); setEditingTitle(false) }}
+                            onKeyDown={e => { if (e.key === 'Enter') { const t = draftTitle.trim(); if (t && t !== plan.title) patchPlan.mutate({ title: t }); setEditingTitle(false) } if (e.key === 'Escape') setEditingTitle(false) }}
+                            className="text-xl font-semibold bg-transparent outline-none border-b border-primary/50 pb-0.5 w-full text-foreground"
+                        />
+                    ) : (
+                        <h1
+                            className="text-xl font-semibold text-foreground cursor-text hover:opacity-80 transition-opacity"
+                            onClick={() => { setDraftTitle(plan.title); setEditingTitle(true) }}
+                        >
+                            {plan.title}
+                        </h1>
+                    )}
+                    {editingDesc ? (
+                        <textarea
+                            autoFocus
+                            value={draftDesc}
+                            onChange={e => setDraftDesc(e.target.value)}
+                            onBlur={() => { const d = draftDesc.trim(); if (d !== (plan.description ?? '')) patchPlan.mutate({ description: d || null }); setEditingDesc(false) }}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditingDesc(false) }}
+                            rows={2}
+                            placeholder="Add description…"
+                            className="w-full mt-1 text-sm bg-transparent outline-none border-b border-primary/50 text-muted-foreground/70 resize-none placeholder:text-muted-foreground/30"
+                        />
+                    ) : (
+                        <p
+                            className="text-sm text-muted-foreground/70 mt-1 cursor-text hover:opacity-80 transition-opacity"
+                            onClick={() => { setDraftDesc(plan.description ?? ''); setEditingDesc(true) }}
+                        >
+                            {plan.description || <span className="italic text-muted-foreground/30">Add description…</span>}
+                        </p>
                     )}
                 </div>
                 {plan.targetDate && (

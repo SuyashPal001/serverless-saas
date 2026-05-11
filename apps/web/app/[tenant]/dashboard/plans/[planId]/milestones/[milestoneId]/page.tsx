@@ -3,16 +3,16 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, isPast } from 'date-fns'
-import { ChevronRight, CalendarDays, Plus } from 'lucide-react'
+import { ChevronRight, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { pmKeys } from '@/lib/query-keys/pm'
-import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BoardView, CreateTaskDialog } from '@/components/platform/BoardView'
+import { BoardView } from '@/components/platform/BoardView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +130,19 @@ export default function MilestoneDetailPage() {
     const tenantSlug = params.tenant as string
     const planId = params.planId as string
     const milestoneId = params.milestoneId as string
-    const [createOpen, setCreateOpen] = useState(false)
+    const queryClient = useQueryClient()
+
+    const [editingTitle, setEditingTitle] = useState(false)
+    const [editingDesc, setEditingDesc] = useState(false)
+    const [draftTitle, setDraftTitle] = useState('')
+    const [draftDesc, setDraftDesc] = useState('')
+
+    const patchMilestone = useMutation({
+        mutationFn: (updates: { title?: string; description?: string | null }) =>
+            api.patch(`/api/v1/milestones/${milestoneId}`, updates),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: pmKeys.milestones(planId) }),
+        onError: () => toast.error('Failed to save milestone'),
+    })
 
     const { data: planData } = useQuery<{ data: Plan }>({
         queryKey: pmKeys.plan(planId),
@@ -177,7 +189,7 @@ export default function MilestoneDetailPage() {
 
             {/* Header */}
             <div className="flex items-start justify-between gap-4 mb-1">
-                <div>
+                <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-muted-foreground/50 uppercase tracking-tighter">MST-{milestone.sequenceId}</span>
                         <span className={cn('text-xs px-2 py-0.5 rounded font-medium', msCfg.bg, msCfg.color)}>
@@ -186,22 +198,49 @@ export default function MilestoneDetailPage() {
                         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: PRIORITY_CONFIG[milestone.priority].color }} />
                         <span className="text-xs text-muted-foreground/60">{PRIORITY_CONFIG[milestone.priority].label}</span>
                     </div>
-                    <h1 className="text-xl font-semibold text-foreground">{milestone.title}</h1>
-                    {milestone.description && (
-                        <p className="text-sm text-muted-foreground/70 mt-1">{milestone.description}</p>
+                    {editingTitle ? (
+                        <input
+                            autoFocus
+                            value={draftTitle}
+                            onChange={e => setDraftTitle(e.target.value)}
+                            onBlur={() => { const t = draftTitle.trim(); if (t && t !== milestone.title) patchMilestone.mutate({ title: t }); setEditingTitle(false) }}
+                            onKeyDown={e => { if (e.key === 'Enter') { const t = draftTitle.trim(); if (t && t !== milestone.title) patchMilestone.mutate({ title: t }); setEditingTitle(false) } if (e.key === 'Escape') setEditingTitle(false) }}
+                            className="text-xl font-semibold bg-transparent outline-none border-b border-primary/50 pb-0.5 w-full text-foreground"
+                        />
+                    ) : (
+                        <h1
+                            className="text-xl font-semibold text-foreground cursor-text hover:opacity-80 transition-opacity"
+                            onClick={() => { setDraftTitle(milestone.title); setEditingTitle(true) }}
+                        >
+                            {milestone.title}
+                        </h1>
+                    )}
+                    {editingDesc ? (
+                        <textarea
+                            autoFocus
+                            value={draftDesc}
+                            onChange={e => setDraftDesc(e.target.value)}
+                            onBlur={() => { const d = draftDesc.trim(); if (d !== (milestone.description ?? '')) patchMilestone.mutate({ description: d || null }); setEditingDesc(false) }}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditingDesc(false) }}
+                            rows={2}
+                            placeholder="Add description…"
+                            className="w-full mt-1 text-sm bg-transparent outline-none border-b border-primary/50 text-muted-foreground/70 resize-none placeholder:text-muted-foreground/30"
+                        />
+                    ) : (
+                        <p
+                            className="text-sm text-muted-foreground/70 mt-1 cursor-text hover:opacity-80 transition-opacity"
+                            onClick={() => { setDraftDesc(milestone.description ?? ''); setEditingDesc(true) }}
+                        >
+                            {milestone.description || <span className="italic text-muted-foreground/30">Add description…</span>}
+                        </p>
                     )}
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    {milestone.targetDate && (
-                        <span className={cn('text-xs flex items-center gap-1', isOverdue ? 'text-red-400' : 'text-muted-foreground/60')}>
-                            <CalendarDays className="w-3.5 h-3.5" />
-                            {format(new Date(milestone.targetDate), 'MMM d, yyyy')}
-                        </span>
-                    )}
-                    <Button size="sm" onClick={() => setCreateOpen(true)}>
-                        <Plus className="w-4 h-4 mr-1.5" /> New Task
-                    </Button>
-                </div>
+                {milestone.targetDate && (
+                    <span className={cn('text-xs shrink-0 flex items-center gap-1', isOverdue ? 'text-red-400' : 'text-muted-foreground/60')}>
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        {format(new Date(milestone.targetDate), 'MMM d, yyyy')}
+                    </span>
+                )}
             </div>
 
             {/* Tabs */}
@@ -223,12 +262,6 @@ export default function MilestoneDetailPage() {
                 </TabsContent>
             </Tabs>
 
-            <CreateTaskDialog
-                open={createOpen}
-                onOpenChange={setCreateOpen}
-                defaultMilestoneId={milestoneId}
-                defaultPlanId={planId}
-            />
         </div>
     )
 }
