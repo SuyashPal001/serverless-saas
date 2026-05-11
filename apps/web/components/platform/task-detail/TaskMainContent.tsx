@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { ExecutionConsole } from './ExecutionConsole'
 import { ActivityFeed } from './ActivityFeed'
+import { DescriptionEditor } from '@/components/editor/DescriptionEditor'
 import type { Task, Step, TaskEvent, AcceptanceCriterion } from '@/types/task'
 import { pmKeys } from '@/lib/query-keys/pm'
 
@@ -152,23 +153,10 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
 
             {/* Description */}
             <div className="mb-5">
-                {isEditing ? (
-                    <textarea
-                        value={editingDescription}
-                        onChange={(e) => setEditingDescription(e.target.value)}
-                        onBlur={() => {
-                            if (editingDescription !== (task.description || ''))
-                                taskOperations.updateDescription(editingDescription)
-                        }}
-                        placeholder="Add a description…"
-                        rows={4}
-                        className="w-full bg-[#111] border border-[#1e1e1e] focus:border-primary/40 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/30 outline-none resize-none transition-colors"
-                    />
-                ) : (
-                    <p className="text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap break-words">
-                        {task.description || <span className="text-muted-foreground/40 italic">No description</span>}
-                    </p>
-                )}
+                <DescriptionEditor
+                    taskId={task.id}
+                    initialContent={task.descriptionHtml ?? task.description}
+                />
             </div>
 
             {/* Link / Attach / Reference buttons */}

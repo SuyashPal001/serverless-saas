@@ -736,6 +736,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         assigneeId: z.string().uuid().nullable().optional(),
         agentId: z.string().uuid().nullable().optional(),
         referenceText: z.string().nullable().optional(),
+        descriptionHtml: z.string().nullable().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -752,7 +753,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
         return c.json({ error: 'Task not found' }, 404);
     }
 
-    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId, referenceText } = result.data;
+    const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId, referenceText, descriptionHtml } = result.data;
 
     if (agentId) {
         const agent = (await db.select().from(agents).where(and(
@@ -791,6 +792,7 @@ tasksRoutes.patch('/:taskId', async (c) => {
     if (assigneeId !== undefined) updateValues.assigneeId = assigneeId;
     if (agentId !== undefined) updateValues.agentId = agentId;
     if (referenceText !== undefined) updateValues.referenceText = referenceText;
+    if (descriptionHtml !== undefined) updateValues.descriptionHtml = descriptionHtml;
 
     const [updatedTask] = await db.update(agentTasks)
         .set(updateValues)
@@ -852,6 +854,7 @@ tasksRoutes.get('/:taskId/comments', async (c) => {
             authorType: taskComments.authorType,
             authorName: sql<string>`COALESCE(${users.name}, ${agents.name}, 'Unknown')`,
             content: taskComments.content,
+            contentHtml: taskComments.contentHtml,
             parentId: taskComments.parentId,
             createdAt: taskComments.createdAt,
             updatedAt: taskComments.updatedAt,
@@ -889,6 +892,7 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
 
     const schema = z.object({
         content: z.string().min(1),
+        contentHtml: z.string().nullable().optional(),
         parentId: z.string().uuid().optional(),
     });
 
@@ -912,6 +916,7 @@ tasksRoutes.post('/:taskId/comments', async (c) => {
         authorId: userId,
         authorType: 'member',
         content: result.data.content,
+        contentHtml: result.data.contentHtml ?? null,
         parentId: result.data.parentId ?? null,
     }).returning();
 

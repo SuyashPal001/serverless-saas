@@ -4,16 +4,17 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-    Bot, User, Settings, MessageSquare, Check, CheckCircle, XCircle, RefreshCw, Loader2,
+    Bot, User, Settings, MessageSquare, Check, CheckCircle, XCircle, RefreshCw,
     ChevronDown, ChevronRight, Sparkles, ExternalLink,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import type { TaskComment, TaskEvent } from '@/types/task'
+
 import { parseAgentOutput, renderInlineMarkdown, extractDomain } from './outputHelpers'
+import { CommentEditor } from '@/components/editor/CommentEditor'
 
 function formatRelativeTime(dateString: string): string {
     const date = new Date(dateString)
@@ -177,7 +178,6 @@ function AgentCommentBody({ content }: { content: string }) {
 export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
     const queryClient = useQueryClient()
     const [activeTab, setActiveTab] = useState<'Thread' | 'Timeline'>('Thread')
-    const [commentText, setCommentText] = useState('')
 
     const { data: commentsData } = useQuery<{ data: TaskComment[] }>({
         queryKey: ['task-comments', taskId],
@@ -186,8 +186,11 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
     const comments = commentsData?.data ?? []
 
     const addComment = useMutation({
-        mutationFn: (content: string) => api.post(`/api/v1/tasks/${taskId}/comments`, { content }),
-        onMutate: async (content) => {
+        mutationFn: (html: string) => api.post(`/api/v1/tasks/${taskId}/comments`, {
+            content: html,
+            contentHtml: html,
+        }),
+        onMutate: async (html) => {
             await queryClient.cancelQueries({ queryKey: ['task-comments', taskId] })
             const prev = queryClient.getQueryData<{ data: TaskComment[] }>(['task-comments', taskId])
             const optimistic: TaskComment = {
@@ -196,7 +199,8 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
                 authorId: 'me',
                 authorType: 'member',
                 authorName: 'You',
-                content,
+                content: html,
+                contentHtml: html,
                 parentId: null,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -209,9 +213,6 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
         onError: (err: any, _, context) => {
             if (context?.prev) queryClient.setQueryData(['task-comments', taskId], context.prev)
             toast.error(err.message || 'Failed to post comment')
-        },
-        onSuccess: () => {
-            setCommentText('')
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] })
@@ -273,9 +274,14 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
                                         )}>
                                             {c.authorType === 'agent' ? (
                                                 <AgentCommentBody content={c.content} />
+                                            ) : (c.contentHtml ? (
+                                                <div
+                                                    className="prose prose-invert prose-sm max-w-none prose-p:my-0.5 prose-ul:my-0.5 prose-ol:my-0.5 [&_.mention]:bg-primary/10 [&_.mention]:text-primary [&_.mention]:rounded [&_.mention]:px-1 [&_.mention]:py-0.5 [&_.mention]:text-xs"
+                                                    dangerouslySetInnerHTML={{ __html: c.contentHtml }}
+                                                />
                                             ) : (
-                                                c.content
-                                            )}
+                                                <p className="whitespace-pre-wrap">{c.content}</p>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -285,33 +291,14 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
 
                     {/* Comment input */}
                     <div className="flex items-start gap-3 pt-4 border-t border-[#1e1e1e]">
-                        <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0 text-[10px] font-semibold text-foreground mt-0.5">
+                        <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0 text-[10px] font-semibold text-foreground mt-6">
                             U
                         </div>
-                        <div className="flex-1">
-                            <textarea
-                                value={commentText}
-                                onChange={e => setCommentText(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && commentText.trim()) {
-                                        addComment.mutate(commentText.trim())
-                                    }
-                                }}
-                                placeholder="Add a comment… (⌘+Enter to send)"
-                                rows={2}
-                                className="w-full bg-[#111] border border-[#1e1e1e] focus:border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/30 outline-none resize-none transition-colors"
-                            />
-                            <div className="flex justify-end mt-2">
-                                <Button
-                                    size="sm"
-                                    disabled={!commentText.trim() || addComment.isPending}
-                                    className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-7 px-3"
-                                    onClick={() => addComment.mutate(commentText.trim())}
-                                >
-                                    {addComment.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Comment'}
-                                </Button>
-                            </div>
-                        </div>
+                        <CommentEditor
+                            taskId={taskId}
+                            onSubmit={html => addComment.mutate(html)}
+                            isPending={addComment.isPending}
+                        />
                     </div>
                 </>
             )}

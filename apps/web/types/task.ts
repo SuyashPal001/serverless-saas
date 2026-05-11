@@ -11,6 +11,7 @@ export type Task = {
     planId?: string | null
     title: string
     description?: string | null
+    descriptionHtml?: string | null
     referenceText?: string | null
     status: 'backlog' | 'todo' | 'planning' | 'awaiting_approval' | 'ready' | 'in_progress' | 'review' | 'blocked' | 'done' | 'cancelled'
     priority: 'low' | 'medium' | 'high' | 'urgent'
@@ -77,6 +78,7 @@ export type TaskComment = {
     authorType: 'member' | 'agent'
     authorName: string
     content: string
+    contentHtml?: string | null
     parentId: string | null
     createdAt: string
     updatedAt: string
