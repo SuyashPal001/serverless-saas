@@ -64,6 +64,9 @@ tasksRoutes.post('/', async (c) => {
             (v) => (typeof v === 'string' ? JSON.parse(v) : v),
             z.array(z.string().uuid()).optional(),
         ),
+        milestoneId: z.string().uuid().nullable().optional(),
+        planId: z.string().uuid().nullable().optional(),
+        parentTaskId: z.string().uuid().nullable().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -71,7 +74,7 @@ tasksRoutes.post('/', async (c) => {
         return c.json({ error: result.error.errors[0].message }, 400);
     }
 
-    const { agentId, assigneeId, title, description, referenceText, acceptanceCriteria, estimatedHours, priority, links, attachmentFileIds } = result.data;
+    const { agentId, assigneeId, title, description, referenceText, acceptanceCriteria, estimatedHours, priority, links, attachmentFileIds, milestoneId, planId, parentTaskId } = result.data;
 
     if (agentId) {
         const agent = (await db.select().from(agents).where(and(
@@ -100,6 +103,9 @@ tasksRoutes.post('/', async (c) => {
             (Array.isArray(attachmentFileIds) ? attachmentFileIds : []).map(id => sql`${id}`),
             sql`, `
         )}]::text[]`,
+        milestoneId: milestoneId ?? null,
+        planId: planId ?? null,
+        parentTaskId: parentTaskId ?? null,
         status: 'backlog',
     }).returning();
 
@@ -151,6 +157,7 @@ tasksRoutes.get('/', async (c) => {
 
     const statusFilter = c.req.query('status');
     const agentIdFilter = c.req.query('agentId');
+    const parentTaskIdFilter = c.req.query('parentTaskId');
 
     // Internal states are hidden from the board list unless explicitly requested via ?status=
     const boardCondition = !statusFilter
@@ -163,6 +170,7 @@ tasksRoutes.get('/', async (c) => {
             eq(agentTasks.tenantId, tenantId),
             boardCondition,
             agentIdFilter ? eq(agentTasks.agentId, agentIdFilter) : undefined,
+            parentTaskIdFilter ? eq(agentTasks.parentTaskId, parentTaskIdFilter) : undefined,
         ))
         .orderBy(asc(agentTasks.sortOrder), desc(agentTasks.createdAt));
 
