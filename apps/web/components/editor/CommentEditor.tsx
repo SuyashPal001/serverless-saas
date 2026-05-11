@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, useEditorState, EditorContent } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { Link } from '@tiptap/extension-link'
@@ -54,6 +54,17 @@ export function CommentEditor({ taskId: _taskId, onSubmit, isPending }: CommentE
         editor.commands.clearContent()
     }
 
+    // Subscribes to selection/transaction updates so active state re-renders correctly
+    const editorState = useEditorState({
+        editor,
+        selector: (ctx) => ({
+            isBold: ctx.editor?.isActive('bold') ?? false,
+            isItalic: ctx.editor?.isActive('italic') ?? false,
+            isCode: ctx.editor?.isActive('code') ?? false,
+            isLink: ctx.editor?.isActive('link') ?? false,
+        }),
+    })
+
     const isEmpty = !editor?.getText().trim()
 
     return (
@@ -61,35 +72,35 @@ export function CommentEditor({ taskId: _taskId, onSubmit, isPending }: CommentE
             {/* Mini toolbar */}
             <div className="flex items-center gap-0.5 mb-1.5">
                 <MiniToolbarBtn
-                    active={!!editor?.isActive('bold')}
-                    onClick={() => editor?.chain().focus().toggleBold().run()}
+                    active={editorState?.isBold ?? false}
+                    onClick={() => editor?.chain().toggleBold().run()}
                     title="Bold"
                 >
                     <Bold className="w-3 h-3" />
                 </MiniToolbarBtn>
                 <MiniToolbarBtn
-                    active={!!editor?.isActive('italic')}
-                    onClick={() => editor?.chain().focus().toggleItalic().run()}
+                    active={editorState?.isItalic ?? false}
+                    onClick={() => editor?.chain().toggleItalic().run()}
                     title="Italic"
                 >
                     <Italic className="w-3 h-3" />
                 </MiniToolbarBtn>
                 <MiniToolbarBtn
-                    active={!!editor?.isActive('code')}
-                    onClick={() => editor?.chain().focus().toggleCode().run()}
+                    active={editorState?.isCode ?? false}
+                    onClick={() => editor?.chain().toggleCode().run()}
                     title="Inline code"
                 >
                     <Code className="w-3 h-3" />
                 </MiniToolbarBtn>
                 <MiniToolbarBtn
-                    active={!!editor?.isActive('link')}
+                    active={editorState?.isLink ?? false}
                     onClick={() => {
                         if (!editor) return
                         if (editor.isActive('link')) {
-                            editor.chain().focus().unsetLink().run()
+                            editor.chain().unsetLink().run()
                         } else {
                             const url = window.prompt('URL')
-                            if (url) editor.chain().focus().setLink({ href: url }).run()
+                            if (url) editor.chain().setLink({ href: url }).run()
                         }
                     }}
                     title="Link"

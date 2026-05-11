@@ -136,3 +136,27 @@
 .animate-shimmer {
   animation: shimmer 1.4s infinite linear;
 }
+
+/* Tiptap editor — code block dark theme */
+.tiptap pre {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  color: #e4e4e4;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.tiptap pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 0.875em;
+}
+.tiptap code {
+  background: #1a1a1a;
+  border-radius: 3px;
+  padding: 2px 4px;
+  color: #e4e4e4;
+  font-size: 0.875em;
+}

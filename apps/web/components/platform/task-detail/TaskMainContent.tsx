@@ -82,7 +82,6 @@ interface TaskMainContentProps {
 export function TaskMainContent({ task, steps, events, taskId, taskOperations, editState }: TaskMainContentProps) {
     const { isEditing } = editState
     const [editingTitle, setEditingTitle] = useState(task.title)
-    const [editingDescription, setEditingDescription] = useState(task.description || '')
     const params = useParams()
     const router = useRouter()
     const queryClient = useQueryClient()
@@ -119,7 +118,6 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
     // Reset local edit inputs when navigating to a different task
     useEffect(() => {
         setEditingTitle(task.title)
-        setEditingDescription(task.description || '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task.id])
 

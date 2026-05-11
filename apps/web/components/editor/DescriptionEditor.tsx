@@ -85,7 +85,7 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
             CodeBlockLowlight.configure({ lowlight }),
             TaskList,
             TaskItem.configure({ nested: true }),
-            Placeholder.configure({ placeholder: 'Add a description…' }),
+            Placeholder.configure({ placeholder: 'Add a description…', showOnlyWhenEditable: false }),
             Link.configure({ openOnClick: false }),
             Mention.configure({
                 HTMLAttributes: { class: 'mention' },
@@ -174,35 +174,35 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
                     <div className="flex items-center gap-0.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-1 shadow-xl">
                         <ToolbarBtn
                             active={editor.isActive('bold')}
-                            onClick={() => editor.chain().focus().toggleBold().run()}
+                            onClick={() => editor.chain().toggleBold().run()}
                             title="Bold"
                         >
                             <Bold className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('italic')}
-                            onClick={() => editor.chain().focus().toggleItalic().run()}
+                            onClick={() => editor.chain().toggleItalic().run()}
                             title="Italic"
                         >
                             <Italic className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('underline')}
-                            onClick={() => editor.chain().focus().toggleUnderline().run()}
+                            onClick={() => editor.chain().toggleUnderline().run()}
                             title="Underline"
                         >
                             <UnderlineIcon className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('strike')}
-                            onClick={() => editor.chain().focus().toggleStrike().run()}
+                            onClick={() => editor.chain().toggleStrike().run()}
                             title="Strikethrough"
                         >
                             <Strikethrough className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('code')}
-                            onClick={() => editor.chain().focus().toggleCode().run()}
+                            onClick={() => editor.chain().toggleCode().run()}
                             title="Inline code"
                         >
                             <Code className="w-3.5 h-3.5" />
@@ -210,21 +210,21 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
                         <div className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
                         <ToolbarBtn
                             active={editor.isActive('heading', { level: 1 })}
-                            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                            onClick={() => editor.chain().toggleHeading({ level: 1 }).run()}
                             title="H1"
                         >
                             <Heading1 className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('heading', { level: 2 })}
-                            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                            onClick={() => editor.chain().toggleHeading({ level: 2 }).run()}
                             title="H2"
                         >
                             <Heading2 className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('heading', { level: 3 })}
-                            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                            onClick={() => editor.chain().toggleHeading({ level: 3 }).run()}
                             title="H3"
                         >
                             <Heading3 className="w-3.5 h-3.5" />
@@ -232,21 +232,21 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
                         <div className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
                         <ToolbarBtn
                             active={editor.isActive('bulletList')}
-                            onClick={() => editor.chain().focus().toggleBulletList().run()}
+                            onClick={() => editor.chain().toggleBulletList().run()}
                             title="Bullet list"
                         >
                             <List className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('orderedList')}
-                            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                            onClick={() => editor.chain().toggleOrderedList().run()}
                             title="Numbered list"
                         >
                             <ListOrdered className="w-3.5 h-3.5" />
                         </ToolbarBtn>
                         <ToolbarBtn
                             active={editor.isActive('taskList')}
-                            onClick={() => editor.chain().focus().toggleTaskList().run()}
+                            onClick={() => editor.chain().toggleTaskList().run()}
                             title="Task list"
                         >
                             <CheckSquare className="w-3.5 h-3.5" />
@@ -256,10 +256,10 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
                             active={editor.isActive('link')}
                             onClick={() => {
                                 if (editor.isActive('link')) {
-                                    editor.chain().focus().unsetLink().run()
+                                    editor.chain().unsetLink().run()
                                 } else {
                                     const url = window.prompt('URL')
-                                    if (url) editor.chain().focus().setLink({ href: url }).run()
+                                    if (url) editor.chain().setLink({ href: url }).run()
                                 }
                             }}
                             title="Link"
@@ -293,7 +293,7 @@ export function DescriptionEditor({ taskId, initialContent, onSave }: Descriptio
                     '[&_.ProseMirror_li[data-type=taskItem]]:flex [&_.ProseMirror_li[data-type=taskItem]]:items-start [&_.ProseMirror_li[data-type=taskItem]]:gap-2',
                     '[&_.ProseMirror_li[data-type=taskItem]_label]:mt-0.5',
                     '[&_.ProseMirror_code]:bg-[#1a1a1a] [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:text-xs [&_.ProseMirror_code]:font-mono',
-                    '[&_.ProseMirror_pre]:bg-[#0d0d0d] [&_.ProseMirror_pre]:border [&_.ProseMirror_pre]:border-[#1e1e1e] [&_.ProseMirror_pre]:rounded-lg [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto',
+                    '[&_.ProseMirror_pre]:bg-[#1a1a1a] [&_.ProseMirror_pre]:border [&_.ProseMirror_pre]:border-[#2a2a2a] [&_.ProseMirror_pre]:rounded-md [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:text-[#e4e4e4]',
                     '[&_.ProseMirror_pre_code]:bg-transparent [&_.ProseMirror_pre_code]:p-0 [&_.ProseMirror_pre_code]:text-xs',
                     '[&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-primary/30 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground/70 [&_.ProseMirror_blockquote]:my-2',
                     '[&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline',
