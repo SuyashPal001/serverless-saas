@@ -313,10 +313,10 @@ export function TaskSidebar({
                 {!task.agentId && (task.status === 'backlog' || task.status === 'todo') && (
                     <button
                         onClick={() => setAssigneeOpen(true)}
-                        className="flex items-center gap-1.5 py-1.5 pl-1 text-left hover:opacity-80 transition-opacity"
+                        className="flex items-center gap-1.5 w-full rounded-md bg-purple-950/60 border border-purple-800/40 hover:bg-purple-950 hover:border-purple-800/70 px-2 py-1.5 transition-colors cursor-pointer text-left mt-1"
                     >
-                        <Sparkles className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-                        <span className="text-xs text-muted-foreground/50">Assign an agent to auto-execute</span>
+                        <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                        <span className="text-xs text-purple-300">Assign agent to auto-execute</span>
                     </button>
                 )}
 
