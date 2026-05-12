@@ -13,6 +13,7 @@ import { fetchWorkingMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
+import { getThinkingBudget } from './mastra/thinking.js'
 
 // WebSocket server — noServer mode; upgrade events wired below
 const wss = new WebSocketServer({ noServer: true })
@@ -160,11 +161,13 @@ async function handleSession(
         mcpClient = getMCPClientForTenant(tenantId)
         requestContext.set('__mcpClient', mcpClient as any)
 
-        console.log(`[session:${sessionId}] streaming via platformAgent conversationId=${conversationId}`)
+        const thinkingBudget = getThinkingBudget(effectiveMessage)
+        console.log(`[session:${sessionId}] streaming via platformAgent conversationId=${conversationId} thinkingBudget=${thinkingBudget}`)
 
         const agentStream = await (platformAgent as any).stream(mastraMessage, {
           memory: { thread: conversationId ?? crypto.randomUUID(), resource: tenantId },
           requestContext,
+          providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
         })
 
         let fullText = ''

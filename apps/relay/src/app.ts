@@ -20,6 +20,7 @@ import { MastraServer } from '@mastra/hono'
 import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
 import { filterPII } from './pii-filter.js'
+import { getThinkingBudget } from './mastra/thinking.js'
 
 
 interface Attachment {
@@ -2121,11 +2122,13 @@ app.post('/api/chat', async (c) => {
       mcpClient = getMCPClientForTenant(tenantId)
       requestContext.set('__mcpClient', mcpClient as any)
 
-      console.log(`[sse:${sessionId}] streaming via platformAgent tenantId=${tenantId} conversationId=${conversationId}`)
+      const thinkingBudget = getThinkingBudget(message)
+      console.log(`[sse:${sessionId}] streaming via platformAgent tenantId=${tenantId} conversationId=${conversationId} thinkingBudget=${thinkingBudget}`)
 
       const agentStream = await (platformAgent as any).stream(mastraMessage, {
         memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId },
         requestContext,
+        providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
       })
 
       let fullText = ''
