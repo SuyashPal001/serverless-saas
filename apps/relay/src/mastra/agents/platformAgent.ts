@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
-import { saarthiModel } from '../model.js'
+import { saarthiModel, saarthiLiteModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 
@@ -382,5 +382,10 @@ export const platformAgent = new Agent({
 
   memory: getMastraMemory(),
 
-  model: saarthiModel,
+  // Dynamic model: use Flash Lite for conversational turns (thinkingBudget=0),
+  // Flash for everything else. Budget is set in requestContext by chatStream.ts.
+  model: ({ requestContext }: { requestContext: RequestContext }) => {
+    const budget = requestContext?.get('thinkingBudget') as number | undefined
+    return budget === 0 ? saarthiLiteModel : saarthiModel
+  },
 })

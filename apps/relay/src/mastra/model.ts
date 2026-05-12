@@ -9,7 +9,13 @@
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
-export const saarthiModel = createGoogleGenerativeAI({
+const google = createGoogleGenerativeAI({
   baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
   apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
-})(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+})
+
+export const saarthiModel = google(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+
+// Lightweight model for conversational turns (thinkingBudget === 0).
+// Cuts LLM span from ~5.8s to ~1-2s on simple messages.
+export const saarthiLiteModel = google(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')

@@ -1,3 +1,7 @@
+// NOTE: This pipeline is intentionally kept and not wired into the live Mastra path.
+// The quality (query rewriting + Gemini relevance gate) is higher than the current
+// Mastra retrieve_documents tool flow. Planned: replace the tool with this pipeline
+// once the integration point is identified.
 import { rewriteQuery } from './queryRewrite.js';
 import { gateChunks, ScoredChunk } from './relevanceGate.js';
 
