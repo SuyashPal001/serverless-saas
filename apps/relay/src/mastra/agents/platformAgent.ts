@@ -313,7 +313,7 @@ const SERVER_TOOL_NAMES = new Set([...Object.keys(SERVER_TOOLS), 'web_search', '
 
 // MCP tool cache — avoids reconnecting to mcp-server on every message.
 // TTL: 60 seconds per tenant.
-const MCP_TOOLS_CACHE_TTL_MS = 60_000
+const MCP_TOOLS_CACHE_TTL_MS = 5 * 60_000 // 5 minutes
 const mcpToolsCache = new Map<string, { tools: Record<string, any>; expiresAt: number }>()
 
 async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promise<Record<string, any>> {

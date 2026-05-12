@@ -3,6 +3,9 @@
 // at module init time in taskExecution.ts (for scorer creation), but the
 // index.ts → taskExecution.ts → index.ts circular dep causes a TDZ error when
 // the model is defined in index.ts.
+//
+// Uses @ai-sdk/google pointed at the local vertex-proxy (port 4001).
+// The proxy handles Vertex AI auth via service account key and caches model instances.
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 

@@ -1,6 +1,7 @@
 import { PostgresStore } from '@mastra/pg'
 import { Memory } from '@mastra/memory'
 import pg from 'pg'
+import { saarthiModel } from './model.js'
 
 // Separate pg.Pool for Mastra
 // Does NOT use our Drizzle connection
@@ -39,11 +40,10 @@ export function getMastraMemory(): Memory {
   memory = new Memory({
     storage: getMastraStore(),
     options: {
-      lastMessages: 2,
+      lastMessages: 10,
       semanticRecall: false, // no vector store — disable semantic recall
-      workingMemory: {
-        enabled: true,
-      },
+      workingMemory: { enabled: false },
+      // observationalMemory disabled pending latency investigation
     },
   })
 

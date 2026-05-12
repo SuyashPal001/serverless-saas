@@ -222,11 +222,7 @@ async function handleSession(
         }
       } finally {
         streamingActive = false
-        if (mcpClient) {
-          mcpClient.disconnect().catch((e: Error) =>
-            console.error(`[session:${sessionId}] mcpClient disconnect error:`, e.message)
-          )
-        }
+        // mcpClient is now a persistent singleton per tenant — do not disconnect
       }
     })()
   })

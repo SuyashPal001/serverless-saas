@@ -1,14 +1,17 @@
 import { MCPClient } from '@mastra/mcp'
 
-// Creates a per-tenant MCPClient instance.
-// Each call returns a new client — no singleton.
+// Persistent per-tenant MCPClient cache.
+// SSE connection is kept alive — avoids reconnect + listTools() overhead on every request.
 // Both headers required:
 //   x-internal-service-key — auth against mcp-server
 //   x-tenant-id            — scopes tool credentials to this tenant
-// Caller is responsible for calling mcpClient.disconnect() when done.
+const mcpClientCache = new Map<string, MCPClient>()
 
 export function getMCPClientForTenant(tenantId: string): MCPClient {
-  return new MCPClient({
+  const existing = mcpClientCache.get(tenantId)
+  if (existing) return existing
+
+  const client = new MCPClient({
     servers: {
       saarthiTools: {
         url: new URL(
@@ -25,6 +28,10 @@ export function getMCPClientForTenant(tenantId: string): MCPClient {
       },
     },
   })
+
+  mcpClientCache.set(tenantId, client)
+  console.log(`[mcp] created persistent client for tenant ${tenantId}`)
+  return client
 }
 
 export async function getToolsForTenant(

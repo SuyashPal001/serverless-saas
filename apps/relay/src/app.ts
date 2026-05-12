@@ -2205,7 +2205,7 @@ app.post('/api/chat', async (c) => {
       sendEvent('error', { message: 'Internal server error', conversationId })
       closeStream()
     } finally {
-      if (mcpClient) { mcpClient.disconnect().catch((e: Error) => console.error(`[sse:${sessionId}] mcpClient disconnect error:`, e.message)) }
+      // mcpClient is now a persistent singleton per tenant — do not disconnect
     }
   })()
 
