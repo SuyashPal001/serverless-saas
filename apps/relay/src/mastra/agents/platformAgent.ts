@@ -34,7 +34,13 @@ function getPlatformPool(): pg.Pool {
   return platformPool
 }
 
+// Prompt cache — avoids a DB round-trip on every message.
+// TTL: 5 minutes. Invalidated on relay restart.
+let _promptCache: { prompt: string; expiresAt: number } | null = null
+const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000
+
 async function fetchPlatformPrompt(): Promise<string> {
+  if (_promptCache && _promptCache.expiresAt > Date.now()) return _promptCache.prompt
   try {
     const res = await getPlatformPool().query<{ system_prompt: string }>(
       `SELECT system_prompt FROM agent_templates
@@ -43,11 +49,16 @@ async function fetchPlatformPrompt(): Promise<string> {
        LIMIT 1`
     )
     const prompt = res.rows[0]?.system_prompt
-    if (prompt) return prompt
+    if (prompt) {
+      _promptCache = { prompt, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS }
+      return prompt
+    }
   } catch (err) {
     console.warn('[mastra:platform] fetchPlatformPrompt DB error:', (err as Error).message)
   }
-  return 'You are Saarthi, a helpful AI assistant.'
+  const fallback = 'You are Saarthi, a helpful AI assistant.'
+  _promptCache = { prompt: fallback, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS }
+  return fallback
 }
 
 // ---------------------------------------------------------------------------

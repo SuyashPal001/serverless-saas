@@ -39,11 +39,10 @@ export function getMastraMemory(): Memory {
   memory = new Memory({
     storage: getMastraStore(),
     options: {
-      lastMessages: 20,
+      lastMessages: 2,
       semanticRecall: false, // no vector store — disable semantic recall
       workingMemory: {
         enabled: true,
-        // Working memory persists business context across sessions
       },
     },
   })
