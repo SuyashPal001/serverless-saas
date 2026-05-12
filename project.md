@@ -2,6 +2,10 @@
 
 Last updated: 2026-04-28 (task lifecycle hardening — full audit + bug fixes)
 
+## Code Rules
+
+- **Hard limit: never create a new file longer than 300 lines.** If a file would exceed 300 lines, split it before committing.
+
 ---
 
 ## 1. Project Overview
