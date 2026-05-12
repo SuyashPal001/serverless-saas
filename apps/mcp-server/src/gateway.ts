@@ -20,6 +20,7 @@ import {
 } from './connectors/jira.js'
 import { proxyToVendorMCP, listVendorTools } from './proxy/vendor.js'
 import { getIntegrations } from './db/credentials.js'
+import { createPlanFromPrd } from './tools/plans/createPlanFromPrd.js'
 
 // Search provider — swap via SEARCH_PROVIDER env var
 // 'google' (default) — Vertex AI Grounding with Google Search
@@ -244,6 +245,21 @@ const BUILTIN_TOOLS = [
     inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query' }, maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5, max: 10)' } }, required: ['query'] } },
   { name: 'retrieve_documents', description: 'Search the tenant private knowledge base for relevant documents. Use when the user asks about their uploaded documents, policies, reports, CV, job descriptions, or any domain-specific knowledge. Always cite the source document name in your response.', provider: null,
     inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query to find relevant documents' } }, required: ['query'] } },
+  // Platform — plan creation from PRD output
+  { name: 'create_plan_from_prd', description: 'Create a project plan with milestones and tasks in the database from structured PRD extraction output. Use after documentWorkflow produces a prdData object. Returns planId, planSequenceId (e.g. PLN-1), milestoneCount, taskCount, and planUrl.', provider: null,
+    inputSchema: { type: 'object', properties: {
+      plan: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' }, targetDate: { type: 'string' } }, required: ['title', 'description'] },
+      milestones: { type: 'array', items: { type: 'object', properties: {
+        title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string' },
+        tasks: { type: 'array', items: { type: 'object', properties: {
+          title: { type: 'string' }, description: { type: 'string' },
+          acceptanceCriteria: { type: 'array', items: { type: 'string' } },
+          priority: { type: 'string' }, estimatedHours: { type: 'number' }, type: { type: 'string' },
+        }, required: ['title', 'description', 'acceptanceCriteria'] } },
+      }, required: ['title', 'description', 'tasks'] } },
+      risks: { type: 'array', items: { type: 'string' } },
+      totalEstimatedHours: { type: 'number' },
+    }, required: ['plan', 'milestones', 'risks'] } },
 ]
 
 interface RpcBody {
@@ -373,6 +389,8 @@ async function toolsCall(tenantId: string, name: string, args: Record<string, un
         return 'No relevant documents found in your knowledge base.'
       }
     }
+    case 'create_plan_from_prd':
+      return createPlanFromPrd(tenantId, args as unknown as Parameters<typeof createPlanFromPrd>[1])
     default: {
       // Fall through to vendor proxy — find first integration with an mcp_server_url
       const integrations = await getIntegrations(tenantId)
