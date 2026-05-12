@@ -101,7 +101,6 @@ export class OpenClawClient {
       // sendConnect() is called when the challenge is received.
 
       ws.on('message', (raw) => {
-        console.log('[openclaw] raw response:', JSON.stringify(raw.toString()).slice(0, 800))
         let msg: Record<string, unknown>
         try {
           msg = JSON.parse(raw.toString()) as Record<string, unknown>
@@ -153,7 +152,6 @@ export class OpenClawClient {
             const inputTokens = typeof p.inputTokens === 'number' ? p.inputTokens : undefined
             const outputTokens = typeof p.outputTokens === 'number' ? p.outputTokens : undefined
             const estimatedCostUsd = typeof p.estimatedCostUsd === 'number' ? p.estimatedCostUsd : undefined
-            console.log('[usage] sessions.changed phase=end — recording tokens, input:', inputTokens, 'output:', outputTokens, 'costUsd:', estimatedCostUsd)
             if (this.opts.onTokens) this.opts.onTokens(inputTokens ?? 0, outputTokens ?? 0, estimatedCostUsd)
             recordUsage({
               tenantId: this.opts.tenantId!,
@@ -191,7 +189,6 @@ export class OpenClawClient {
           if (!data) return
 
           if (stream === 'assistant') {
-            console.log('[openclaw] assistant stream data:', JSON.stringify(data, null, 2))
             const delta = typeof data.delta === 'string' ? data.delta : ''
             if (delta) this.opts.onDelta(delta)
             // track accumulated for fallback
@@ -211,7 +208,6 @@ export class OpenClawClient {
               if (tool) this.opts.onToolCall(tool, args, callId)
             }
           } else if (stream === 'lifecycle' && (data as Record<string, unknown>).phase === 'end') {
-            console.log('[openclaw] lifecycle:end data:', JSON.stringify(data, null, 2))
             const fullText = this.accumulatedText.trim()
             this.accumulatedText = ''
             if (!this.doneCalled && fullText) {
@@ -287,7 +283,6 @@ export class OpenClawClient {
               if (ttsCall) {
                 const args = ttsCall.arguments as Record<string, unknown> | undefined
                 text = typeof args?.text === 'string' ? args.text : ''
-                if (text) console.log('[openclaw] session.message tts toolCall text, length:', text.length)
               }
             }
           }
@@ -295,14 +290,12 @@ export class OpenClawClient {
           text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
           if (text) {
             this.doneCalled = true  // prevent lifecycle:end from double-firing
-            console.log('[openclaw] session.message assistant text, length:', text.length)
             this.accumulatedText = text
             this.opts.onDone(text)
             this.accumulatedText = ''
           } else {
             // Empty assistant message — likely a replayed/old message from session history.
             // Do NOT set doneCalled or fire onDone — keep waiting for the real response.
-            console.log('[openclaw] session.message empty assistant response — ignoring, waiting for real response')
           }
         }
       })
@@ -342,17 +335,6 @@ export class OpenClawClient {
       this.pendingSystemContext = ''
     }
 
-    console.log('[openclaw] chat.send params:', JSON.stringify({
-      sessionKey,
-      message: finalMessage.slice(0, 50),
-      attachments: images.map(img => ({
-        name: img.name,
-        mimeType: img.mimeType,
-        contentPrefix: img.content?.slice(0, 30),
-        contentLength: img.content?.length
-      })),
-      idempotencyKey: '...'
-    }))
     const sendId = this.nextId()
     this.pendingChatSendId = sendId
     this.ws.send(JSON.stringify({
@@ -361,7 +343,6 @@ export class OpenClawClient {
       method: 'chat.send',
       params: { sessionKey, message: finalMessage, attachments: images, idempotencyKey: randomUUID() },
     }))
-    console.log('[openclaw] chat.send sent, images count:', images.length, 'message length:', finalMessage.length)
   }
 
   close(): void {
@@ -439,7 +420,6 @@ export class OpenClawClient {
       method: 'exec.approval.resolve',
       params: { id: approvalId, decision },
     }))
-    console.log(`[openclaw] exec.approval.resolve id=${approvalId} decision=${decision}`)
   }
 
   setActorId(actorId: string): void {
@@ -477,7 +457,6 @@ export class OpenClawClient {
     // pointless and causes ECONNRESET / 502 for any concurrent task requests.
     const signature = raw
     if (this.lastMcpSignature === signature) {
-      console.log('[openclaw] config.patch skipped — MCP config unchanged, count:', mcpServers.length)
       return
     }
 
@@ -488,11 +467,8 @@ export class OpenClawClient {
       baseHash = typeof configRes.hash === 'string' ? configRes.hash
         : typeof configRes.baseHash === 'string' ? configRes.baseHash
         : undefined
-      if (!baseHash) {
-        console.warn('[openclaw] config.get returned no hash, keys:', Object.keys(configRes).join(', '))
-      }
-    } catch (err) {
-      console.warn('[openclaw] config.get failed:', (err as Error).message)
+    } catch {
+      // config.get failed — proceed without baseHash
     }
 
     const patchParams: Record<string, unknown> = { raw }
@@ -501,7 +477,6 @@ export class OpenClawClient {
     try {
       await this.sendRequestAsync('config.patch', patchParams)
       this.lastMcpSignature = signature
-      console.log('[openclaw] config.patch mcp.servers applied, count:', mcpServers.length)
     } catch (err) {
       console.error('[openclaw] config.patch failed:', (err as Error).message)
     }

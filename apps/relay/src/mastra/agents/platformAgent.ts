@@ -135,14 +135,6 @@ export const SERVER_TOOLS = {
       }))
     },
   }),
-  code_execution: createTool({
-    id: 'code_execution',
-    description: 'Execute code in a sandboxed environment and return the output.',
-    inputSchema: z.object({
-      code: z.string().describe('The code to execute'),
-    }),
-    execute: async () => ({ result: 'handled natively by the LLM provider' }),
-  }),
   web_fetch: createTool({
     id: 'web_fetch',
     description: 'Fetch the content of a URL and return it as text.',
@@ -308,6 +300,26 @@ export const SERVER_TOOLS = {
 // 'web_search' is blocked because we expose it as 'internet_search' via Exa.
 const SERVER_TOOL_NAMES = new Set([...Object.keys(SERVER_TOOLS), 'web_search', 'create_plan_from_prd'])
 
+// MCP tool cache — avoids reconnecting to mcp-server on every message.
+// TTL: 60 seconds per tenant.
+const MCP_TOOLS_CACHE_TTL_MS = 60_000
+const mcpToolsCache = new Map<string, { tools: Record<string, any>; expiresAt: number }>()
+
+async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promise<Record<string, any>> {
+  const cached = mcpToolsCache.get(tenantId)
+  if (cached && cached.expiresAt > Date.now()) return cached.tools
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tools: Record<string, any> = {}
+  try {
+    tools = await mcpClient.listTools()
+    mcpToolsCache.set(tenantId, { tools, expiresAt: Date.now() + MCP_TOOLS_CACHE_TTL_MS })
+    console.log('[mastra] mcpToolsCache miss — fetched', Object.keys(tools).length, 'tools for tenant', tenantId)
+  } catch (err) {
+    console.warn('[mastra] listTools failed, continuing without MCP tools:', (err as Error).message)
+  }
+  return tools
+}
+
 // ---------------------------------------------------------------------------
 // One platform Agent — serves all tenants.
 //
@@ -341,17 +353,7 @@ export const platformAgent = new Agent({
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
     const mcpClient = storedClient ?? getMCPClientForTenant(tenantId)
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let mcpTools: Record<string, any> = {}
-    try {
-      mcpTools = await mcpClient.listTools()
-      console.log('[mastra] platformAgent.tools listTools keys:', Object.keys(mcpTools).join(', '))
-    } catch (err) {
-      console.warn(
-        '[mastra] platformAgent.tools listTools failed, continuing without MCP tools:',
-        (err as Error).message
-      )
-    }
+    const mcpTools = await getCachedMcpTools(mcpClient, tenantId)
 
     // Exclude MCP tools that duplicate SERVER_TOOLS.
     const filteredMcpTools = Object.fromEntries(

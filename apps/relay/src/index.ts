@@ -4,13 +4,15 @@ import type { IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'
 import { serve } from '@hono/node-server'
 import { WebSocketServer, WebSocket, RawData } from 'ws'
-import { app, API_BASE_URL, resolveGatewayUrl, downloadMediaAttachment, fireToolCallLog, sessions } from './app.js'
+import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
+import { app, API_BASE_URL, downloadMediaAttachment, fireToolCallLog, sessions } from './app.js'
 import type { RelaySessionCtx, DownloadedMedia } from './app.js'
 import { validateToken } from './auth.js'
-import { OpenClawClient } from './openclaw.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchAgentModelId } from './usage.js'
+import { fetchWorkingMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
+import { platformAgent } from './mastra/index.js'
+import { getMCPClientForTenant } from './mastra/tools.js'
 
 // WebSocket server — noServer mode; upgrade events wired below
 const wss = new WebSocketServer({ noServer: true })
@@ -28,118 +30,8 @@ async function handleSession(
   let pendingUserMessage = ''
   let pendingAttachments: Array<{ fileId?: string; name: string; type: string; size?: number }> = []
   let conversationId: string | null = null
-  let resolveReady!: () => void
-  const readyPromise = new Promise<void>((resolve) => { resolveReady = resolve })
   let firstMessage = true
-  let deltasSent = 0
-  let deltaBuffer = ''
-  let approvalIntercepted = false
-
-  let gatewayUrl: string
-  try {
-    gatewayUrl = await resolveGatewayUrl(tenantId, '')
-  } catch (err) {
-    console.error(`[session:${sessionId}] resolveGatewayUrl failed:`, (err as Error).message)
-    ws.send(JSON.stringify({ type: 'error', message: 'Agent not ready. Please try again.' }))
-    ws.close()
-    return
-  }
-  const openClaw = new OpenClawClient({
-    tenantId,
-    gatewayUrl,
-    onDelta(text: string) {
-      deltaBuffer += text
-      // Check if accumulated buffer contains an approval request from the agent
-      const approveMatch = deltaBuffer.match(/\/approve\s+(\S+)\s+allow-once/)
-      if (approveMatch && !approvalIntercepted) {
-        approvalIntercepted = true
-        const approvalId = approveMatch[1]
-        console.log(`[session:${sessionId}] intercepted approval_request id=${approvalId}`)
-        ws.send(JSON.stringify({
-          type: 'approval_request',
-          approvalId,
-          toolName: 'tool_call',
-          description: 'Agent wants to run a tool. Approve or dismiss.',
-          arguments: {},
-          conversationId,
-        }))
-        return
-      }
-      if (!approvalIntercepted) {
-        deltasSent++
-        ws.send(JSON.stringify({ type: 'delta', text, conversationId }))
-      }
-    },
-    onDone(fullText: string) {
-      const approveMatch = fullText.match(/\/approve\s+(\S+)\s+allow-once/)
-      if (approveMatch) {
-        const approvalId = approveMatch[1]
-        // Only emit if onDelta didn't already intercept this turn
-        if (!approvalIntercepted) {
-          console.log(`[session:${sessionId}] intercepted approval_request (via onDone) id=${approvalId}`)
-          ws.send(JSON.stringify({
-            type: 'approval_request',
-            approvalId,
-            toolName: 'exec',
-            description: 'Agent wants to run a tool. Approve or dismiss.',
-            arguments: {},
-            conversationId,
-          }))
-        }
-        // Always reset so the next turn (agent reply after tool runs) flows normally
-        deltaBuffer = ''
-        approvalIntercepted = false
-        deltasSent = 0
-        return
-      }
-      const userMsg = pendingUserMessage
-      pendingUserMessage = ''
-      deltaBuffer = ''
-      console.log(`[session:${sessionId}] onDone conversationId=${conversationId} userMsg length=${userMsg.length} approvalIntercepted=${approvalIntercepted}`)
-      // If this turn was an approval request, swallow the done event — the frontend is
-      // waiting for the user to approve/dismiss, not for a streamed response.
-      if (approvalIntercepted) {
-        approvalIntercepted = false
-        deltasSent = 0
-        return
-      }
-      // NO_REPLY is sent by the agent when it responds via TTS only — no text to surface
-      if (fullText === 'NO_REPLY') {
-        pendingAttachments = []
-        return
-      }
-      // If no delta events were sent (e.g. TTS-only path), push the full text as a delta
-      // so frontends that build display from delta events still show the response
-      if (deltasSent === 0) {
-        ws.send(JSON.stringify({ type: 'delta', text: fullText, conversationId }))
-      }
-      deltasSent = 0
-      ws.send(JSON.stringify({ type: 'done', text: fullText, conversationId }))
-      if (conversationId) {
-        saveUserMessage(apiToken, conversationId, userMsg, pendingAttachments)
-        pendingAttachments = []
-        saveAssistantMessage(apiToken, conversationId, fullText)
-      }
-    },
-    onClose() {
-      ws.close()
-    },
-    onError(err: Error) {
-      console.error(`[session:${sessionId}] openclaw error:`, err.message)
-      ws.send(JSON.stringify({ type: 'error', message: 'Gateway error', conversationId }))
-      ws.close()
-    },
-    onSendError(err: Error) {
-      console.error(`[session:${sessionId}] chat.send rejected:`, err.message)
-      pendingUserMessage = ''
-      pendingAttachments = []
-      ws.send(JSON.stringify({ type: 'done', text: `Sorry, I couldn't process that attachment. ${err.message}`, conversationId }))
-    },
-    onToolCall(tool: string, args: Record<string, unknown>, callId?: string, isError?: boolean, errorMessage?: string) {
-      ws.send(JSON.stringify({ type: 'tool_call', tool, args, conversationId }))
-      fireToolCallLog({ tenantId, conversationId: conversationId ?? '', userId: internalUserId, toolName: tool, success: !isError, latencyMs: 0, args, errorMessage })
-    },
-  })
+  let streamingActive = false
 
   sessions.set(sessionId, {
     ws,
@@ -147,16 +39,7 @@ async function handleSession(
     getConversationId: () => conversationId,
     getPendingUserMessage: () => pendingUserMessage,
     getPendingAttachments: () => pendingAttachments,
-  })
-
-  const connectPromise = openClaw.connect()
-  connectPromise.then(() => {
-    console.log(`[session:${sessionId}] user=${userId} (${email ?? 'no email'}) connected`)
-  }).catch((err: Error) => {
-    console.error(`[session:${sessionId}] openclaw connect failed:`, err.message)
-    ws.send(JSON.stringify({ type: 'error', message: 'Gateway unavailable' }))
-    ws.close()
-  })
+  } as RelaySessionCtx)
 
   ws.on('message', (data: RawData) => {
     let body: Record<string, unknown>
@@ -166,153 +49,190 @@ async function handleSession(
       return
     }
 
-    // Handle approval/dismiss responses from the frontend
-    if (body.type === 'approve' || body.type === 'dismiss') {
-      const approvalId = typeof body.approvalId === 'string' ? body.approvalId.trim() : ''
-      if (!approvalId) {
-        console.warn(`[session:${sessionId}] ${body.type} received without approvalId`)
-        return
-      }
-      if (body.type === 'approve') {
-        console.log(`[session:${sessionId}] approve approvalId=${approvalId}`)
-        openClaw.resolveApproval(approvalId, 'allow-once')
-      } else {
-        console.log(`[session:${sessionId}] dismiss approvalId=${approvalId}`)
-        openClaw.resolveApproval(approvalId, 'deny')
-      }
-      return
-    }
+    if (body.type === 'ping') return
 
     const rawWsMessage = typeof body.message === 'string' ? body.message.trim() : ''
     console.log(`[session:${sessionId}] raw body:`, JSON.stringify(body))
     console.log(`[session:${sessionId}] firstMessage=${firstMessage} message=${JSON.stringify(rawWsMessage)} agentId=${typeof body.agentId === 'string' ? body.agentId : '(missing)'}`)
     const attachments0 = Array.isArray(body.attachments) ? body.attachments : []
     if (!rawWsMessage && attachments0.length === 0) return
+
     const { sanitized: filteredWsMsg, detections: wsPiiDetections } = filterPII(rawWsMessage)
     if (wsPiiDetections.length > 0) {
       console.log(`[pii-filter] ws sessionId=${sessionId} masked: ${wsPiiDetections.map(d => `${d.type}×${d.count}`).join(' ')}`)
     }
-    let effectiveMessage = filteredWsMsg || '[voice message]'
+    const effectiveMessage = filteredWsMsg || '[voice message]'
     const agentId = typeof body.agentId === 'string' ? body.agentId : ''
-    const attachments = attachments0
-    if (attachments.length > 0) {
-      console.log('[debug] attachments received:', JSON.stringify(
-        attachments.map((a: Record<string, unknown>) => ({
-          name: a.name,
-          type: a.type,
-          hasPresignedUrl: !!a.presignedUrl,
-          presignedUrlPrefix: typeof a.presignedUrl === 'string' ? a.presignedUrl.slice(0, 50) : null
-        }))
-      ))
-    }
-    if (firstMessage) {
-      firstMessage = false
-      if (agentId) openClaw.setActorId(agentId)
-      const incomingConversationId = body.conversationId as string | undefined
-      const modelFetch = agentId
-        ? fetchAgentModelId(agentId).catch((err: Error) => {
-            console.error(`[session:${sessionId}] fetchAgentModelId error:`, err.message)
-            return null
-          })
-        : Promise.resolve(null)
 
-      const applyModelOverride = (modelId: string | null): void => {
-        if (modelId) {
-          console.log(`[session] model override: ${modelId}`)
-          openClaw.patchSessionModel(modelId)
-        } else {
-          console.log('[session] using default model')
+    pendingUserMessage = effectiveMessage
+    pendingAttachments = (attachments0 as Array<{ fileId?: string; name: string; type: string; size?: number }>)
+      .map(({ fileId, name, type, size }) => ({
+        fileId,
+        name: name ?? fileId ?? 'attachment',
+        type: type ?? '',
+        size,
+      }))
+
+    ;(async () => {
+      let mcpClient: ReturnType<typeof getMCPClientForTenant> | null = null
+      try {
+        if (firstMessage) {
+          firstMessage = false
+          const incomingConversationId = body.conversationId as string | undefined
+          if (incomingConversationId) {
+            conversationId = incomingConversationId
+            console.log(`[session:${sessionId}] continuing conversation ${conversationId}`)
+          } else {
+            conversationId = await createConversation(apiToken, agentId)
+            console.log(`[session:${sessionId}] created conversation ${conversationId}`)
+          }
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ready', conversationId }))
+          }
         }
-      }
 
-      if (incomingConversationId) {
-        console.log(`[session:${sessionId}] continuing existing conversation ${incomingConversationId}`)
-        conversationId = incomingConversationId
-        Promise.all([connectPromise, modelFetch]).then(([, modelId]) => {
-          applyModelOverride(modelId)
-          console.log(`[session:${sessionId}] readyPromise resolved`)
-          resolveReady()
-          ws.send(JSON.stringify({ type: 'ready', conversationId }))
-        }).catch((err: Error) => {
-          console.error(`[session:${sessionId}] session setup failed:`, err?.message)
-          resolveReady()
-          ws.send(JSON.stringify({ type: 'error', message: 'Session setup failed', conversationId }))
-          ws.close()
-        })
-      } else {
-        console.log(`[session:${sessionId}] creating new conversation`)
-        Promise.all([
-          connectPromise,
-          createConversation(apiToken, agentId).then((id) => {
-            conversationId = id
-            console.log(`[session:${sessionId}] createConversation result conversationId=${id}`)
-          }),
-          modelFetch,
-        ]).then(([, , modelId]) => {
-          applyModelOverride(modelId)
-          console.log(`[session:${sessionId}] readyPromise resolved`)
-          resolveReady()
-          ws.send(JSON.stringify({ type: 'ready', conversationId }))
-        }).catch((err: Error) => {
-          console.error(`[session:${sessionId}] session setup failed:`, err?.message)
-          resolveReady()
-          ws.send(JSON.stringify({ type: 'error', message: 'Session setup failed', conversationId }))
-          ws.close()
-        })
-      }
-    }
-    readyPromise.then(async () => {
-      pendingUserMessage = effectiveMessage
-      pendingAttachments = (attachments as Array<{ fileId?: string; name: string; type: string; size?: number }>)
-        .map(({ fileId, name, type, size }) => ({ fileId, name: name ?? fileId ?? 'attachment', type: type ?? '', size }))
-      if (!userId) {
-        console.error('[session] missing userId — cannot establish per-user session key')
-        ws.close()
-        return
-      }
-      const ocSessionKey = conversationId
-        ? `agent:main:direct:${userId.toLowerCase()}:${conversationId}`
-        : `agent:main:direct:${userId.toLowerCase()}`
+        if (streamingActive) {
+          console.warn(`[session:${sessionId}] message received while stream active — dropped`)
+          return
+        }
+        streamingActive = true
 
-      const sessionContext = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
-      effectiveMessage = sessionContext + effectiveMessage
+        const workingMemory = await fetchWorkingMemory(tenantId)
+        const memPreamble = workingMemory
+          ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
+          : ''
+        if (workingMemory) console.log(`[session:${sessionId}] injected working memory tenantId=${tenantId}`)
 
-      const mediaAttachments = attachments.filter(
-        (a: any) =>
+        const sessionContext = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
+
+        const mediaAttachments = (attachments0 as any[]).filter((a: any) =>
           a.type?.startsWith('image/') ||
           a.type?.startsWith('video/') ||
           a.type?.startsWith('audio/') ||
           a.type === 'application/pdf' ||
           a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      )
-      if (mediaAttachments.length > 0) {
-        const downloaded = (await Promise.all(
-          mediaAttachments.map((a: any) => downloadMediaAttachment(a, sessionId))
-        ))
-          .filter((d): d is DownloadedMedia | DownloadedMedia[] => d !== null)
-          .flatMap(d => Array.isArray(d) ? d : [d])
-        // text/plain (extracted from PDF/DOCX) must be injected into the message —
-        // OpenClaw only forwards image/* attachments to Claude; text/plain is dropped
-        const textDocs = downloaded.filter(d => d.mimeType === 'text/plain')
-        const imageAttachments = downloaded
-          .filter(d => d.mimeType !== 'text/plain')
-          .map(d => ({ name: d.name, mimeType: d.mimeType, content: d.base64 }))
-        let finalMessage = effectiveMessage
-        for (const doc of textDocs) {
-          const text = Buffer.from(doc.base64.replace(/^data:text\/plain;base64,/, ''), 'base64').toString('utf8')
-          finalMessage = `[File: ${doc.name} | path: ${doc.filePath}]\n${text}\n\n${finalMessage}`
+        )
+
+        type ContentPart =
+          | { type: 'text'; text: string }
+          | { type: 'image'; image: string; mimeType: string }
+
+        let mastraMessage: string | { role: 'user'; content: ContentPart[] }
+
+        if (mediaAttachments.length > 0) {
+          const downloaded = (await Promise.all(
+            mediaAttachments.map((a: any) => downloadMediaAttachment(a, sessionId))
+          ))
+            .filter((d): d is DownloadedMedia | DownloadedMedia[] => d !== null)
+            .flatMap(d => Array.isArray(d) ? d : [d])
+
+          const textDocs = downloaded.filter(d => d.mimeType === 'text/plain')
+          const imageFiles = downloaded.filter(d => d.mimeType !== 'text/plain')
+
+          let finalMessage = memPreamble + sessionContext + effectiveMessage
+          for (const doc of textDocs) {
+            const text = Buffer.from(doc.base64.replace(/^data:text\/plain;base64,/, ''), 'base64').toString('utf8')
+            finalMessage = `[File: ${doc.name} | path: ${doc.filePath}]\n${text}\n\n${finalMessage}`
+          }
+
+          console.log(`[session:${sessionId}] ${imageFiles.length} image attachment(s), ${textDocs.length} doc(s) injected`)
+
+          if (imageFiles.length > 0) {
+            const parts: ContentPart[] = imageFiles.map(img => ({
+              type: 'image' as const,
+              image: img.base64.replace(/^data:[^;]+;base64,/, ''),
+              mimeType: img.mimeType,
+            }))
+            parts.push({ type: 'text', text: finalMessage })
+            mastraMessage = { role: 'user', content: parts }
+          } else {
+            mastraMessage = finalMessage
+          }
+        } else {
+          mastraMessage = memPreamble + sessionContext + effectiveMessage
         }
-        console.log(`[session:${sessionId}] sending ${imageAttachments.length} image attachment(s), ${textDocs.length} doc(s) injected into message`)
-        openClaw.sendMessage(finalMessage, imageAttachments, ocSessionKey)
-      } else {
-        openClaw.sendMessage(effectiveMessage, [], ocSessionKey)
+
+        const requestContext = new RequestContext()
+        requestContext.set(MASTRA_RESOURCE_ID_KEY, tenantId)
+        requestContext.set(MASTRA_THREAD_ID_KEY, conversationId ?? crypto.randomUUID())
+        requestContext.set('tenantId', tenantId)
+        requestContext.set('agentId', agentId)
+        mcpClient = getMCPClientForTenant(tenantId)
+        requestContext.set('__mcpClient', mcpClient as any)
+
+        console.log(`[session:${sessionId}] streaming via platformAgent conversationId=${conversationId}`)
+
+        const agentStream = await (platformAgent as any).stream(mastraMessage, {
+          memory: { thread: conversationId ?? crypto.randomUUID(), resource: tenantId },
+          requestContext,
+        })
+
+        let fullText = ''
+        let deltasSent = 0
+
+        for await (const part of agentStream.fullStream as AsyncIterable<any>) {
+          if (ws.readyState !== WebSocket.OPEN) break
+          switch (part.type) {
+            case 'text-delta': {
+              const text = (part.payload?.text ?? part.textDelta ?? '') as string
+              fullText += text
+              deltasSent++
+              ws.send(JSON.stringify({ type: 'delta', text, conversationId }))
+              break
+            }
+            case 'tool-call': {
+              const p = part.payload ?? part
+              const toolName = (p.toolName ?? '') as string
+              const args = (p.args ?? {}) as Record<string, unknown>
+              const toolCallId = (p.toolCallId ?? toolName) as string
+              ws.send(JSON.stringify({ type: 'tool_call', toolName, toolCallId, args, conversationId }))
+              fireToolCallLog({
+                tenantId,
+                conversationId: conversationId ?? '',
+                userId: internalUserId,
+                toolName,
+                success: true,
+                latencyMs: 0,
+                args,
+              })
+              break
+            }
+          }
+        }
+
+        if (ws.readyState !== WebSocket.OPEN) return
+
+        if (deltasSent === 0 && fullText) {
+          ws.send(JSON.stringify({ type: 'delta', text: fullText, conversationId }))
+        }
+
+        ws.send(JSON.stringify({ type: 'done', text: fullText, conversationId }))
+
+        const userMsg = pendingUserMessage
+        pendingUserMessage = ''
+        if (conversationId) {
+          saveUserMessage(apiToken, conversationId, userMsg, pendingAttachments)
+          pendingAttachments = []
+          saveAssistantMessage(apiToken, conversationId, fullText)
+        }
+      } catch (err) {
+        console.error(`[session:${sessionId}] stream error:`, (err as Error).message)
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Internal server error', conversationId }))
+        }
+      } finally {
+        streamingActive = false
+        if (mcpClient) {
+          mcpClient.disconnect().catch((e: Error) =>
+            console.error(`[session:${sessionId}] mcpClient disconnect error:`, e.message)
+          )
+        }
       }
-    })
+    })()
   })
 
   ws.on('close', () => {
     sessions.delete(sessionId)
-    openClaw.close()
     console.log(`[session:${sessionId}] closed`)
   })
 }

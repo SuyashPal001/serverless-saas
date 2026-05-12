@@ -8,10 +8,12 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { WebSocket } from 'ws'
 import { validateToken } from './auth.js'
-import { OpenClawClient } from './openclaw.js'
+
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
 import { fetchAgentModelId, fetchAgentSlug, fetchAgentSkill, checkMessageQuota, checkTokenQuota, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage, fetchWorkingMemory, getPool } from './usage.js'
-import { runMastraWorkflow, createTenantAgent, mastra } from './mastra/index.js'
+import { runMastraWorkflow, createTenantAgent, mastra, platformAgent } from './mastra/index.js'
+import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
+import { getMCPClientForTenant } from './mastra/tools.js'
 import type { WorkflowContext } from './mastra/index.js'
 import { taskExecutionWorkflow } from './mastra/workflows/taskExecution.js'
 import { MastraServer } from '@mastra/hono'
@@ -19,16 +21,6 @@ import { rewriteQuery } from './rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from './rag/relevanceGate.js'
 import { filterPII } from './pii-filter.js'
 
-// Zod schema for OpenClaw step output validation.
-// All fields optional — schema primarily catches non-object garbage from the LLM.
-const OpenClawStepOutputSchema = z.object({
-  status: z.enum(['done', 'needs_clarification', 'failed']).optional(),
-  summary: z.string().optional(),
-  reasoning: z.string().optional(),
-  question: z.string().optional(),
-  toolCalled: z.string().optional(),
-  toolResult: z.unknown().optional(),
-})
 
 interface Attachment {
   fileId?: string
@@ -1154,257 +1146,6 @@ async function runMastraTaskSteps(
   }
 }
 
-async function runTaskSteps(
-  taskId: string,
-  agentId: string,
-  tenantId: string,
-  steps: TaskStep[],
-  taskTitle: string,
-  taskDescription: string,
-  agentName: string,
-  referenceText?: string | null,
-  links?: string[] | null,
-  attachmentContext?: string | null,
-  traceId: string = crypto.randomUUID()
-): Promise<void> {
-  const sorted = [...steps].sort((a, b) => a.stepOrder - b.stepOrder)
-  const completedSteps: CompletedStep[] = []
-
-  // Quota guard — re-checked here because the endpoint already returned 200 (fire-and-forget).
-  // If quota was consumed between the endpoint check and this execution, fail the task cleanly.
-  const quota = await checkMessageQuota(tenantId)
-  if (!quota.allowed) {
-    console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
-    await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' }, traceId)
-    return
-  }
-
-  let gatewayUrl: string
-  try {
-    gatewayUrl = await resolveGatewayUrl(tenantId, agentId)
-  } catch (err) {
-    console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} resolveGatewayUrl failed:`, (err as Error).message)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: (err as Error).message }, traceId)
-    return
-  }
-
-  for (const step of sorted) {
-    // Re-fetch comments at the top of each step so mid-execution user comments are picked up immediately
-    const comments = await fetchTaskComments(taskId)
-
-    const { id: stepId } = step
-    console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} starting order=${step.stepOrder}`)
-
-    // 2a. Signal step start to Lambda
-    await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/start`, {}, traceId)
-
-    // 2b–2c. Build prompt, send to OpenClaw, collect streamed result
-    let agentOutput = ''
-    let stepError: string | null = null
-    let deltaAccumulated = ''
-    const toolCallStartTimes = new Map<string, number>()
-    let hasThinkingFired = false
-    let actualToolUsed: string | null = null
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        let oc: OpenClawClient
-        oc = new OpenClawClient({
-          tenantId,
-          actorId: agentId,
-          gatewayUrl,
-          onDelta(text: string) {
-            if (!hasThinkingFired) {
-              hasThinkingFired = true
-              fireTaskStepEvent(taskId, stepId, { type: 'task.step.thinking', tenantId })
-            }
-            deltaAccumulated += text
-            fireTaskStepDelta(taskId, stepId, tenantId, text, deltaAccumulated)
-          },
-          onToolCallStart(tool: string, args: Record<string, unknown>, callId?: string) {
-            if (callId) toolCallStartTimes.set(callId, Date.now())
-            const toolInput = JSON.stringify(args).slice(0, 100)
-            fireTaskStepEvent(taskId, stepId, { type: 'task.step.tool_call', toolName: tool, toolInput, tenantId })
-          },
-          onToolCall(tool: string, _args: Record<string, unknown>, callId?: string, isError?: boolean, errorMessage?: string) {
-            const startTime = callId ? toolCallStartTimes.get(callId) : undefined
-            const durationMs = startTime !== undefined ? Date.now() - startTime : undefined
-            if (callId) toolCallStartTimes.delete(callId)
-            // Track actual tool used — last tool wins for multi-tool steps.
-            // Compared against step.toolName at completion to detect plan deviation.
-            actualToolUsed = tool
-            // If onToolCallStart never fired (agent stream path) emit the call event now
-            if (!startTime) {
-              fireTaskStepEvent(taskId, stepId, { type: 'task.step.tool_call', toolName: tool, tenantId })
-            }
-            fireTaskStepEvent(taskId, stepId, {
-              type: 'task.step.tool_result',
-              toolName: tool,
-              durationMs,
-              resultSummary: isError ? (errorMessage ?? 'Error') : 'Completed',
-              tenantId,
-            })
-          },
-          onDone(fullText) {
-            agentOutput = fullText
-            deltaAccumulated = ''
-            oc.close()
-            resolve()
-          },
-          onClose() {
-            // If close fires without onDone (unexpected disconnect)
-            if (!agentOutput) {
-              reject(new Error('OpenClaw closed without response'))
-            } else {
-              resolve()
-            }
-          },
-          onError(err) {
-            reject(err)
-          },
-        })
-
-        const sessionKey = `tasks:${taskId}:${stepId}`
-        const prompt = buildStepPrompt(step, taskTitle, taskDescription, completedSteps, comments, referenceText, links, attachmentContext)
-        oc.connect()
-          .then(async () => {
-            const mcpServers = await fetchTenantMcpServers(tenantId)
-            console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} mounting ${mcpServers.length} MCP server(s): ${mcpServers.map(s => s.provider).join(', ') || 'none'}`)
-            const mcpList = [
-              { url: CONTAINER_MCP_BASE_URL, headers: { 'x-tenant-id': tenantId } },
-              ...mcpServers.map(s => ({ url: s.mcpServerUrl, headers: { 'x-tenant-id': tenantId } })),
-            ]
-            await oc.patchSessionMcp(mcpList)
-            oc.sendMessage(prompt, [], sessionKey)
-          })
-          .catch(reject)
-      })
-    } catch (err) {
-      stepError = (err as Error).message
-    }
-
-    // 2e. OpenClaw error → post comment, fail step and halt
-    if (stepError) {
-      console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} error: ${stepError}`)
-      await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${stepError}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: stepError }, traceId)
-      return
-    }
-
-    // Empty response treated as failure
-    if (!agentOutput) {
-      const errMsg = 'Agent returned empty response'
-      console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} ${errMsg}`)
-      await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
-      return
-    }
-
-    // 2e. Parse structured JSON output from LLM
-    let parsedOutput: { reasoning: string; toolRationale: string; results: Array<{ title: string; url: string; description: string }>; summary: string } | null = null
-    try {
-      // Strip markdown code fences if present (same logic as extractPlanJson for the planning path)
-      const codeBlockMatch = agentOutput.match(/```(?:json)?\s*([\s\S]*?)```/)
-      const jsonText = codeBlockMatch ? codeBlockMatch[1].trim() : agentOutput.trim()
-      try {
-        parsedOutput = JSON.parse(jsonText)
-      } catch {
-        // Full-text parse failed — extract outermost { } using indexOf/lastIndexOf
-        // (avoids the greedy /\{[\s\S]*\}/ regex that over-captures when prose surrounds the JSON)
-        const start = jsonText.indexOf('{')
-        const end = jsonText.lastIndexOf('}')
-        if (start !== -1 && end > start) {
-          parsedOutput = JSON.parse(jsonText.slice(start, end + 1))
-        } else {
-          console.warn(`[tasks] stepId=${stepId} LLM did not return valid JSON — falling back to raw text`)
-        }
-      }
-    } catch {
-      console.warn(`[tasks] stepId=${stepId} LLM did not return valid JSON — falling back to raw text`)
-    }
-
-    // Validate parsed output against OpenClaw step output schema.
-    // Catches non-object garbage (arrays, bare strings) that JSON.parse accepts but
-    // downstream code cannot safely destructure.
-    if (parsedOutput !== null) {
-      const schemaValidation = OpenClawStepOutputSchema.safeParse(parsedOutput)
-      if (!schemaValidation.success) {
-        if (step.toolName) {
-          const errMsg = 'Step output failed schema validation'
-          console.error(`[relay] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} schema validation failed: ${JSON.stringify(schemaValidation.error.issues)}`)
-          await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-          await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
-          return
-        } else {
-          console.warn(`[relay] step output schema warning — accepting raw text for reasoning step stepId=${stepId}: ${JSON.stringify(schemaValidation.error.issues)}`)
-        }
-      }
-    }
-
-    // Tool-using steps must return structured JSON — raw prose means the model ignored the
-    // output format. Fail the step so the user gets actionable feedback instead of silent
-    // garbage flowing into the task summary.
-    if (parsedOutput === null && step.toolName) {
-      const errMsg = `Step output was not valid JSON (tool="${step.toolName}" requires structured output)`
-      console.error(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} non-JSON tool output: ${errMsg}`)
-      await postTaskComment(taskId, `❌ I got stuck on step '${step.title}': ${errMsg}. Please provide more context.`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/fail`, { error: errMsg }, traceId)
-      return
-    }
-
-    const reasoning = parsedOutput?.reasoning ?? ''
-    const toolRationale = parsedOutput?.toolRationale ?? ''
-    const results = parsedOutput?.results ?? []
-    const summary = parsedOutput?.summary ?? agentOutput
-
-    // 2f. Clarification signal → post comment, relay question and halt
-    // Check 1: NEEDS_CLARIFICATION string in the summary field
-    const clarificationQuestion = extractClarificationQuestion(summary)
-    if (clarificationQuestion) {
-      console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (string signal)`)
-      await postTaskComment(taskId, `🤔 I need clarification: ${clarificationQuestion}`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: [clarificationQuestion] }, traceId)
-      return
-    }
-    // Check 2: planning-style { clarificationNeeded: true, questions: [...] } — model sometimes uses
-    // this format even in step responses because it mirrors the planning prompt format
-    const planStyleClarification = extractPlanJson(agentOutput)
-    if (planStyleClarification && 'clarificationNeeded' in planStyleClarification) {
-      const questions = planStyleClarification.questions ?? []
-      const question = questions[0] ?? 'Agent needs clarification before proceeding.'
-      console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} clarification needed (plan-style signal)`)
-      await postTaskComment(taskId, `🤔 I need clarification: ${question}`, agentId)
-      await callInternalTaskApi(`/internal/tasks/${taskId}/clarify`, { questions: questions.length > 0 ? questions : [question] }, traceId)
-      return
-    }
-
-    // 2d. Step succeeded
-    if (actualToolUsed && actualToolUsed !== step.toolName) {
-      console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} tool deviation: planned="${step.toolName}" actual="${actualToolUsed}"`)
-    }
-    console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} stepId=${stepId} complete`)
-    completedSteps.push({ title: step.title, agentOutput, results, reasoning, summary })
-    await callInternalTaskApi(`/internal/tasks/${taskId}/steps/${stepId}/complete`, {
-      agentOutput,
-      reasoning,
-      toolRationale,
-      actualToolUsed,
-      toolResult: { text: summary, results },
-    }, traceId)
-  }
-
-  // 3. All steps done — post summary comment then complete
-  console.log(`[tasks] tenantId=${tenantId} taskId=${taskId} all steps complete`)
-  const summary = completedSteps
-    .map((s, i) => {
-      const preview = s.agentOutput.length > 200 ? s.agentOutput.slice(0, 200) + '...' : s.agentOutput
-      return `${i + 1}. ${s.title}: ${preview}`
-    })
-    .join('\n')
-  await postTaskComment(taskId, `✅ All steps completed. Here's what I did:\n${summary}`, agentId)
-  await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary }, traceId)
-}
 
 app.post('/api/tasks/execute', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
@@ -1459,16 +1200,9 @@ app.post('/api/tasks/execute', async (c) => {
   console.log(JSON.stringify({ level: 'info', msg: 'task execution started', traceId, taskId, tenantId, steps: steps.length, ts: Date.now() }))
 
   // 4. Fire-and-forget — return 200 immediately; step loop runs async
-  const USE_MASTRA = process.env.USE_MASTRA_TASKS === 'true'
-  if (USE_MASTRA) {
-    runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId).catch((err: Error) => {
-      console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
-    })
-  } else {
-    runTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, traceId).catch((err: Error) => {
-      console.error(JSON.stringify({ level: 'error', msg: 'task unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
-    })
-  }
+  runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId).catch((err: Error) => {
+    console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
+  })
 
   return c.json({ ok: true, taskId })
 })
@@ -2213,8 +1947,6 @@ app.post('/api/chat', async (c) => {
   const rawMessage = typeof body.message === 'string' ? body.message.trim() : ''
   const attachments: Attachment[] = Array.isArray(body.attachments) ? body.attachments : []
   const agentId = typeof (body as Record<string, unknown>).agentId === 'string' ? (body as Record<string, unknown>).agentId as string : ''
-  const hasMcpIntegrations = (body as Record<string, unknown>).hasMcpIntegrations === true
-
   const bodyTenantId = typeof (body as Record<string, unknown>).tenantId === 'string'
     ? (body as Record<string, unknown>).tenantId as string
     : ''
@@ -2265,7 +1997,6 @@ app.post('/api/chat', async (c) => {
   }
 
   const sessionId = crypto.randomUUID()
-  const ocSessionKey = `agent:main:direct:${userId.toLowerCase()}:${conversationId}`
 
   console.log(`[sse:${sessionId}] user=${userId} conversationId=${conversationId}`)
 
@@ -2278,7 +2009,6 @@ app.post('/api/chat', async (c) => {
   let inputTokens = 0
   let outputTokens = 0
   let costUsd: number | undefined
-  let messageSent = false
   // Deferred metrics payload — populated in onDone, fired in onTokens (or fallback timeout)
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
@@ -2292,9 +2022,6 @@ app.post('/api/chat', async (c) => {
   const encoder = new TextEncoder()
   let streamClosed = false
   let streamController!: ReadableStreamDefaultController<Uint8Array>
-  // Hold reference so cancel() can close it even if connect is still in flight
-  let openClaw: OpenClawClient | null = null
-
   const sendEvent = (event: string, data: object): void => {
     if (streamClosed) return
     try {
@@ -2318,171 +2045,24 @@ app.post('/api/chat', async (c) => {
       streamController = controller
     },
     cancel() {
-      // Client disconnected mid-stream — clean up OpenClaw
-      console.log(`[sse:${sessionId}] client disconnected, closing openclaw`)
+      console.log(`[sse:${sessionId}] client disconnected`)
       streamClosed = true
       sseApprovalChannels.delete(sessionId)
-      openClaw?.close()
     },
   })
 
-  // Kick off gateway URL resolution in parallel with stream setup — awaited inside the IIFE
-  const gatewayUrlPromise = resolveGatewayUrl(tenantId, agentId)
-
   // 4. Async handler — runs concurrently while response is streaming
   ;(async () => {
+    let mcpClient: ReturnType<typeof getMCPClientForTenant> | null = null
     try {
-      const gatewayUrl = await gatewayUrlPromise
-      openClaw = new OpenClawClient({
-        tenantId,
-        actorId: userId,
-        gatewayUrl,
-        onDelta(text: string) {
-          sendEvent('delta', { text, conversationId })
-        },
-        onToolCall(tool: string, args: Record<string, unknown>, callId?: string, isError?: boolean, errorMessage?: string) {
-          sendEvent('tool_call', { toolName: tool, toolCallId: callId ?? tool, args, conversationId })
-          if (tool === 'retrieve_documents') ragFired = true
-          fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName: tool, success: !isError, latencyMs: Date.now() - startTime, args, errorMessage })
-        },
-        onTokens(input: number, output: number, incomingCostUsd?: number) {
-          inputTokens = input
-          outputTokens = output
-          totalTokens = input + output
-          costUsd = incomingCostUsd
-          // sessions.changed arrived — now we have accurate token counts; flush metrics
-          if (pendingMetrics) {
-            pendingMetrics.inputTokens = inputTokens
-            pendingMetrics.outputTokens = outputTokens
-            pendingMetrics.totalTokens = totalTokens
-            pendingMetrics.costUsd = costUsd
-          }
-          flushMetrics()
-        },
-        onDone(fullText: string) {
-          if (!messageSent) { console.warn('[sse] ignoring stale done before sendMessage'); return; }
-          const messageId = crypto.randomUUID()
-          const responseTimeMs = Date.now() - startTime
-
-          // Collect RAG chunk data now that /rag/retrieve has completed.
-          // Check lastRagResult unconditionally — onToolCall may never fire when OpenClaw
-          // delivers the response via session.message (webchat path) without agent stream events.
-          const cached = lastRagResult.get(tenantId)
-          if (cached && Date.now() - cached.ts < 60_000) {
-            ragFired = true
-            ragChunksRetrieved = cached.count
-            ragChunks = cached.chunks
-          }
-          if (ragFired && (ragChunksRetrieved === 0 || (cached && cached.topScore < 0.5))) {
-            fireKnowledgeGap({ tenantId, conversationId, query: message, ragScore: cached?.topScore ?? 0 })
-          }
-
-          sendEvent('done', { text: fullText, conversationId, messageId })
-          const atts = attachments.map(a => ({
-            fileId: a.fileId,
-            name: a.name ?? a.fileId ?? 'attachment',
-            type: a.type ?? '',
-            size: a.size,
-          }))
-          saveUserMessage(idToken, conversationId, message, atts)
-          saveAssistantMessage(idToken, conversationId, fullText)
-
-          // Stage metrics — fired by onTokens when sessions.changed arrives, or by fallback timeout
-          pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
-          if (ragFired) {
-            pendingEval = { conversationId, messageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }
-          }
-          // Fallback: if sessions.changed hasn't arrived within 5 s, fire with whatever tokens we have
-          setTimeout(flushMetrics, 5_000)
-
-          openClaw?.close()
-          closeStream()
-        },
-        onClose() {
-          closeStream()
-        },
-        onError(err: Error) {
-          console.error(`[sse:${sessionId}] openclaw error:`, err.message)
-          sendEvent('error', { message: 'Gateway error', conversationId })
-          closeStream()
-        },
-        onSendError(err: Error) {
-          console.error(`[sse:${sessionId}] chat.send rejected:`, err.message)
-          sendEvent('error', { message: err.message, conversationId })
-          openClaw?.close()
-          closeStream()
-        },
-      })
-
-      // Fetch history and model ID in parallel before connecting — keeps the
-      // subscribe→sendMessage window near-zero, preventing stale done events.
-      let baseMessage = message
-      let modelId: string | null = null
-      try {
-        const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
-
-        if (isInternalCall) {
-          // Internal service calls skip history fetch — no idToken available
-          const resolvedModelId = agentId ? await fetchAgentModelId(agentId).catch(() => null) : null
-          modelId = resolvedModelId
-          baseMessage = sessionCtx + message
-        } else {
-          const [history, resolvedModelId] = await Promise.all([
-            fetchConversationHistory(conversationId, idToken),
-            agentId ? fetchAgentModelId(agentId).catch((err: Error) => {
-              console.error(`[sse:${sessionId}] fetchAgentModelId error:`, err.message)
-              return null
-            }) : Promise.resolve(null),
-          ])
-          modelId = resolvedModelId
-          console.log(`[sse:${sessionId}] fetched ${history.length} history messages`)
-          const historyContext = formatHistoryForContext(history)
-          baseMessage = sessionCtx + (historyContext ? historyContext + message : message)
-        }
-      } catch (err) {
-        if ((err as Error).message === 'AUTH_EXPIRED') {
-          sendEvent('auth_expired', {})
-          closeStream()
-          return
-        }
-        console.warn(`[sse:${sessionId}] history fetch failed — sending without history:`, (err as Error).message)
-        const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
-        baseMessage = sessionCtx + message
-      }
-
-      await openClaw.connect()
-      console.log(`[sse:${sessionId}] openclaw connected`)
-
       const workingMemory = await fetchWorkingMemory(tenantId)
-      if (workingMemory) {
-        openClaw.prependSystemContext(
-          `[AGENT MEMORY]\nYou have remembered the following ` +
-          `about this tenant from previous sessions:\n` +
-          `${workingMemory}`
-        )
-        console.log(`[sse:${sessionId}] injected working memory for tenantId=${tenantId}`)
-      }
+      const memPreamble = workingMemory
+        ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
+        : ''
+      if (workingMemory) console.log(`[sse:${sessionId}] injected working memory tenantId=${tenantId}`)
 
-      if (modelId) {
-        console.log(`[sse:${sessionId}] model override: ${modelId}`)
-        openClaw.patchSessionModel(modelId)
-      } else {
-        console.log(`[sse:${sessionId}] using default model`)
-      }
+      const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
 
-      const mcpServerUrl = process.env.MCP_SERVER_URL
-      if (hasMcpIntegrations && mcpServerUrl) {
-        console.log(`[sse:${sessionId}] patching mcp server: ${mcpServerUrl}`)
-        await openClaw.patchSessionMcp([{ url: mcpServerUrl, headers: { 'x-tenant-id': tenantId, 'x-relay-session-id': sessionId } }])
-      }
-
-      // If client already disconnected during connect, bail out
-      if (streamClosed) {
-        openClaw.close()
-        return
-      }
-
-      // Download and process media attachments (same as WS flow)
       const mediaAttachments = attachments.filter(
         (a) =>
           a.type?.startsWith('image/') ||
@@ -2492,6 +2072,12 @@ app.post('/api/chat', async (c) => {
           a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       )
 
+      type ContentPart =
+        | { type: 'text'; text: string }
+        | { type: 'image'; image: string; mimeType: string }
+
+      let mastraMessage: string | { role: 'user'; content: ContentPart[] }
+
       if (mediaAttachments.length > 0) {
         const downloaded = (await Promise.all(
           mediaAttachments.map((a) => downloadMediaAttachment(a, sessionId))
@@ -2500,32 +2086,126 @@ app.post('/api/chat', async (c) => {
           .flatMap(d => Array.isArray(d) ? d : [d])
 
         const textDocs = downloaded.filter(d => d.mimeType === 'text/plain')
-        const imageAttachments = downloaded
-          .filter(d => d.mimeType !== 'text/plain')
-          .map(d => ({ name: d.name, mimeType: d.mimeType, content: d.base64 }))
+        const imageFiles = downloaded.filter(d => d.mimeType !== 'text/plain')
 
-        let finalMessage = baseMessage
+        let finalMessage = memPreamble + sessionCtx + message
         for (const doc of textDocs) {
           const text = Buffer.from(doc.base64.replace(/^data:text\/plain;base64,/, ''), 'base64').toString('utf8')
           finalMessage = `[File: ${doc.name} | path: ${doc.filePath}]\n${text}\n\n${finalMessage}`
         }
 
-        console.log(`[sse:${sessionId}] sending ${imageAttachments.length} image attachment(s), ${textDocs.length} doc(s) injected into message`)
-        messageSent = true
-        openClaw.sendMessage(finalMessage, imageAttachments, ocSessionKey)
+        console.log(`[sse:${sessionId}] ${imageFiles.length} image attachment(s), ${textDocs.length} doc(s) injected into message`)
+
+        if (imageFiles.length > 0) {
+          const parts: ContentPart[] = imageFiles.map(img => ({
+            type: 'image' as const,
+            image: img.base64.replace(/^data:[^;]+;base64,/, ''),
+            mimeType: img.mimeType,
+          }))
+          parts.push({ type: 'text', text: finalMessage })
+          mastraMessage = { role: 'user', content: parts }
+        } else {
+          mastraMessage = finalMessage
+        }
       } else {
-        messageSent = true
-        openClaw.sendMessage(baseMessage, [], ocSessionKey)
+        mastraMessage = memPreamble + sessionCtx + message
       }
+
+      if (streamClosed) return
+
+      const requestContext = new RequestContext()
+      requestContext.set(MASTRA_RESOURCE_ID_KEY, tenantId)
+      requestContext.set(MASTRA_THREAD_ID_KEY, conversationId)
+      requestContext.set('tenantId', tenantId)
+      requestContext.set('agentId', agentId)
+      mcpClient = getMCPClientForTenant(tenantId)
+      requestContext.set('__mcpClient', mcpClient as any)
+
+      console.log(`[sse:${sessionId}] streaming via platformAgent tenantId=${tenantId} conversationId=${conversationId}`)
+
+      const agentStream = await (platformAgent as any).stream(mastraMessage, {
+        memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId },
+        requestContext,
+      })
+
+      let fullText = ''
+
+      for await (const part of agentStream.fullStream as AsyncIterable<any>) {
+        if (streamClosed) break
+        switch (part.type) {
+          case 'text-delta': {
+            const text = (part.payload?.text ?? part.textDelta ?? '') as string
+            fullText += text
+            sendEvent('delta', { text, conversationId })
+            break
+          }
+          case 'tool-call': {
+            const p = part.payload ?? part
+            const toolName = (p.toolName ?? '') as string
+            const args = (p.args ?? {}) as Record<string, unknown>
+            const toolCallId = (p.toolCallId ?? toolName) as string
+            sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
+            if (toolName === 'retrieve_documents') ragFired = true
+            fireToolCallLog({
+              tenantId, conversationId, userId: internalUserId,
+              toolName, success: true, latencyMs: Date.now() - startTime, args,
+            })
+            break
+          }
+          case 'finish': {
+            const usage = part.payload?.output?.usage ?? part.usage
+            inputTokens = (usage?.promptTokens as number | undefined) ?? 0
+            outputTokens = (usage?.completionTokens as number | undefined) ?? 0
+            totalTokens = inputTokens + outputTokens
+            break
+          }
+        }
+      }
+
+      const messageId = crypto.randomUUID()
+      const responseTimeMs = Date.now() - startTime
+
+      const cached = lastRagResult.get(tenantId)
+      if (cached && Date.now() - cached.ts < 60_000) {
+        ragFired = true
+        ragChunksRetrieved = cached.count
+        ragChunks = cached.chunks
+      }
+      if (ragFired && (ragChunksRetrieved === 0 || (cached && cached.topScore < 0.5))) {
+        fireKnowledgeGap({ tenantId, conversationId, query: message, ragScore: cached?.topScore ?? 0 })
+      }
+
+      sendEvent('done', { text: fullText, conversationId, messageId })
+
+      const atts = attachments.map(a => ({
+        fileId: a.fileId,
+        name: a.name ?? a.fileId ?? 'attachment',
+        type: a.type ?? '',
+        size: a.size,
+      }))
+      saveUserMessage(idToken, conversationId, message, atts)
+      saveAssistantMessage(idToken, conversationId, fullText)
+
+      pendingMetrics = {
+        conversationId, tenantId, ragFired, ragChunksRetrieved,
+        responseTimeMs, totalTokens, inputTokens, outputTokens,
+        userMessageCount: 1, costUsd,
+      }
+      if (ragFired) {
+        pendingEval = {
+          conversationId, messageId, tenantId,
+          question: message, retrievedChunks: ragChunks, answer: fullText,
+        }
+      }
+      flushMetrics()
+      closeStream()
     } catch (err) {
       const errMsg = (err as Error).message
       console.error(`[sse:${sessionId}] fatal error:`, errMsg)
-      const userMessage = errMsg.startsWith('No container found')
-        ? 'Agent not ready. Please try again.'
-        : 'Internal server error'
-      sendEvent('error', { message: userMessage, conversationId })
-      openClaw?.close()
+      sendEvent('error', { message: 'Internal server error', conversationId })
       closeStream()
+    } finally {
+      if (mcpClient) { mcpClient.disconnect().catch((e: Error) => console.error(`[sse:${sessionId}] mcpClient disconnect error:`, e.message)) }
     }
   })()
 
