@@ -602,12 +602,18 @@ this pattern correctly. The email login page was fixed to match.
 - Default `.env.local` should point to Lambda unless actively developing the API locally
 - `.env.local.example` must document both options with comments
 
-## Agent Relay (March 25, 2026)
+## Agent Relay (May 2026 — Mastra migration)
 - GCP VM relay: `wss://agent-saas.fitnearn.com`
 - Auth: Cognito Access Token via query param `?token=<access_token>`
-- Protocol: OpenClaw (`delta`, `done`, `error`)
-- Message Format: `{ message: '...' }` (plain object)
+- Protocol: Mastra platformAgent (`delta`, `done`, `tool_call`, `error`)
+- Message Format: `{ message: '...', conversationId: '...' }`
 - Heartbeat: `{ type: 'ping' }` every 5 minutes
+- Model: `gemini-2.5-flash` via vertex-proxy (localhost:4001)
+- Memory: Mastra Memory (PostgresStore, mastra schema, Neon DB) — lastMessages: 10
+- Tools: SERVER_TOOLS (`internet_search`, `web_fetch`, `create_plan_from_prd`) + per-tenant MCP tools
+- MCP client: persistent singleton per tenant (no reconnect per message)
+- Thinking budget: dynamic per message — 0 (conversational) / 1024 (Q&A) / 8192 (analysis/code)
+- Mastra Studio: http://localhost:3010 (span-level traces)
 
 ## RAG Architecture (v2 — April 7, 2026)
 

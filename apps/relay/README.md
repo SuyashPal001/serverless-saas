@@ -1,14 +1,51 @@
 # agent-relay
 
-Central relay bridging frontend WebSocket to per-tenant
-OpenClaw Docker containers on the GCP VM.
+WebSocket + SSE relay bridging the frontend to the Mastra `platformAgent` (Saarthi).
+Runs on GCP VM port 3001. Publicly exposed via NGINX at `wss://agent-saas.fitnearn.com`.
 
-Runs on GCP VM port 3001.
-Publicly exposed via NGINX at wss://agent-saas.fitnearn.com
+## Architecture
 
-## Local development
-cp .env.example .env  # fill in values
-npm run dev
+- **SSE path** (`/sse`) — browser EventSource for chat UI
+- **WebSocket path** (`/ws`) — mobile / OpenClaw clients
+- **Model** — `gemini-2.5-flash` via `@ai-sdk/google` → vertex-proxy (`:4001`) → Vertex AI
+- **Memory** — Mastra Memory with PostgresStore (`mastra` schema, Neon DB)
+- **Tools** — SERVER_TOOLS (`internet_search`, `web_fetch`, `create_plan_from_prd`) + per-tenant MCP tools (`:3002/sse`)
+
+## Key modules
+
+| File | Purpose |
+|---|---|
+| `src/mastra/model.ts` | `saarthiModel` — isolated to avoid circular TDZ dep |
+| `src/mastra/agents/platformAgent.ts` | One agent serving all tenants; dynamic prompt + tools |
+| `src/mastra/memory.ts` | Singleton Memory instance; isolation via `resourceId` |
+| `src/mastra/tools.ts` | Persistent MCPClient singleton per tenant |
+| `src/mastra/thinking.ts` | Dynamic thinking budget: 0 / 1024 / 8192 based on message complexity |
+| `src/mastra/index.ts` | Mastra instance + re-exports |
+
+## Performance notes
+
+- MCP client is a **persistent singleton per tenant** — no reconnect per message
+- MCP tools cached 5 min in-process; platform prompt cached 5 min
+- Dynamic `thinkingBudget` passed per-request via `providerOptions.google.thinkingConfig`
+- Mastra Studio at `http://localhost:3010` for span-level latency traces
 
 ## Deploy (GCP VM)
-cd /opt/agent-relay && git pull && npm run build && pm2 restart agent-relay
+
+```bash
+cd /home/suyashresearchwork/serverless-saas/apps/relay
+npm run build && pm2 restart agent-relay
+```
+
+> **Note:** Repo is at `/home/suyashresearchwork/serverless-saas/` (canonical).
+> `/opt/serverless-saas/` is a dead clone — do not edit it.
+
+## Environment variables (relay .env)
+
+| Variable | Purpose |
+|---|---|
+| `VERTEX_PROXY_URL` | vertex-proxy base URL (default `http://localhost:4001`) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP service account key path for ADC |
+| `MCP_SERVER_HTTP_URL` | MCP server SSE URL (default `http://localhost:3002/sse`) |
+| `DATABASE_URL` | Neon DB connection string (Mastra memory + plan writes) |
+| `MASTRA_MODEL` | Gemini model name (default `gemini-2.5-flash`) |
+| `EXA_API_KEY` | Exa search API key for `internet_search` tool |
