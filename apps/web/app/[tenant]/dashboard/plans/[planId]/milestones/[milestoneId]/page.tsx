@@ -29,7 +29,7 @@ type Milestone = {
     status: MilestoneStatus
     targetDate: string | null
     priority: Priority
-    acceptanceCriteria: string[]
+    acceptanceCriteria: { text: string; checked: boolean }[]
     estimatedHours: string | null
     totalTasks?: number
     completedTasks?: number
@@ -79,21 +79,30 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 
 // ─── DefinitionOfDone ─────────────────────────────────────────────────────────
 
+type AcCriterion = { text: string; checked: boolean }
+
 function DefinitionOfDone({
     initial,
     onSave,
 }: {
     milestoneId: string
     planId: string
-    initial: string[]
-    onSave: (items: string[]) => void
+    initial: AcCriterion[]
+    onSave: (items: AcCriterion[]) => void
 }) {
-    const [items, setItems] = useState<string[]>(initial)
-    const [checked, setChecked] = useState<Set<number>>(new Set())
+    const [items, setItems] = useState<AcCriterion[]>(initial)
 
-    const commit = (next: string[]) => { setItems(next); onSave(next.filter(s => s.trim())) }
+    const commit = (next: AcCriterion[]) => {
+        setItems(next)
+        onSave(next.filter(c => c.text.trim()))
+    }
+    const toggle = (i: number) => commit(items.map((c, j) => j === i ? { ...c, checked: !c.checked } : c))
     const remove = (i: number) => commit(items.filter((_, j) => j !== i))
-    const toggle = (i: number) => setChecked(p => { const s = new Set(p); s.has(i) ? s.delete(i) : s.add(i); return s })
+    const updateText = (i: number, text: string) => setItems(p => p.map((c, j) => j === i ? { ...c, text } : c))
+    const handleBlur = (i: number) => {
+        const trimmed = items[i].text.trim()
+        if (!trimmed) { commit(items.filter((_, j) => j !== i)) } else { commit(items) }
+    }
 
     return (
         <div className="mt-4 border-t border-[#1e1e1e] pt-4">
@@ -104,16 +113,16 @@ function DefinitionOfDone({
                 <div className="space-y-1.5">
                     {items.map((item, i) => (
                         <div key={i} className="flex items-center gap-2 group">
-                            <button onClick={() => toggle(i)} className={cn('w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center text-[8px] transition-colors', checked.has(i) ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'border-[#2a2a2a]')}>
-                                {checked.has(i) && '✓'}
+                            <button onClick={() => toggle(i)} className={cn('w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center text-[8px] transition-colors', item.checked ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'border-[#2a2a2a]')}>
+                                {item.checked && '✓'}
                             </button>
                             <input
-                                autoFocus={item === ''}
-                                value={item}
-                                onChange={e => setItems(p => p.map((s, j) => j === i ? e.target.value : s))}
-                                onBlur={() => item.trim() ? commit(items) : commit(items.filter((_, j) => j !== i))}
+                                autoFocus={item.text === ''}
+                                value={item.text}
+                                onChange={e => updateText(i, e.target.value)}
+                                onBlur={() => handleBlur(i)}
                                 placeholder="Criterion…"
-                                className={cn('flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground/30', checked.has(i) ? 'line-through text-muted-foreground/40' : 'text-foreground/80')}
+                                className={cn('flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground/30', item.checked ? 'line-through text-muted-foreground/40' : 'text-foreground/80')}
                             />
                             <button onClick={() => remove(i)} className="opacity-0 group-hover:opacity-100 text-muted-foreground/30 hover:text-destructive transition-all">
                                 <X className="w-3 h-3" />
@@ -122,7 +131,7 @@ function DefinitionOfDone({
                     ))}
                 </div>
             )}
-            <button onClick={() => setItems(p => [...p, ''])} className="mt-2 flex items-center gap-1 text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            <button onClick={() => setItems(p => [...p, { text: '', checked: false }])} className="mt-2 flex items-center gap-1 text-xs text-muted-foreground/40 hover:text-muted-foreground transition-colors">
                 <Plus className="w-3 h-3" /> Add criterion
             </button>
         </div>
@@ -247,7 +256,7 @@ export default function MilestoneDetailPage() {
     const [draftHours, setDraftHours] = useState('')
 
     const patchMilestone = useMutation({
-        mutationFn: (updates: { title?: string; description?: string | null; estimatedHours?: number | null; acceptanceCriteria?: string[] }) =>
+        mutationFn: (updates: { title?: string; description?: string | null; estimatedHours?: number | null; acceptanceCriteria?: AcCriterion[] }) =>
             api.patch(`/api/v1/milestones/${milestoneId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: pmKeys.milestones(planId) }),
         onError: () => toast.error('Failed to save milestone'),
