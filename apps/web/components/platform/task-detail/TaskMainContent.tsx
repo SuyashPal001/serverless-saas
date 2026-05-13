@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link2, Paperclip, FileText, CheckSquare, Square, Plus, Loader2, GitBranch } from 'lucide-react'
+import { Link2, Paperclip, FileText, CheckSquare, Square, Plus, Loader2, GitBranch, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -97,6 +97,14 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
         queryFn: () => api.get(`/api/v1/tasks?parentTaskId=${taskId}`),
     })
     const subtasks = subtasksData?.data ?? []
+
+    const { data: parentTaskData } = useQuery<{ data: { task: { id: string; sequenceId?: number | null; title: string } } }>({
+        queryKey: ['task', task.parentTaskId],
+        queryFn: () => api.get(`/api/v1/tasks/${task.parentTaskId}`),
+        enabled: !!task.parentTaskId,
+        staleTime: 60_000,
+    })
+    const parentTask = parentTaskData?.data?.task
 
     const createSubtask = useMutation({
         mutationFn: (title: string) => api.post('/api/v1/tasks', { title, parentTaskId: taskId }),
@@ -212,6 +220,32 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                             </button>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* Parent link — shown when this task is a subtask */}
+            {task.parentTaskId && (
+                <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+                        <h2 className="text-sm font-medium text-foreground">Parent Task</h2>
+                    </div>
+                    {parentTask ? (
+                        <button
+                            onClick={() => router.push(`/${tenantSlug}/dashboard/board/${parentTask.id}`)}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#1a1a1a] transition-colors group w-full text-left"
+                        >
+                            {parentTask.sequenceId && (
+                                <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter shrink-0">
+                                    TASK-{parentTask.sequenceId}
+                                </span>
+                            )}
+                            <span className="text-sm text-foreground/80 truncate flex-1 group-hover:text-foreground transition-colors">{parentTask.title}</span>
+                            <ExternalLink className="w-3.5 h-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
+                        </button>
+                    ) : (
+                        <p className="text-xs text-muted-foreground/30 px-2">Loading…</p>
+                    )}
                 </div>
             )}
 
