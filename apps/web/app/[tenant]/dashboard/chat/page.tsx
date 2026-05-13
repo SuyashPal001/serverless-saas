@@ -195,7 +195,7 @@ function ChatPage() {
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
-        onDone: useCallback((fullText: string, messageId: string) => {
+        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
                 const existingIndex = newData.findIndex(m => m.id === messageId);
@@ -205,6 +205,7 @@ function ChatPage() {
                         ...newData[existingIndex],
                         content: fullText || newData[existingIndex].content,
                         isStreaming: false,
+                        ...(planResult ? { planResult: planResult as Message['planResult'] } : {}),
                     };
                 } else {
                     // Close any zombie streaming bubble before pushing the final message.
@@ -214,6 +215,7 @@ function ChatPage() {
                             ...newData[zombieIndex],
                             isStreaming: false,
                             content: fullText || newData[zombieIndex].content,
+                            ...(planResult ? { planResult: planResult as Message['planResult'] } : {}),
                         };
                     } else if (fullText) {
                         // Only push a new bubble if there's actual content — never push empty messages
@@ -224,6 +226,7 @@ function ChatPage() {
                             content: fullText,
                             createdAt: new Date().toISOString(),
                             isStreaming: false,
+                            ...(planResult ? { planResult: planResult as Message['planResult'] } : {}),
                         });
                     }
                 }

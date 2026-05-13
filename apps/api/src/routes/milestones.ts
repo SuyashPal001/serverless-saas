@@ -68,12 +68,14 @@ milestonesRoutes.patch('/:milestoneId', async (c) => {
     const { milestoneId } = c.req.param();
 
     const schema = z.object({
-        title:       z.string().min(1).max(200).optional(),
-        description: z.string().nullable().optional(),
-        status:      z.enum(['backlog', 'in_progress', 'completed', 'cancelled']).optional(),
-        targetDate:  z.string().datetime().nullable().optional(),
-        assigneeId:  z.string().uuid().nullable().optional(),
-        priority:    z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+        title:               z.string().min(1).max(200).optional(),
+        description:         z.string().nullable().optional(),
+        status:              z.enum(['backlog', 'in_progress', 'completed', 'cancelled']).optional(),
+        targetDate:          z.string().datetime().nullable().optional(),
+        assigneeId:          z.string().uuid().nullable().optional(),
+        priority:            z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+        acceptanceCriteria:  z.array(z.string()).optional(),
+        estimatedHours:      z.number().nullable().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -89,7 +91,7 @@ milestonesRoutes.patch('/:milestoneId', async (c) => {
 
     if (!milestone) return c.json({ error: 'Milestone not found' }, 404);
 
-    const { title, description, status, targetDate, assigneeId, priority } = result.data;
+    const { title, description, status, targetDate, assigneeId, priority, acceptanceCriteria, estimatedHours } = result.data;
 
     if (status !== undefined && status !== milestone.status) {
         const allowed = VALID_MILESTONE_TRANSITIONS[milestone.status] ?? [];
@@ -99,15 +101,17 @@ milestonesRoutes.patch('/:milestoneId', async (c) => {
     }
 
     const updates: Partial<typeof projectMilestones.$inferInsert> = { updatedAt: new Date() };
-    if (title       !== undefined) updates.title       = title;
-    if (description !== undefined) updates.description = description;
-    if (status      !== undefined) {
+    if (title               !== undefined) updates.title               = title;
+    if (description         !== undefined) updates.description         = description;
+    if (status              !== undefined) {
         updates.status = status;
         if (status === 'completed') updates.completedAt = new Date();
     }
-    if (targetDate  !== undefined) updates.targetDate  = targetDate ? new Date(targetDate) : null;
-    if (assigneeId  !== undefined) updates.assigneeId  = assigneeId;
-    if (priority    !== undefined) updates.priority    = priority;
+    if (targetDate          !== undefined) updates.targetDate          = targetDate ? new Date(targetDate) : null;
+    if (assigneeId          !== undefined) updates.assigneeId          = assigneeId;
+    if (priority            !== undefined) updates.priority            = priority;
+    if (acceptanceCriteria  !== undefined) updates.acceptanceCriteria  = acceptanceCriteria;
+    if (estimatedHours      !== undefined) updates.estimatedHours      = estimatedHours != null ? String(estimatedHours) : null;
 
     const [updated] = await db
         .update(projectMilestones)

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { INTERNAL_SERVICE_KEY } from '../types.js'
-import { createTenantAgent } from '../mastra/index.js'
+import { createPlanFromPrd, type PrdData } from '../services/planService.js'
 import type { TaskStep, WorkflowStep } from '../types.js'
 import { checkMessageQuota, getPool, recordUsage } from '../usage.js'
 import { filterPII } from '../pii-filter.js'
@@ -242,57 +242,24 @@ tasksRouter.post('/api/workflows/execute', async (c) => {
 // ─── Plan creation from PRD ───────────────────────────────────────────────────
 
 tasksRouter.post('/api/tasks/create-plan', async (c) => {
-  let body: { tenantId?: unknown; prdData?: unknown }
+  let body: { tenantId?: unknown; userId?: unknown; prdData?: unknown }
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON body' }, 400) }
 
   const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
-  const prdData = body.prdData != null && typeof body.prdData === 'object' && !Array.isArray(body.prdData)
-    ? body.prdData as Record<string, unknown>
+  const userId   = typeof body.userId   === 'string' ? body.userId.trim()   : ''
+  const prdData  = body.prdData != null && typeof body.prdData === 'object' && !Array.isArray(body.prdData)
+    ? body.prdData as PrdData
     : null
 
-  if (!tenantId || !prdData) {
-    return c.json({ error: 'tenantId and prdData are required' }, 400)
+  if (!tenantId || !userId || !prdData) {
+    return c.json({ error: 'tenantId, userId, and prdData are required' }, 400)
   }
 
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
 
   try {
-    const { agent } = await createTenantAgent({
-      tenantId,
-      agentId: 'saarthi',
-      agentSlug: 'saarthi',
-      instructions: 'When given plan data, call create_plan_from_prd immediately with all provided fields.',
-      connectedProviders: [],
-      enabledTools: ['create_plan_from_prd'],
-    })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { plan, milestones, risks, totalEstimatedHours } = prdData as any
-    const prompt = [
-      `Call create_plan_from_prd now with tenantId="${tenantId}" and the following:`,
-      `plan: ${JSON.stringify(plan)}`,
-      `milestones: ${JSON.stringify(milestones)}`,
-      `risks: ${JSON.stringify(risks)}`,
-      ...(totalEstimatedHours != null ? [`totalEstimatedHours: ${totalEstimatedHours}`] : []),
-    ].join('\n')
-
-    const response = await agent.generate(prompt, { activeTools: ['create_plan_from_prd'] })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolResult = (response.toolResults as any[])?.find((r: any) => r.toolName === 'create_plan_from_prd')?.result
-
-    if (!toolResult?.planId) {
-      console.error(`[create-plan] traceId=${traceId} tenantId=${tenantId} agent did not call tool`)
-      return c.json({ error: 'Agent did not call create_plan_from_prd' }, 400)
-    }
-
-    return c.json({
-      planId: toolResult.planId,
-      planSequenceId: toolResult.planSequenceId,
-      milestoneCount: toolResult.milestoneCount,
-      taskCount: toolResult.taskCount,
-      planUrl: toolResult.planUrl,
-    })
+    const result = await createPlanFromPrd(tenantId, userId, prdData)
+    return c.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(JSON.stringify({ level: 'error', msg: 'create-plan failed', traceId, tenantId, error: message, ts: Date.now() }))

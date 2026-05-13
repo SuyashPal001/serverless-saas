@@ -1,5 +1,5 @@
 import {
-    pgTable, pgEnum, uuid, text, integer, timestamp,
+    pgTable, pgEnum, uuid, text, integer, timestamp, jsonb, decimal,
     primaryKey, uniqueIndex, index,
 } from 'drizzle-orm/pg-core';
 import { taskPriorityEnum } from './agents';
@@ -56,7 +56,9 @@ export const projectMilestones = pgTable('project_milestones', {
     targetDate:  timestamp('target_date'),
     completedAt: timestamp('completed_at'),
     assigneeId:  uuid('assignee_id').references(() => users.id),
-    priority:    taskPriorityEnum('priority').notNull().default('medium'),
+    priority:           taskPriorityEnum('priority').notNull().default('medium'),
+    acceptanceCriteria: jsonb('acceptance_criteria').notNull().default([]).$type<string[]>(),
+    estimatedHours:     decimal('estimated_hours', { precision: 6, scale: 2 }),
     createdBy:   uuid('created_by').notNull().references(() => users.id),
     deletedAt:   timestamp('deleted_at'),
     createdAt:   timestamp('created_at').notNull().defaultNow(),

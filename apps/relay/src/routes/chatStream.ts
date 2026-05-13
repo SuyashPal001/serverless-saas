@@ -76,6 +76,39 @@ async function buildMastraMessage(
   return finalMessage
 }
 
+// ---------------------------------------------------------------------------
+// Plan JSON extraction — parse agent text response for structured plan data.
+// Looks for a fenced ```json block first, then falls back to raw {...}.
+// Returns the parsed object if it has both `plan` and `milestones` keys,
+// otherwise null (normal message, not a PRD analysis response).
+// ---------------------------------------------------------------------------
+function extractPlanJson(text: string): Record<string, unknown> | null {
+  const candidates: string[] = []
+
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+  if (fenceMatch) candidates.push(fenceMatch[1])
+
+  const rawMatch = text.match(/\{[\s\S]*\}/)
+  if (rawMatch) candidates.push(rawMatch[0])
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate.trim())
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        typeof parsed.plan === 'object' &&
+        Array.isArray(parsed.milestones)
+      ) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // not valid JSON — try next candidate
+    }
+  }
+  return null
+}
+
 export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
     message, attachments, conversationId, tenantId,
@@ -155,13 +188,6 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
           break
         }
-        case 'tool-result': {
-          const p = part.payload ?? part
-          if ((p.toolName as string) === 'create_plan_from_prd') {
-            planResult = p.result
-          }
-          break
-        }
         case 'finish': {
           const usage = part.payload?.output?.usage ?? part.usage
           inputTokens = (usage?.promptTokens as number | undefined) ?? 0
@@ -180,6 +206,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           }
           if (ragFired && (ragChunksRetrieved === 0 || (cached && cached.topScore < 0.5))) {
             fireKnowledgeGap({ tenantId, conversationId, query: message, ragScore: cached?.topScore ?? 0 })
+          }
+
+          const prdData = extractPlanJson(fullText)
+          if (prdData) {
+            planResult = { summary: fullText, dodPassed: true, prdData }
+            console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
           sendEvent('done', { text: fullText, conversationId, messageId, planResult })

@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format, isPast } from 'date-fns'
-import { Plus, Loader2, LayoutList, CalendarDays, ChevronDown } from 'lucide-react'
+import { Plus, Loader2, Trash2, LayoutList, CalendarDays, ChevronDown } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -22,6 +22,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -160,45 +164,85 @@ function StatusDropdown({ plan, tenantId }: { plan: Plan; tenantId: string }) {
 
 function PlanCard({ plan, tenantId, tenantSlug }: { plan: Plan; tenantId: string; tenantSlug: string }) {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const isOverdue = plan.targetDate && plan.status !== 'completed' && isPast(new Date(plan.targetDate))
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
+    const deletePlan = useMutation({
+        mutationFn: () => api.del(`/api/v1/plans/${plan.id}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: pmKeys.plans(tenantId) })
+            toast.success('Plan deleted')
+        },
+        onError: () => toast.error('Failed to delete plan'),
+    })
 
     return (
-        <div
-            onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${plan.id}`)}
-            className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 cursor-pointer hover:border-[#2a2a2a] transition-colors flex flex-col gap-3"
-        >
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter">
-                        PLN-{plan.sequenceId}
-                    </span>
-                    <StatusDropdown plan={plan} tenantId={tenantId} />
+        <>
+            <div
+                onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${plan.id}`)}
+                className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 cursor-pointer hover:border-[#2a2a2a] transition-colors flex flex-col gap-3"
+            >
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter">
+                            PLN-{plan.sequenceId}
+                        </span>
+                        <StatusDropdown plan={plan} tenantId={tenantId} />
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {plan.targetDate && (
+                            <span className={cn('text-xs', isOverdue ? 'text-red-400' : 'text-muted-foreground/60')}>
+                                <CalendarDays className="w-3 h-3 inline mr-1" />
+                                {format(new Date(plan.targetDate), 'MMM d, yyyy')}
+                            </span>
+                        )}
+                        <button
+                            onClick={e => { e.stopPropagation(); setDeleteConfirmOpen(true) }}
+                            className="text-muted-foreground/30 hover:text-destructive transition-colors"
+                            aria-label="Delete plan"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
-                {plan.targetDate && (
-                    <span className={cn(
-                        'text-xs shrink-0',
-                        isOverdue ? 'text-red-400' : 'text-muted-foreground/60'
-                    )}>
-                        <CalendarDays className="w-3 h-3 inline mr-1" />
-                        {format(new Date(plan.targetDate), 'MMM d, yyyy')}
-                    </span>
-                )}
+
+                {/* Title */}
+                <h3 className="text-sm font-semibold text-foreground leading-snug">
+                    {plan.title}
+                </h3>
+
+                {/* Progress */}
+                <PlanSummaryBar planId={plan.id} />
+
+                {/* Footer */}
+                <p className="text-[10px] text-muted-foreground/40">
+                    Created {formatRelative(plan.createdAt)}
+                </p>
             </div>
 
-            {/* Title */}
-            <h3 className="text-sm font-semibold text-foreground leading-snug">
-                {plan.title}
-            </h3>
-
-            {/* Progress */}
-            <PlanSummaryBar planId={plan.id} />
-
-            {/* Footer */}
-            <p className="text-[10px] text-muted-foreground/40">
-                Created {formatRelative(plan.createdAt)}
-            </p>
-        </div>
+            <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <AlertDialogContent className="bg-[#0f0f0f] border-[#1e1e1e]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete plan?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            &ldquo;{plan.title}&rdquo; and all its milestones and tasks will be permanently deleted.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => deletePlan.mutate()}
+                            disabled={deletePlan.isPending}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            {deletePlan.isPending ? 'Deleting…' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
     )
 }
 

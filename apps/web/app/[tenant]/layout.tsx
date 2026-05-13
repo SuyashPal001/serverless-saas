@@ -49,6 +49,7 @@ export default async function TenantLayout({
         if (response.ok) {
             const profile = await response.json() as any;
             claims.permissions = profile.permissions || [];
+            if (profile.userId) claims.userId = profile.userId;
         } else {
             // On failure, set empty array and continue
             claims.permissions = [];

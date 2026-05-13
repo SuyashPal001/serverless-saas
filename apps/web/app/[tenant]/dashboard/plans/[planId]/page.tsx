@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format, isPast } from 'date-fns'
 import {
-    Plus, Loader2, ChevronRight, CalendarDays, ChevronDown, Users,
+    Plus, Loader2, Trash2, ChevronRight, CalendarDays, ChevronDown, Users,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -27,6 +27,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
     DropdownMenuSeparator, DropdownMenuLabel,
@@ -74,11 +78,14 @@ type PlanTask = {
     id: string
     sequenceId: number | null
     title: string
+    description: string | null
     status: string
     priority: Priority
     milestoneId: string | null
     assigneeId: string | null
     dueDate: string | null
+    acceptanceCriteria?: string[]
+    estimatedHours?: string | null
 }
 
 type Member = { userId: string; userName: string | null; userEmail: string; roleName: string }
@@ -525,25 +532,73 @@ function TasksTab({ planId, tenantSlug, milestones }: { planId: string; tenantSl
 
 function TaskListGroup({ tasks, tenantSlug }: { tasks: PlanTask[]; tenantSlug: string }) {
     const router = useRouter()
+    const [expandedId, setExpandedId] = useState<string | null>(null)
     return (
         <div className="border border-[#1e1e1e] rounded-lg divide-y divide-[#1e1e1e]">
             {tasks.map(t => {
                 const dotColor = TASK_STATUS_COLORS[t.status] ?? '#6B7280'
+                const isOpen = expandedId === t.id
                 return (
-                    <button
-                        key={t.id}
-                        onClick={() => router.push(`/${tenantSlug}/dashboard/board/${t.id}`)}
-                        className="flex items-center gap-3 w-full text-left px-4 py-2.5 hover:bg-[#111] transition-colors"
-                    >
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                        {t.sequenceId && (
-                            <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter shrink-0">
-                                TASK-{t.sequenceId}
-                            </span>
+                    <div key={t.id}>
+                        <div className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-[#111] transition-colors">
+                            <button
+                                onClick={() => setExpandedId(isOpen ? null : t.id)}
+                                className="shrink-0 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+                            >
+                                <ChevronRight className={cn('w-3.5 h-3.5 transition-transform duration-150', isOpen && 'rotate-90')} />
+                            </button>
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                            {t.sequenceId && (
+                                <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter shrink-0">
+                                    TASK-{t.sequenceId}
+                                </span>
+                            )}
+                            <button
+                                onClick={() => router.push(`/${tenantSlug}/dashboard/board/${t.id}`)}
+                                className="text-sm text-foreground/80 flex-1 truncate text-left hover:text-foreground transition-colors"
+                            >
+                                {t.title}
+                            </button>
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_CONFIG[t.priority]?.color ?? '#6B7280' }} />
+                        </div>
+                        {isOpen && (
+                            <div className="px-10 pb-3 pt-2 bg-[#0a0a0a] border-t border-[#1e1e1e] space-y-3">
+                                {t.description && (
+                                    <p className="text-xs text-muted-foreground/60 leading-relaxed">{t.description}</p>
+                                )}
+                                <div>
+                                    <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mb-1.5">Acceptance Criteria</p>
+                                    {(t.acceptanceCriteria?.length ?? 0) === 0 ? (
+                                        <p className="text-xs text-muted-foreground/30 italic">No criteria defined</p>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {t.acceptanceCriteria!.map((ac, i) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <div className="w-3.5 h-3.5 rounded border border-[#2a2a2a] shrink-0" />
+                                                    <span className="text-xs text-muted-foreground/60">{ac}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-4 pt-0.5">
+                                    <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+                                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: PRIORITY_CONFIG[t.priority]?.color ?? '#6B7280' }} />
+                                        {PRIORITY_CONFIG[t.priority]?.label ?? t.priority}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground/40">
+                                        {t.estimatedHours && Number(t.estimatedHours) > 0 ? `${Number(t.estimatedHours)}h` : '—'}
+                                    </span>
+                                    <button
+                                        onClick={() => router.push(`/${tenantSlug}/dashboard/board/${t.id}`)}
+                                        className="text-xs text-blue-400/60 hover:text-blue-400 transition-colors ml-auto"
+                                    >
+                                        Open in Board →
+                                    </button>
+                                </div>
+                            </div>
                         )}
-                        <span className="text-sm text-foreground/80 flex-1 truncate">{t.title}</span>
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_CONFIG[t.priority]?.color ?? '#6B7280' }} />
-                    </button>
+                    </div>
                 )
             })}
         </div>
@@ -559,10 +614,22 @@ export default function PlanDetailPage() {
     const { tenantId } = useTenant()
     const queryClient = useQueryClient()
 
+    const router = useRouter()
     const [editingTitle, setEditingTitle] = useState(false)
     const [editingDesc, setEditingDesc] = useState(false)
     const [draftTitle, setDraftTitle] = useState('')
     const [draftDesc, setDraftDesc] = useState('')
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
+    const deletePlan = useMutation({
+        mutationFn: () => api.del(`/api/v1/plans/${planId}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: pmKeys.plans(tenantId) })
+            toast.success('Plan deleted')
+            router.push(`/${tenantSlug}/dashboard/plans`)
+        },
+        onError: () => toast.error('Failed to delete plan'),
+    })
 
     const patchPlan = useMutation({
         mutationFn: (updates: { title?: string; description?: string | null }) =>
@@ -661,15 +728,24 @@ export default function PlanDetailPage() {
                         </p>
                     )}
                 </div>
-                {plan.targetDate && (
-                    <span className={cn(
-                        'text-xs shrink-0 flex items-center gap-1',
-                        plan.status !== 'completed' && isPast(new Date(plan.targetDate)) ? 'text-red-400' : 'text-muted-foreground/60'
-                    )}>
-                        <CalendarDays className="w-3.5 h-3.5" />
-                        {format(new Date(plan.targetDate), 'MMM d, yyyy')}
-                    </span>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                    {plan.targetDate && (
+                        <span className={cn(
+                            'text-xs flex items-center gap-1',
+                            plan.status !== 'completed' && isPast(new Date(plan.targetDate)) ? 'text-red-400' : 'text-muted-foreground/60'
+                        )}>
+                            <CalendarDays className="w-3.5 h-3.5" />
+                            {format(new Date(plan.targetDate), 'MMM d, yyyy')}
+                        </span>
+                    )}
+                    <button
+                        onClick={() => setDeleteConfirmOpen(true)}
+                        className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                        aria-label="Delete plan"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -692,6 +768,27 @@ export default function PlanDetailPage() {
                     <TasksTab planId={planId} tenantSlug={tenantSlug} milestones={milestones} />
                 </TabsContent>
             </Tabs>
+
+            <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <AlertDialogContent className="bg-[#0f0f0f] border-[#1e1e1e]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete plan?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            &ldquo;{plan.title}&rdquo; and all its milestones and tasks will be permanently deleted.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => deletePlan.mutate()}
+                            disabled={deletePlan.isPending}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            {deletePlan.isPending ? 'Deleting…' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }

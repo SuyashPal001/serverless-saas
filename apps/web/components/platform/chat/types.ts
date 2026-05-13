@@ -31,6 +31,39 @@ export interface MessageAttachment {
     previewUrl?: string;
 }
 
+export interface PrdTask {
+    title: string;
+    description: string;
+    acceptanceCriteria: string[];
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    estimatedHours?: number;
+    type: 'feature' | 'bug' | 'chore' | 'spike';
+}
+
+export interface PrdMilestone {
+    title: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    tasks: PrdTask[];
+}
+
+export interface PrdData {
+    plan: {
+        title: string;
+        description: string;
+        targetDate?: string;
+    };
+    milestones: PrdMilestone[];
+    risks: string[];
+    totalEstimatedHours?: number;
+}
+
+export interface PlanResult {
+    summary: string;
+    dodPassed: boolean;
+    prdData: PrdData;
+}
+
 export interface Message {
     id: string;
     conversationId: string;
@@ -41,6 +74,7 @@ export interface Message {
     approvalRequest?: ApprovalRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
+    planResult?: PlanResult;
 }
 
 export interface Conversation {
