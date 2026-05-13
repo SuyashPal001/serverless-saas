@@ -202,11 +202,11 @@ function ListTab({ milestoneId, tenantSlug }: { milestoneId: string; tenantSlug:
                                 )}
                                 <div>
                                     <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mb-1.5">Acceptance Criteria</p>
-                                    {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).length === 0 ? (
+                                    {(t.acceptanceCriteria ?? []).map(ac => typeof ac === 'string' ? { text: ac, checked: false } : ac).filter(ac => ac.text?.trim()).length === 0 ? (
                                         <p className="text-xs text-muted-foreground/30 italic">No criteria defined</p>
                                     ) : (
                                         <div className="space-y-1">
-                                            {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).map((ac, i) => (
+                                            {(t.acceptanceCriteria ?? []).map(ac => typeof ac === 'string' ? { text: ac, checked: false } : ac).filter(ac => ac.text?.trim()).map((ac, i) => (
                                                 <div key={i} className="flex items-center gap-2">
                                                     <div className="w-3.5 h-3.5 rounded border border-[#2a2a2a] shrink-0" />
                                                     <span className="text-xs text-muted-foreground/60">{ac.text}</span>

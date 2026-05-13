@@ -121,7 +121,9 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task.id])
 
-    const criteria: AcceptanceCriterion[] = task.acceptanceCriteria ?? []
+    const criteria: AcceptanceCriterion[] = (task.acceptanceCriteria ?? []).map(
+        ac => typeof ac === 'string' ? { text: ac, checked: false } : ac
+    )
 
     const handleCriterionToggle = (index: number) => {
         const updated = criteria.map((c, i) =>
