@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
@@ -11,6 +12,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ConfirmDialog } from '@/components/platform/shared/ConfirmDialog'
 import { api } from '@/lib/api'
 import { pmKeys } from '@/lib/query-keys/pm'
 import type { Task, TaskDetailResponse } from '@/types/task'
@@ -41,6 +43,7 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
     const params = useParams()
     const tenantSlug = params.tenant as string
     const base = `/${tenantSlug}/dashboard`
+    const [deleteOpen, setDeleteOpen] = useState(false)
 
     // ── Plan + milestone (only when task belongs to a plan) ───────────────────
     const { data: planData } = useQuery<{ data: { id: string; title: string } }>({
@@ -206,9 +209,7 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                            onClick={() => {
-                                if (window.confirm('Delete this task? This cannot be undone.')) taskOperations.deleteTask()
-                            }}
+                            onClick={() => setDeleteOpen(true)}
                             className="text-red-500 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
                         >
                             <Trash2 className="w-4 h-4 mr-2" />
@@ -217,6 +218,15 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+
+            <ConfirmDialog
+                open={deleteOpen}
+                onOpenChange={setDeleteOpen}
+                title="Delete task"
+                description="This task will be permanently deleted. This cannot be undone."
+                confirmLabel="Delete"
+                onConfirm={taskOperations.deleteTask}
+            />
         </div>
     )
 }

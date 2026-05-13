@@ -8,6 +8,7 @@ import {
     Copy, ExternalLink, Sparkles,
 } from 'lucide-react'
 import { extractDomain } from './outputHelpers'
+import { ConfirmDialog } from '@/components/platform/shared/ConfirmDialog'
 import {
     Popover,
     PopoverContent,
@@ -158,6 +159,7 @@ export function TaskSidebar({
     const { isEditing, draftStatus, draftPriority, draftAssigneeKey, setDraftStatus, setDraftPriority, setDraftAssigneeKey } = editState
     const [assigneeOpen, setAssigneeOpen] = useState(false)
     const [newLink, setNewLink] = useState('')
+    const [deleteOpen, setDeleteOpen] = useState(false)
     const completedSteps = steps.filter(s => s.status === 'done').length
 
     const { data: filesData } = useQuery({
@@ -584,9 +586,7 @@ export function TaskSidebar({
                 )}
                 {task.status !== 'done' && task.status !== 'cancelled' && (
                     <button
-                        onClick={() => {
-                            if (window.confirm('Delete this task? This cannot be undone.')) taskOperations.deleteTask()
-                        }}
+                        onClick={() => setDeleteOpen(true)}
                         className="flex items-center gap-2 w-full px-2 py-2 rounded-lg text-xs text-muted-foreground hover:bg-[#1a1a1a] hover:text-foreground transition-colors text-left"
                     >
                         <XCircle className="w-4 h-4 text-red-500" />
@@ -594,6 +594,15 @@ export function TaskSidebar({
                     </button>
                 )}
             </div>
+
+            <ConfirmDialog
+                open={deleteOpen}
+                onOpenChange={setDeleteOpen}
+                title="Delete task"
+                description="This task will be permanently deleted. This cannot be undone."
+                confirmLabel="Delete"
+                onConfirm={taskOperations.deleteTask}
+            />
         </div>
     )
 }
