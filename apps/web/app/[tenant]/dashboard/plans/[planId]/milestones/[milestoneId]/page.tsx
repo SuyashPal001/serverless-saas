@@ -35,6 +35,8 @@ type Milestone = {
     completedTasks?: number
 }
 
+type AcItem = { text: string; checked?: boolean }
+
 type MilestoneTask = {
     id: string
     sequenceId: number | null
@@ -44,7 +46,7 @@ type MilestoneTask = {
     priority: Priority
     assigneeId: string | null
     dueDate: string | null
-    acceptanceCriteria?: string[]
+    acceptanceCriteria?: AcItem[]
     estimatedHours?: string | null
 }
 
@@ -191,14 +193,14 @@ function ListTab({ milestoneId, tenantSlug }: { milestoneId: string; tenantSlug:
                                 )}
                                 <div>
                                     <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mb-1.5">Acceptance Criteria</p>
-                                    {(t.acceptanceCriteria?.length ?? 0) === 0 ? (
+                                    {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).length === 0 ? (
                                         <p className="text-xs text-muted-foreground/30 italic">No criteria defined</p>
                                     ) : (
                                         <div className="space-y-1">
-                                            {t.acceptanceCriteria!.map((ac, i) => (
+                                            {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).map((ac, i) => (
                                                 <div key={i} className="flex items-center gap-2">
                                                     <div className="w-3.5 h-3.5 rounded border border-[#2a2a2a] shrink-0" />
-                                                    <span className="text-xs text-muted-foreground/60">{ac}</span>
+                                                    <span className="text-xs text-muted-foreground/60">{ac.text}</span>
                                                 </div>
                                             ))}
                                         </div>

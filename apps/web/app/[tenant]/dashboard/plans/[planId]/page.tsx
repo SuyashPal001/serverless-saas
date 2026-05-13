@@ -74,6 +74,8 @@ type Milestone = {
     createdAt: string
 }
 
+type AcItem = { text: string; checked?: boolean }
+
 type PlanTask = {
     id: string
     sequenceId: number | null
@@ -84,7 +86,7 @@ type PlanTask = {
     milestoneId: string | null
     assigneeId: string | null
     dueDate: string | null
-    acceptanceCriteria?: string[]
+    acceptanceCriteria?: AcItem[]
     estimatedHours?: string | null
 }
 
@@ -422,7 +424,7 @@ function OverviewTab({ planId, tenantSlug }: { planId: string; tenantSlug: strin
 function MilestonesTab({ planId, tenantSlug, members }: { planId: string; tenantSlug: string; members: Member[] }) {
     const [createOpen, setCreateOpen] = useState(false)
 
-    const { data, isLoading } = useQuery<{ data: Milestone[] }>({
+    const { data, isLoading, isError, refetch } = useQuery<{ data: Milestone[] }>({
         queryKey: pmKeys.milestones(planId),
         queryFn: () => api.get(`/api/v1/plans/${planId}/milestones`),
     })
@@ -444,7 +446,14 @@ function MilestonesTab({ planId, tenantSlug, members }: { planId: string; tenant
                 </div>
             )}
 
-            {!isLoading && milestones.length === 0 && (
+            {isError && (
+                <div className="text-center py-16">
+                    <p className="text-sm text-destructive">Failed to load milestones</p>
+                    <Button size="sm" variant="ghost" className="mt-2" onClick={() => refetch()}>Retry</Button>
+                </div>
+            )}
+
+            {!isLoading && !isError && milestones.length === 0 && (
                 <div className="text-center py-16">
                     <p className="text-sm text-muted-foreground">No milestones yet</p>
                     <Button size="sm" className="mt-3" onClick={() => setCreateOpen(true)}>
@@ -476,7 +485,7 @@ function MilestonesTab({ planId, tenantSlug, members }: { planId: string; tenant
 function TasksTab({ planId, tenantSlug, milestones }: { planId: string; tenantSlug: string; milestones: Milestone[] }) {
     const router = useRouter()
 
-    const { data, isLoading } = useQuery<{ data: PlanTask[] }>({
+    const { data, isLoading, isError, refetch } = useQuery<{ data: PlanTask[] }>({
         queryKey: pmKeys.planTasks(planId),
         queryFn: () => api.get(`/api/v1/plans/${planId}/tasks`),
     })
@@ -503,7 +512,14 @@ function TasksTab({ planId, tenantSlug, milestones }: { planId: string; tenantSl
                 </div>
             )}
 
-            {!isLoading && tasks.length === 0 && (
+            {isError && (
+                <div className="py-8 text-center">
+                    <p className="text-sm text-destructive">Failed to load tasks</p>
+                    <Button size="sm" variant="ghost" className="mt-2" onClick={() => refetch()}>Retry</Button>
+                </div>
+            )}
+
+            {!isLoading && !isError && tasks.length === 0 && (
                 <p className="text-sm text-muted-foreground py-8 text-center">No tasks in this plan yet</p>
             )}
 
@@ -568,14 +584,14 @@ function TaskListGroup({ tasks, tenantSlug }: { tasks: PlanTask[]; tenantSlug: s
                                 )}
                                 <div>
                                     <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mb-1.5">Acceptance Criteria</p>
-                                    {(t.acceptanceCriteria?.length ?? 0) === 0 ? (
+                                    {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).length === 0 ? (
                                         <p className="text-xs text-muted-foreground/30 italic">No criteria defined</p>
                                     ) : (
                                         <div className="space-y-1">
-                                            {t.acceptanceCriteria!.map((ac, i) => (
+                                            {(t.acceptanceCriteria ?? []).filter(ac => ac.text.trim()).map((ac, i) => (
                                                 <div key={i} className="flex items-center gap-2">
                                                     <div className="w-3.5 h-3.5 rounded border border-[#2a2a2a] shrink-0" />
-                                                    <span className="text-xs text-muted-foreground/60">{ac}</span>
+                                                    <span className="text-xs text-muted-foreground/60">{ac.text}</span>
                                                 </div>
                                             ))}
                                         </div>

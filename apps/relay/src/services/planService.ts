@@ -134,7 +134,7 @@ export async function createPlanFromPrd(
           values.push(
             randomUUID(), tenantId, userId,
             task.title, task.description ?? null,
-            JSON.stringify(task.acceptanceCriteria ?? []),
+            JSON.stringify((task.acceptanceCriteria ?? []).map(s => ({ text: s, checked: false }))),
             task.priority ?? 'medium',
             task.estimatedHours != null ? String(task.estimatedHours) : null,
             planId, milestoneId,

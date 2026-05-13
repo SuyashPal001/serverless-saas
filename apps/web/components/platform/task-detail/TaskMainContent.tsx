@@ -179,11 +179,11 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                 </button>
             </div>
 
-            {/* Definition of Done / Acceptance Criteria */}
+            {/* Acceptance Criteria */}
             {criteria.length > 0 && (
                 <div className="mb-6 border border-[#1e1e1e] rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-3">
-                        <h2 className="text-sm font-medium text-foreground">Definition of Done</h2>
+                        <h2 className="text-sm font-medium text-foreground">Acceptance Criteria</h2>
                         <span className="text-[10px] text-muted-foreground/60 bg-[#1a1a1a] px-1.5 py-0.5 rounded border border-[#1e1e1e]">
                             {criteria.filter(c => c.checked).length}/{criteria.length}
                         </span>
