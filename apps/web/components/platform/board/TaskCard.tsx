@@ -79,7 +79,13 @@ export function TaskCard({
                             <div className={cn("w-1.5 h-1.5 rounded-full", task.priority === 'urgent' && "animate-pulse")} style={{ backgroundColor: PRIORITY_CONFIG[task.priority]?.color }} />
                             <span className="text-xs text-muted-foreground/60 font-medium uppercase tracking-tighter">TASK-{taskNumber}</span>
                         </div>
-                        <MoreHorizontal className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <button
+                            type="button"
+                            onPointerDown={e => e.stopPropagation()}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-[#2a2a2a]"
+                        >
+                            <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                        </button>
                     </div>
                     <p className="text-sm font-medium text-foreground leading-snug line-clamp-2 mt-1">{task.title}</p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
