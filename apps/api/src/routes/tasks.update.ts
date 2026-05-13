@@ -13,10 +13,7 @@ const patchTaskSchema = z.object({
     title: z.string().min(1).max(200).optional(),
     description: z.string().nullable().optional(),
     estimatedHours: z.number().positive().nullable().optional(),
-    acceptanceCriteria: z.union([
-        z.array(z.string()),
-        z.array(z.object({ text: z.string(), checked: z.boolean() })),
-    ]).optional(),
+    acceptanceCriteria: z.array(z.object({ text: z.string(), checked: z.boolean() })).optional(),
     dueDate: z.string().datetime().nullable().optional(),
     status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']).optional(),
     startedAt: z.string().datetime().nullable().optional(),

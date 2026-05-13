@@ -57,7 +57,7 @@ export const projectMilestones = pgTable('project_milestones', {
     completedAt: timestamp('completed_at'),
     assigneeId:  uuid('assignee_id').references(() => users.id),
     priority:           taskPriorityEnum('priority').notNull().default('medium'),
-    acceptanceCriteria: jsonb('acceptance_criteria').notNull().default([]).$type<string[]>(),
+    acceptanceCriteria: jsonb('acceptance_criteria').notNull().default([]).$type<{ text: string; checked: boolean }[]>(),
     estimatedHours:     decimal('estimated_hours', { precision: 6, scale: 2 }),
     createdBy:   uuid('created_by').notNull().references(() => users.id),
     deletedAt:   timestamp('deleted_at'),
