@@ -3,7 +3,7 @@ import { TaskComment, INTERNAL_SERVICE_KEY } from '../types.js'
 import { checkMessageQuota, fetchAgentSkill, fetchConnectedProviders } from '../usage.js'
 import { createTenantAgent } from '../mastra/index.js'
 import { filterPII } from '../pii-filter.js'
-import { fetchTaskComments } from './tasks.js'
+import { fetchTaskComments } from './tasks.helpers.js'
 
 // ─── Task planning endpoint ───────────────────────────────────────────────────
 

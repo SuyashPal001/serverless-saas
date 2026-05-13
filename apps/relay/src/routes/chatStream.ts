@@ -134,6 +134,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     })
 
     let fullText = ''
+    let planResult: unknown
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break
@@ -152,6 +153,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
+          break
+        }
+        case 'tool-result': {
+          const p = part.payload ?? part
+          if ((p.toolName as string) === 'create_plan_from_prd') {
+            planResult = p.result
+          }
           break
         }
         case 'finish': {
@@ -174,7 +182,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             fireKnowledgeGap({ tenantId, conversationId, query: message, ragScore: cached?.topScore ?? 0 })
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId })
+          sendEvent('done', { text: fullText, conversationId, messageId, planResult })
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
