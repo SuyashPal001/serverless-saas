@@ -43,15 +43,27 @@ export async function handleListMilestones(c: Context<AppEnv>) {
     const plan = await loadPlan(planId, tenantId);
     if (!plan) return c.json({ error: 'Plan not found' }, 404);
 
-    const milestones: ProjectMilestone[] = await db.select().from(projectMilestones).where(and(eq(projectMilestones.planId, planId), isNull(projectMilestones.deletedAt))).orderBy(projectMilestones.sequenceId);
+    let milestones: ProjectMilestone[];
+    try {
+        milestones = await db.select().from(projectMilestones).where(and(eq(projectMilestones.planId, planId), isNull(projectMilestones.deletedAt))).orderBy(projectMilestones.sequenceId);
+    } catch (err) {
+        console.error('[handleListMilestones] db.select(projectMilestones) failed', { planId, tenantId, err });
+        return c.json({ error: 'Internal server error', code: 'DB_ERROR' }, 500);
+    }
 
     if (milestones.length === 0) return c.json({ data: [] });
 
     type CountRow = { milestoneId: string | null; total: number; completed: number };
     const milestoneIds = milestones.map((m) => m.id);
-    const taskCounts: CountRow[] = await db
-        .select({ milestoneId: agentTasks.milestoneId, total: count(), completed: sql<number>`count(*) filter (where ${agentTasks.status} = 'done')` })
-        .from(agentTasks).where(and(inArray(agentTasks.milestoneId, milestoneIds), eq(agentTasks.tenantId, tenantId))).groupBy(agentTasks.milestoneId);
+    let taskCounts: CountRow[];
+    try {
+        taskCounts = await db
+            .select({ milestoneId: agentTasks.milestoneId, total: count(), completed: sql<number>`count(*) filter (where ${agentTasks.status} = 'done')` })
+            .from(agentTasks).where(and(inArray(agentTasks.milestoneId, milestoneIds), eq(agentTasks.tenantId, tenantId))).groupBy(agentTasks.milestoneId);
+    } catch (err) {
+        console.error('[handleListMilestones] db.select(taskCounts) failed', { planId, tenantId, err });
+        return c.json({ error: 'Internal server error', code: 'DB_ERROR' }, 500);
+    }
 
     const countMap = new Map<string, CountRow>(taskCounts.filter((r): r is CountRow & { milestoneId: string } => r.milestoneId !== null).map((r) => [r.milestoneId, r]));
 
