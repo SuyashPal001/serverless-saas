@@ -215,8 +215,8 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                 </div>
             )}
 
-            {/* Subtasks */}
-            <div className="mb-6">
+            {/* Subtasks — hidden when this task is itself a subtask (no nesting beyond depth 1) */}
+            {!task.parentTaskId && <div className="mb-6">
                 <div className="flex items-center gap-2 mb-2">
                     <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
                     <h2 className="text-sm font-medium text-foreground">Subtasks</h2>
@@ -236,38 +236,35 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                         />
                     ))}
                 </div>
-                {/* Inline add — only allowed at depth 1 (task has no parent) */}
-                {!task.parentTaskId && (
-                    addingSubtask ? (
-                        <div className="flex items-center gap-2 mt-1.5 px-2">
-                            <div className="w-2 h-2 rounded-full bg-[#3a3a3a] shrink-0" />
-                            <input
-                                ref={subtaskInputRef}
-                                autoFocus
-                                value={subtaskTitle}
-                                onChange={e => setSubtaskTitle(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter') handleSubtaskSubmit()
-                                    if (e.key === 'Escape') { setAddingSubtask(false); setSubtaskTitle('') }
-                                }}
-                                onBlur={handleSubtaskSubmit}
-                                placeholder="Subtask title…"
-                                className="flex-1 bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground/30"
-                                disabled={createSubtask.isPending}
-                            />
-                            {createSubtask.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                        </div>
-                    ) : (
-                        <button
-                            onClick={() => setAddingSubtask(true)}
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground mt-1.5 px-2 transition-colors"
-                        >
-                            <Plus className="w-3.5 h-3.5" />
-                            Add subtask
-                        </button>
-                    )
+                {addingSubtask ? (
+                    <div className="flex items-center gap-2 mt-1.5 px-2">
+                        <div className="w-2 h-2 rounded-full bg-[#3a3a3a] shrink-0" />
+                        <input
+                            ref={subtaskInputRef}
+                            autoFocus
+                            value={subtaskTitle}
+                            onChange={e => setSubtaskTitle(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') handleSubtaskSubmit()
+                                if (e.key === 'Escape') { setAddingSubtask(false); setSubtaskTitle('') }
+                            }}
+                            onBlur={handleSubtaskSubmit}
+                            placeholder="Subtask title…"
+                            className="flex-1 bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground/30"
+                            disabled={createSubtask.isPending}
+                        />
+                        {createSubtask.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => setAddingSubtask(true)}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground mt-1.5 px-2 transition-colors"
+                    >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add subtask
+                    </button>
                 )}
-            </div>
+            </div>}
 
             {/* ExecutionConsole */}
             <ExecutionConsole

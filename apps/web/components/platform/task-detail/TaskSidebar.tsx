@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
     Bot, User, ChevronDown, Clock, Target, LayoutList, Calendar,
     Link2, Paperclip, FileText, CheckCircle, Play, XCircle, X, Pencil,
-    Copy, ExternalLink, Sparkles,
+    Copy, ExternalLink, Sparkles, GitBranch,
 } from 'lucide-react'
 import { extractDomain } from './outputHelpers'
 import {
@@ -158,8 +159,19 @@ export function TaskSidebar({
     const { isEditing, draftStatus, draftPriority, draftAssigneeKey, setDraftStatus, setDraftPriority, setDraftAssigneeKey } = editState
     const [assigneeOpen, setAssigneeOpen] = useState(false)
     const [newLink, setNewLink] = useState('')
+    const params = useParams()
+    const router = useRouter()
+    const tenantSlug = params.tenant as string
 
     const completedSteps = steps.filter(s => s.status === 'done').length
+
+    const { data: parentTaskData } = useQuery<{ data: { task: { id: string; sequenceId?: number | null; title: string } } }>({
+        queryKey: ['task', task.parentTaskId],
+        queryFn: () => api.get(`/api/v1/tasks/${task.parentTaskId}`),
+        enabled: !!task.parentTaskId,
+        staleTime: 60_000,
+    })
+    const parentTask = parentTaskData?.data?.task
 
     const { data: filesData } = useQuery({
         queryKey: ['files'],
@@ -186,6 +198,34 @@ export function TaskSidebar({
             </div>
 
             <div className="flex flex-col">
+                {/* Parent task — shown only when this is a subtask */}
+                {task.parentTaskId && (
+                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
+                        <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
+                            <GitBranch className="w-3.5 h-3.5 opacity-50" />
+                            <span className="text-xs">Parent</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            {parentTask ? (
+                                <button
+                                    onClick={() => router.push(`/${tenantSlug}/dashboard/board/${parentTask.id}`)}
+                                    className="flex items-center gap-1.5 text-xs text-foreground/80 hover:text-foreground group max-w-full"
+                                >
+                                    {parentTask.sequenceId && (
+                                        <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-tighter shrink-0">
+                                            TASK-{parentTask.sequenceId}
+                                        </span>
+                                    )}
+                                    <span className="truncate group-hover:underline">{parentTask.title}</span>
+                                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 shrink-0 transition-opacity" />
+                                </button>
+                            ) : (
+                                <span className="text-xs text-muted-foreground/30">Loading…</span>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Status */}
                 <div className="flex items-center gap-3 py-2.5 border-b border-[#1a1a1a]">
                     <div className="flex items-center gap-2 w-[100px] flex-shrink-0 text-muted-foreground">
