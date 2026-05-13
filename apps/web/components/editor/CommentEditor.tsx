@@ -20,6 +20,8 @@ interface CommentEditorProps {
 export function CommentEditor({ taskId: _taskId, onSubmit, isPending }: CommentEditorProps) {
     const allItems = useMentionSuggestions()
     const allItemsRef = useRef(allItems)
+    // Ref so handleKeyDown (set up once by useEditor) always calls the latest submit
+    const submitRef = useRef<() => void>(() => {})
 
     useEffect(() => { allItemsRef.current = allItems }, [allItems])
 
@@ -37,7 +39,7 @@ export function CommentEditor({ taskId: _taskId, onSubmit, isPending }: CommentE
             attributes: { class: 'outline-none min-h-[2.5rem] max-h-32 overflow-y-auto' },
             handleKeyDown: (_view, event) => {
                 if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                    submit()
+                    submitRef.current()
                     return true
                 }
                 return false
@@ -53,6 +55,9 @@ export function CommentEditor({ taskId: _taskId, onSubmit, isPending }: CommentE
         onSubmit(html)
         editor.commands.clearContent()
     }
+
+    // Keep ref in sync with the latest submit on every render
+    submitRef.current = submit
 
     // Subscribes to selection/transaction updates so active state re-renders correctly
     const editorState = useEditorState({
