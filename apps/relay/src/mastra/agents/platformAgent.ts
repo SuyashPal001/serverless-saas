@@ -178,15 +178,12 @@ export const platformAgent = new Agent({
   id: 'saarthi',
   name: 'Saarthi',
 
-  instructions: async () => {
-    const prompt = await fetchPlatformPrompt()
-    return `${prompt}
-
-When a user shares a PRD or document for planning, analyze it and return a structured plan as JSON in this exact format:
-\`\`\`json
-{ "plan": { "title": "...", "description": "...", "targetDate": "..." }, "milestones": [...], "risks": [...], "totalEstimatedHours": 0 }
-\`\`\`
-Do NOT create anything in the system. Just return the plan JSON so the user can review it first.`
+  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+    // Per-agent override takes precedence over the global agent_templates prompt.
+    // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
+    // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
+    const override = requestContext?.get('agentSystemPrompt') as string | undefined
+    return override ?? await fetchPlatformPrompt()
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {

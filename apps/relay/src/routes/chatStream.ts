@@ -5,6 +5,7 @@ import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '..
 import { platformAgent } from '../mastra/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
+import { fetchAgentSkill } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 
@@ -151,6 +152,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('agentId', agentId)
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
+
+    // Inject per-agent system prompt so platformAgent.instructions uses it
+    // instead of the global agent_templates prompt (ADR: agent branding fix).
+    const agentSkill = await fetchAgentSkill(agentId)
+    if (agentSkill?.systemPrompt) {
+      requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    }
 
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)

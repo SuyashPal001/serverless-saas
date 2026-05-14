@@ -1,6 +1,10 @@
 import { Agent } from '@mastra/core/agent'
+import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt'
 
 import { saarthiModel } from '../model.js'
+import { prdWorkspace } from '../workspace/prdWorkspace.js'
+import { prdWorkflow } from '../workflows/prdWorkflow.js'
+import { prdCompletenessScorer } from '../scorers/prdCompleteness.js'
 
 // ---------------------------------------------------------------------------
 // PRD analysis agent — senior engineering lead persona.
@@ -20,4 +24,16 @@ Never use tools. Reason only from what is provided.
 Never produce JSON — write clear structured plain text.`,
   tools: {},
   model: saarthiModel,
+  workspace: prdWorkspace,
+  workflows: { prd: prdWorkflow },
+  scorers: {
+    relevancy: {
+      scorer: createAnswerRelevancyScorer({ model: saarthiModel }),
+      sampling: { type: 'ratio', rate: 1 },
+    },
+    prdCompleteness: {
+      scorer: prdCompletenessScorer,
+      sampling: { type: 'ratio', rate: 1 },
+    },
+  },
 })

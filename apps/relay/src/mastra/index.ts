@@ -13,11 +13,14 @@ import { Observability, DefaultExporter } from '@mastra/observability'
 import { getMastraStore, getMastraMemory } from './memory.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
+import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
+import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
 
 import { platformAgent, SERVER_TOOLS } from './agents/platformAgent.js'
 import { formatterAgent } from './agents/formatterAgent.js'
 import { prdAgent } from './agents/prdAgent.js'
+import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
 // Mastra instance — registered at startup with storage and platformAgent.
@@ -26,9 +29,9 @@ import { prdAgent } from './agents/prdAgent.js'
 
 export const mastra = new Mastra({
   agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow },
+  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow },
   storage: getMastraStore(),
-  scorers: { dodPass: dodPassScorer },
+  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer },
   editor: new MastraEditor(),
   observability: new Observability({
     configs: {
@@ -48,6 +51,7 @@ export { saarthiModel } from './model.js'
 export { platformAgent, SERVER_TOOLS }
 export { formatterAgent }
 export { prdAgent }
+export { prdWorkspace } from './workspace/prdWorkspace.js'
 export { getMastraStore, getMastraMemory } from './memory.js'
 export { getMCPClientForTenant, getToolsForTenant } from './tools.js'
 export { createTenantAgent } from './agent.js'
@@ -56,3 +60,4 @@ export { runMastraWorkflow } from './workflow.js'
 export type { WorkflowContext } from './workflow.js'
 export { taskExecutionWorkflow } from './workflows/taskExecution.js'
 export { documentWorkflow } from './workflows/documentWorkflow.js'
+export { prdWorkflow } from './workflows/prdWorkflow.js'
