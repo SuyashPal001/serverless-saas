@@ -62,6 +62,16 @@ output "sqs_workflow_queue_arn" {
   value       = module.sqs.queue_arns["workflow"]
 }
 
+output "sqs_agent_task_queue_url" {
+  description = "Agent task queue URL."
+  value       = module.sqs.queue_urls["agent_task"]
+}
+
+output "sqs_agent_task_queue_arn" {
+  description = "Agent task queue ARN."
+  value       = module.sqs.queue_arns["agent_task"]
+}
+
 # -------------------------------------------------------
 # SNS
 # -------------------------------------------------------
@@ -89,4 +99,30 @@ output "eventbridge_bus_arn" {
 output "ssm_prefix" {
   description = "SSM parameter store prefix for this environment."
   value       = "/${var.project}/${var.environment}"
+}
+
+# -------------------------------------------------------
+# SES
+# -------------------------------------------------------
+output "ses_verification_token" {
+  description = "TXT record value for SES domain verification."
+  value       = module.ses.verification_token
+}
+
+output "ses_dkim_tokens" {
+  description = "List of 3 DKIM tokens for Route 53 CNAME records."
+  value       = module.ses.dkim_tokens
+}
+
+output "ses_mail_from_domain" {
+  description = "MAIL FROM domain for bounce handling."
+  value       = module.ses.mail_from_domain
+}
+
+# -------------------------------------------------------
+# Storage
+# -------------------------------------------------------
+output "storage_bucket_name" {
+  description = "S3 file storage bucket name."
+  value       = aws_s3_bucket.files.bucket
 }

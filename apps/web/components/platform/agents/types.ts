@@ -5,7 +5,7 @@ import * as z from "zod";
 export const agentSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
     type: z.enum(["ops", "support", "billing", "custom"]),
-    model: z.string().min(1, { message: "Model is required." }),
+    model: z.string().optional(),
 });
 
 export type AgentFormValues = z.infer<typeof agentSchema>;
@@ -15,20 +15,24 @@ export type AgentStatus = "active" | "paused" | "retired";
 
 export interface Agent {
     id: string;
+    tenantId: string;
     name: string;
     type: AgentType;
     status: AgentStatus;
-    model: string;
+    model: string | null;
+    llmProviderId: string | null;
     createdAt: string;
 }
 
 export interface AgentsResponse {
-    agents: Agent[];
+    data: Agent[];
 }
 
 export interface AgentDetail extends Agent {
     createdBy: string;
-    description?: string;
+    createdByName: string | null;
+    description: string | null;
+    avatarUrl: string | null;
 }
 
 export interface Workflow {
@@ -65,6 +69,7 @@ export interface AgentRun {
     completedAt: string | null;
     stepsCompleted: StepCompleted[];
     actionsTaken: ActionTaken[];
+    insights?: string;
     humanApproved: boolean | null;
 }
 

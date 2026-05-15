@@ -1,12 +1,12 @@
 "use client";
 
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
-import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
     Form,
     FormControl,
@@ -14,7 +14,6 @@ import {
     FormItem,
     FormLabel,
     FormMessage,
-    FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,78 +23,83 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { agentSchema, type AgentFormValues } from "./types";
+import { Agent } from "./types";
+import { Loader2 } from "lucide-react";
+
+const formSchema = z.object({
+    name: z.string().min(2, {
+        message: "Name must be at least 2 characters.",
+    }),
+    type: z.enum(["ops", "support", "billing", "custom"]),
+});
 
 interface CreateAgentFormProps {
-    onSuccess: () => void;
+    onSuccess: (data: { agent: Agent; apiKey: string }) => void;
 }
 
 export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
-    const { tenantId } = useTenant();
     const queryClient = useQueryClient();
 
-    const form = useForm<AgentFormValues>({
-        resolver: zodResolver(agentSchema),
+    const form = useForm<z.infer<typeof formSchema>>({
+        resolver: zodResolver(formSchema),
         defaultValues: {
             name: "",
             type: "ops",
-            model: "gpt-4o",
         },
     });
 
-    const createMutation = useMutation({
-        mutationFn: (values: AgentFormValues) => {
-            return api.post("/api/v1/agents", values);
+    const createAgentMutation = useMutation({
+        mutationFn: (values: z.infer<typeof formSchema>) =>
+            api.post<{ data: { agent: Agent; apiKey: string } }>("/api/v1/agents", values),
+        onSuccess: (response) => {
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
+            onSuccess(response.data);
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
-            toast.success("Agent created successfully");
-            form.reset();
-            onSuccess();
-        },
-        onError: (error: any) => {
-            toast.error(error.data?.message || error.message || "Failed to create agent");
+        onError: (err: any) => {
+            if (err instanceof ApiError && err.status === 403 && err.data?.code === 'AGENT_LIMIT_REACHED') {
+                toast.error(`Agent limit reached. Your plan allows ${err.data.limit} agent${err.data.limit === 1 ? '' : 's'} (${err.data.used} active).`);
+            } else if (err instanceof ApiError && err.status === 403) {
+                toast.error('You do not have permission to create agents.');
+            } else {
+                toast.error('Failed to create agent.');
+            }
         },
     });
 
-    function onSubmit(data: AgentFormValues) {
-        createMutation.mutate(data);
+    function onSubmit(values: z.infer<typeof formSchema>) {
+        createAgentMutation.mutate(values);
     }
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
                 <FormField
                     control={form.control}
                     name="name"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Agent Name</FormLabel>
+                            <FormLabel>Name</FormLabel>
                             <FormControl>
-                                <Input placeholder="e.g. Support Bot" {...field} />
+                                <Input placeholder="Support Bot" {...field} />
                             </FormControl>
-                            <FormDescription>
-                                A unique name for your agent.
-                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
-
                 <FormField
                     control={form.control}
                     name="type"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Agent Type</FormLabel>
+                            <FormLabel>Type</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                                 <FormControl>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select a type" />
+                                        <SelectValue placeholder="Select an agent type" />
                                     </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                    <SelectItem value="ops">Operations</SelectItem>
+                                    <SelectItem value="ops">Ops</SelectItem>
                                     <SelectItem value="support">Support</SelectItem>
                                     <SelectItem value="billing">Billing</SelectItem>
                                     <SelectItem value="custom">Custom</SelectItem>
@@ -105,33 +109,12 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
                         </FormItem>
                     )}
                 />
-
-                <FormField
-                    control={form.control}
-                    name="model"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Model</FormLabel>
-                            <FormControl>
-                                <Input placeholder="e.g. gpt-4o" {...field} />
-                            </FormControl>
-                            <FormDescription>
-                                The underlying LLM model.
-                            </FormDescription>
-                            <FormMessage />
-                        </FormItem>
+                <Button type="submit" className="w-full" disabled={createAgentMutation.isPending}>
+                    {createAgentMutation.isPending && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                />
-
-                <div className="flex justify-end pt-4">
-                    <Button
-                        type="submit"
-                        disabled={createMutation.isPending}
-                        className="w-full"
-                    >
-                        {createMutation.isPending ? "Creating..." : "Create Agent"}
-                    </Button>
-                </div>
+                    Create Agent
+                </Button>
             </form>
         </Form>
     );

@@ -19,3 +19,23 @@ export function can(
     const requiredPermission = `${resource}:${action}`;
     return permissions.includes(requiredPermission);
 }
+
+export function hasPermission(permissions: string[] | undefined, resource: string, action: string): boolean {
+  return can(permissions, resource, action);
+}
+
+export function canRead(permissions: string[] | undefined, resource: string): boolean {
+  return can(permissions, resource, 'read');
+}
+
+export function canCreate(permissions: string[] | undefined, resource: string): boolean {
+  return can(permissions, resource, 'create');
+}
+
+export function canUpdate(permissions: string[] | undefined, resource: string): boolean {
+  return can(permissions, resource, 'update');
+}
+
+export function canDelete(permissions: string[] | undefined, resource: string): boolean {
+  return can(permissions, resource, 'delete');
+}

@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, timestamp, boolean, decimal, pgEnum } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
+import { apiKeys } from './access';
 
 export const planEnum = pgEnum('plan', ['free', 'starter', 'business', 'enterprise']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', ['active', 'cancelled', 'expired', 'trialing']);
@@ -71,6 +72,7 @@ export const usageRecords = pgTable('usage_records', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   actorId: uuid('actor_id').notNull(),
   actorType: actorTypeEnum('actor_type').notNull(),
+  apiKeyId: uuid('api_key_id').references(() => apiKeys.id),
   metric: text('metric').notNull(),
   quantity: decimal('quantity', { precision: 10, scale: 4 }).notNull(),
   recordedAt: timestamp('recorded_at').notNull().defaultNow(),

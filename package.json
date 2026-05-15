@@ -14,10 +14,20 @@
     "lint:fix": "eslint . --ext .ts --fix",
     "type-check": "pnpm -r run type-check",
     "format": "prettier --write \"**/*.{ts,json,yaml,md}\"",
-    "rebuild": "pnpm run clean && pnpm run build"
+    "rebuild": "pnpm run clean && pnpm run build",
+    "test": "pnpm -r run --if-present test"
+  },
+  "dependencies": {
+    "mammoth": "^1.7.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "protobufjs": ">=7.5.8"
+    }
   }
 }

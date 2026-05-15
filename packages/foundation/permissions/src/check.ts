@@ -1,14 +1,23 @@
 import type { PermissionSet, PermissionAction, PermissionString } from '@serverless-saas/types';
 
 /**
- * Check if a permission set includes a specific resource:action pair
+ * Check if a permission set includes a specific resource:action pair.
+ * Handles both structured PermissionSet objects and legacy "resource:action" strings.
  */
 export const hasPermission = (
-  permissions: PermissionSet,
+  permissions: PermissionSet | string[] | undefined | null,
   resource: string,
   action: PermissionAction,
 ): boolean => {
-  return permissions.some((p) => p.resource === resource && p.action === action);
+  if (!permissions || !Array.isArray(permissions)) return false;
+  
+  return permissions.some((p) => {
+    if (!p) return false;
+    if (typeof p === 'string') {
+      return p === `${resource}:${action}`;
+    }
+    return p.resource === resource && p.action === action;
+  });
 };
 
 /**

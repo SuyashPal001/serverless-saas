@@ -18,6 +18,7 @@ import {
     Info,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { PermissionGate } from "@/components/platform/PermissionGate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -104,7 +105,7 @@ export default function AgentRunsPage() {
         queryKey: ["agent-runs", agentId, page, pageSize],
         queryFn: () =>
             api.get<AgentRunsResponse>(
-                `/api/v1/agents/${agentId}/runs?page=${page}&pageSize=${pageSize}`
+                `/api/v1/agent-runs?agentId=${agentId}&page=${page}&pageSize=${pageSize}`
             ),
     });
 
@@ -124,6 +125,7 @@ export default function AgentRunsPage() {
     const totalPages = data?.totalPages ?? 1;
 
     return (
+        <PermissionGate resource="agents" action="read">
         <div className="space-y-8">
             {/* Header */}
             <div className="space-y-4">
@@ -137,7 +139,7 @@ export default function AgentRunsPage() {
 
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">
-                        Agent Runs
+                        Runs — {isLoadingAgent ? "..." : (agent?.name ?? "Agent")}
                     </h1>
                     <p className="text-muted-foreground mt-1">
                         Execution history and actions performed by this agent.
@@ -209,6 +211,9 @@ export default function AgentRunsPage() {
                                         );
                                         const cfg =
                                             statusConfig[run.status];
+
+                                        const uniqueTools = Array.from(new Set(run.stepsCompleted.map(s => s.toolName)));
+
                                         return (
                                             <React.Fragment key={run.id}>
                                                 <TableRow
@@ -265,142 +270,101 @@ export default function AgentRunsPage() {
 
                                                 {/* Expanded detail row */}
                                                 {isExpanded && (
-                                                    <TableRow className="bg-muted/20 hover:bg-muted/20">
+                                                    <TableRow className="bg-muted/50 hover:bg-muted/50 border-t-0">
                                                         <TableCell
                                                             colSpan={7}
-                                                            className="py-6 px-6"
+                                                            className="py-8 px-8"
                                                         >
-                                                            <div className="grid gap-8 md:grid-cols-3">
+                                                            <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
                                                                 {/* Steps */}
-                                                                <div className="space-y-3">
-                                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                                                <div className="space-y-4">
+                                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
                                                                         Steps Completed
                                                                     </p>
-                                                                    <p className="text-3xl font-bold font-mono leading-none">
-                                                                        {
-                                                                            run.stepsCompleted
-                                                                                .length
-                                                                        }
+                                                                    <div className="space-y-3">
+                                                                        {run.stepsCompleted.length > 0 ? (
+                                                                            run.stepsCompleted.map((step, idx) => (
+                                                                                <div key={idx} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-3 pb-2">
+                                                                                    <div className="flex items-center justify-between">
+                                                                                        <span className="text-xs font-semibold">{step.toolName}</span>
+                                                                                        <Badge variant="secondary" className="text-[9px] h-4 px-1">{step.status}</Badge>
+                                                                                    </div>
+                                                                                    <span className="text-[10px] text-muted-foreground">Step {step.stepOrder}</span>
+                                                                                </div>
+                                                                            ))
+                                                                        ) : (
+                                                                            <p className="text-xs text-muted-foreground italic">No steps recorded</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Tools */}
+                                                                <div className="space-y-4">
+                                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
+                                                                        Tools Called ({uniqueTools.length})
                                                                     </p>
-                                                                    {run.stepsCompleted.length > 0 && (
-                                                                        <ul className="space-y-1.5 pt-1">
-                                                                            {run.stepsCompleted
-                                                                                .slice(0, 4)
-                                                                                .map(
-                                                                                    (
-                                                                                        step,
-                                                                                        idx
-                                                                                    ) => (
-                                                                                        <li
-                                                                                            key={idx}
-                                                                                            className="flex items-center gap-2 text-xs"
-                                                                                        >
-                                                                                            <span className="h-1 w-1 rounded-full bg-primary shrink-0" />
-                                                                                            <span className="text-muted-foreground truncate">
-                                                                                                {
-                                                                                                    step.toolName
-                                                                                                }
-                                                                                            </span>
-                                                                                            <Badge
-                                                                                                variant="secondary"
-                                                                                                className="ml-auto text-[9px] h-4 px-1 py-0 uppercase shrink-0"
-                                                                                            >
-                                                                                                {
-                                                                                                    step.status
-                                                                                                }
-                                                                                            </Badge>
-                                                                                        </li>
-                                                                                    )
-                                                                                )}
-                                                                            {run.stepsCompleted.length > 4 && (
-                                                                                <li className="text-[10px] text-muted-foreground pl-3">
-                                                                                    +{run.stepsCompleted.length - 4} more
-                                                                                </li>
-                                                                            )}
-                                                                        </ul>
-                                                                    )}
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {uniqueTools.length > 0 ? (
+                                                                            uniqueTools.map((tool, idx) => (
+                                                                                <Badge key={idx} variant="outline" className="bg-background text-[10px]">
+                                                                                    {tool}
+                                                                                </Badge>
+                                                                            ))
+                                                                        ) : (
+                                                                            <span className="text-xs text-muted-foreground italic">No tools used</span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
 
                                                                 {/* Actions */}
-                                                                <div className="space-y-3">
-                                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                                                <div className="space-y-4">
+                                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
                                                                         Actions Taken
                                                                     </p>
-                                                                    <p className="text-3xl font-bold font-mono leading-none">
-                                                                        {
-                                                                            run.actionsTaken
-                                                                                .length
-                                                                        }
-                                                                    </p>
-                                                                    {run.actionsTaken.length > 0 && (
-                                                                        <ul className="space-y-1.5 pt-1">
-                                                                            {run.actionsTaken
-                                                                                .slice(0, 4)
-                                                                                .map(
-                                                                                    (
-                                                                                        action,
-                                                                                        idx
-                                                                                    ) => (
-                                                                                        <li
-                                                                                            key={idx}
-                                                                                            className="flex items-center gap-2 text-xs"
-                                                                                        >
-                                                                                            <span className="h-1 w-1 rounded-full bg-primary shrink-0" />
-                                                                                            <span className="text-muted-foreground truncate">
-                                                                                                {action.action}
-                                                                                            </span>
-                                                                                            <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">
-                                                                                                {action.resource}
-                                                                                            </span>
-                                                                                        </li>
-                                                                                    )
-                                                                                )}
-                                                                            {run.actionsTaken.length > 4 && (
-                                                                                <li className="text-[10px] text-muted-foreground pl-3">
-                                                                                    +{run.actionsTaken.length - 4} more
-                                                                                </li>
-                                                                            )}
-                                                                        </ul>
-                                                                    )}
-                                                                </div>
-
-                                                                {/* Human Approval */}
-                                                                <div className="space-y-3">
-                                                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                                                        Human Approval
-                                                                    </p>
-                                                                    <div>
-                                                                        {run.humanApproved ===
-                                                                            true ? (
-                                                                            <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/10 font-bold">
-                                                                                Approved
-                                                                            </Badge>
-                                                                        ) : run.humanApproved ===
-                                                                            false ? (
-                                                                            <Badge
-                                                                                variant="destructive"
-                                                                                className="font-bold"
-                                                                            >
-                                                                                Rejected
-                                                                            </Badge>
+                                                                    <div className="space-y-3">
+                                                                        {run.actionsTaken.length > 0 ? (
+                                                                            run.actionsTaken.map((action, idx) => (
+                                                                                <div key={idx} className="space-y-1">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                                                                        <span className="text-xs font-medium">{action.action}</span>
+                                                                                    </div>
+                                                                                    <p className="text-[10px] text-muted-foreground pl-3.5">{action.description}</p>
+                                                                                </div>
+                                                                            ))
                                                                         ) : (
-                                                                            <Badge
-                                                                                variant="secondary"
-                                                                                className="font-bold"
-                                                                            >
-                                                                                Not Required
-                                                                            </Badge>
+                                                                            <p className="text-xs text-muted-foreground italic">No actions found</p>
                                                                         )}
                                                                     </div>
-                                                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                                                        {run.humanApproved ===
-                                                                            true
-                                                                            ? "This run was reviewed and approved by an operator."
-                                                                            : run.humanApproved ===
-                                                                                false
-                                                                                ? "This run was rejected during manual review."
-                                                                                : "This run did not require human intervention."}
-                                                                    </p>
+                                                                </div>
+
+                                                                {/* Summary / Metadata */}
+                                                                <div className="space-y-6">
+                                                                    <div className="space-y-3">
+                                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
+                                                                            Human Approval
+                                                                        </p>
+                                                                        <div>
+                                                                            {run.humanApproved === true ? (
+                                                                                <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/10">Approved</Badge>
+                                                                            ) : run.humanApproved === false ? (
+                                                                                <Badge variant="destructive">Rejected</Badge>
+                                                                            ) : (
+                                                                                <Badge variant="secondary">Not Required</Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {run.insights && (
+                                                                        <div className="space-y-3">
+                                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
+                                                                                Insights
+                                                                            </p>
+                                                                            <p className="text-xs text-muted-foreground leading-relaxed bg-primary/5 p-3 rounded-md border border-primary/10">
+                                                                                {run.insights}
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </TableCell>
@@ -460,5 +424,6 @@ export default function AgentRunsPage() {
                 </div>
             )}
         </div>
+        </PermissionGate>
     );
 }

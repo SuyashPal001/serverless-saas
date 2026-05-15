@@ -12,8 +12,11 @@ export function getTenantSlug(request: NextRequest | Request): string | null {
 
 export interface TenantClaims {
     tenantId: string;
+    tenantSlug?: string;
     role: string;
     plan: string;
+    permissions?: string[];
+    entitlementFeatures?: Record<string, boolean>;
     [key: string]: any;
 }
 
@@ -52,6 +55,7 @@ export function decodeTenantClaims(token: string): TenantClaims | null {
         // Assuming the claims are stored at the root of the payload or under 'custom:' (Cognito standard)
         return {
             tenantId: payload['custom:tenantId'] || payload.tenantId || '',
+            userId: payload.sub || payload.userId || '',
             role: payload['custom:role'] || payload.role || '',
             plan: payload['custom:plan'] || payload.plan || '',
             ...payload

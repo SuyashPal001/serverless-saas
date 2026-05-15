@@ -36,6 +36,18 @@ variable "cognito_domain_prefix" {
   type        = string
 }
 
+variable "cognito_callback_urls" {
+  description = "Allowed callback URLs for Cognito web client"
+  type        = list(string)
+  default     = ["http://localhost:3000/auth/callback"]
+}
+
+variable "cognito_logout_urls" {
+  description = "Allowed logout URLs for Cognito web client"
+  type        = list(string)
+  default     = ["http://localhost:3000"]
+}
+
 variable "pre_token_generation_lambda_arn" {
   description = "ARN of the Pre Token Generation Lambda. Written by SAM, read here."
   type        = string
@@ -128,6 +140,18 @@ variable "foundation_worker_lambda_arn" {
   type        = string
 }
 
+variable "agent_task_queue_name" {
+  description = "Name of the agent task SQS queue"
+  type        = string
+  default     = "serverless-saas-agent-task-queue-dev"
+}
+
+variable "task_worker_lambda_arn" {
+  description = "ARN of the Task Worker Lambda (deployed by SAM)"
+  type        = string
+  default     = ""
+}
+
 # Upstash Redis
 variable "upstash_redis_rest_url" {
   description = "Upstash Redis REST URL"
@@ -140,10 +164,50 @@ variable "upstash_redis_rest_token" {
   sensitive   = true
 }
 
-# Upstash Redis
 # Neon PostgreSQL
 variable "database_url" {
   description = "Neon PostgreSQL connection string"
   type        = string
   sensitive   = true
+}
+
+# Websocket Token
+variable "ws_token_secret" {
+  description = "Secret for signing WebSocket tokens"
+  type        = string
+  sensitive   = true
+}
+
+# Jira OAuth
+variable "jira_redirect_uri" {
+  description = "Redirect URI registered in the Atlassian OAuth app for Jira"
+  type        = string
+}
+
+# Google OAuth
+variable "google_redirect_uri" {
+  description = "Redirect URI registered in the Google Cloud Console for OAuth (e.g. https://api.example.com/api/v1/integrations/google/callback)"
+  type        = string
+}
+
+# Frontend
+variable "frontend_url" {
+  description = "Public frontend base URL used for OAuth callback redirects (e.g. https://app.example.com)"
+  type        = string
+}
+
+# -------------------------------------------------------
+# SES
+# -------------------------------------------------------
+variable "ses_from_domain" {
+  description = "SES sending subdomain (e.g. mail.saas.fitnearn.com)"
+  type        = string
+}
+
+# -------------------------------------------------------
+# Storage
+# -------------------------------------------------------
+variable "domain" {
+  description = "Root domain for the project (e.g. saas.fitnearn.com). Used for S3 CORS wildcard."
+  type        = string
 }

@@ -1,9 +1,9 @@
-import { pgTable, uuid, text, timestamp, boolean, decimal, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, decimal, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
 
 export const integrationStatusEnum = pgEnum('integration_status', ['active', 'disconnected', 'error']);
-export const llmProviderEnum = pgEnum('llm_provider', ['openai', 'anthropic', 'mistral', 'openrouter']);
+export const llmProviderEnum = pgEnum('llm_provider', ['openai', 'anthropic', 'mistral', 'openrouter', 'kimi', 'vertex']);
 export const emailProviderEnum = pgEnum('email_provider', ['ses', 'sendgrid', 'resend', 'postmark']);
 export const storageProviderEnum = pgEnum('storage_provider', ['s3', 'gcs', 'r2']);
 
@@ -11,14 +11,16 @@ export const integrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   provider: text('provider').notNull(),
-  mcpServerUrl: text('mcp_server_url').notNull(),
+  mcpServerUrl: text('mcp_server_url'),
   credentialsEnc: text('credentials_enc').notNull(),
   status: integrationStatusEnum('status').notNull().default('active'),
   permissions: text('permissions').array().notNull().default([]),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex('integrations_tenant_provider_unique').on(table.tenantId, table.provider),
+]);
 
 export const llmProviders = pgTable('llm_providers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -28,6 +30,10 @@ export const llmProviders = pgTable('llm_providers', {
   apiKeyEncrypted: text('api_key_encrypted').notNull(),
   isDefault: boolean('is_default').notNull().default(false),
   costPerToken: decimal('cost_per_token', { precision: 10, scale: 8 }),
+  displayName: text('display_name'),
+  openclawModelId: text('openclaw_model_id'),
+  isPlatform: boolean('is_platform').notNull().default(false),
+  status: text('status').notNull().default('live'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

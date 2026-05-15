@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { TenantClaims } from "@/lib/tenant";
+import { useAuthRefresh } from "@/hooks/useAuthRefresh";
 
 export const TenantContext = createContext<TenantClaims | null>(null);
 
@@ -20,6 +21,9 @@ export function TenantProvider({
     children: React.ReactNode;
     claims: TenantClaims;
 }) {
+    // Background token refresh
+    useAuthRefresh();
+
     return (
         <TenantContext.Provider value={claims}>
             {children}

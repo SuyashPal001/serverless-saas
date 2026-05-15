@@ -13,6 +13,7 @@ export const RESOURCES: Record<string, Action[]> = {
     subscriptions: ['create', 'read', 'update', 'delete'],
     api_keys: ['create', 'read', 'update', 'delete'],
     agents: ['create', 'read', 'update', 'delete'],
+    agent_tasks: ['create', 'read', 'update', 'delete'],
     agent_workflows: ['create', 'read', 'update', 'delete'],
     agent_runs: ['read', 'delete'],
     notifications: ['create', 'read', 'update', 'delete'],
@@ -20,6 +21,14 @@ export const RESOURCES: Record<string, Action[]> = {
     tenant: ['read', 'update', 'delete'],
     entitlements: ['create', 'read', 'update', 'delete'],
     integrations: ['create', 'read', 'update', 'delete'],
+    usage: ['read'],
+    webhooks: ['create', 'read', 'update', 'delete'],
+    files: ['create', 'read', 'delete'],
+    conversations: ['create', 'read', 'update', 'delete'],
+    messages: ['create', 'read'],
+    analytics: ['read'],
+    project_plans: ['create', 'read', 'update', 'delete'],
+    project_milestones: ['create', 'read', 'update', 'delete'],
 };
 
 export async function seedPermissions(db: typeof DB) {

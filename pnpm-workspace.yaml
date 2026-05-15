@@ -1,3 +1,8 @@
 packages:
   - 'packages/foundation/*'
   - 'apps/*'
+allowBuilds:
+  esbuild: false
+  msw: false
+  sharp: false
+  unrs-resolver: false

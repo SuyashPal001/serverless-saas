@@ -10,6 +10,9 @@
     { "path": "../../packages/foundation/events" },
     { "path": "../../packages/foundation/cache" },
     { "path": "../../packages/foundation/logger" },
-    { "path": "../../packages/foundation/idempotency" }
+    { "path": "../../packages/foundation/idempotency" },
+    { "path": "../../packages/foundation/database" },
+    { "path": "../../packages/foundation/notifications" },
+    { "path": "../../packages/foundation/ai" }
   ]
 }

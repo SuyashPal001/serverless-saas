@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +36,7 @@ function MetricProgress({
     icon: React.ElementType,
     metrics: EntitlementMetrics
 }) {
-    const percentage = metrics.unlimited
+    const percentage = metrics.unlimited || metrics.limit === 0
         ? 0
         : Math.min(Math.round((metrics.used / metrics.limit) * 100), 100);
 
@@ -140,6 +141,14 @@ export function EntitlementsSummary() {
                         icon={Bot}
                         metrics={entitlements.agents}
                     />
+                </div>
+                <div className="mt-6 pt-4 border-t border-border text-right">
+                    <Link 
+                        href={`/${tenantId}/dashboard/billing/usage`} 
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        View Details &rarr;
+                    </Link>
                 </div>
             </CardContent>
         </Card>

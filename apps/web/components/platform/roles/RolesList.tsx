@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { can } from "@/lib/permissions";
+import { canDelete } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Shield, Users, MoreVertical } from "lucide-react";
@@ -22,6 +22,7 @@ export interface Role {
     name: string;
     description?: string;
     isDefault: boolean;
+    tenantId: string | null;
     memberCount: number;
 }
 
@@ -35,9 +36,11 @@ export function RolesList() {
     const { data, isLoading, isError, error } = useQuery<RolesResponse>({
         queryKey: ["roles", tenantId],
         queryFn: () => api.get<RolesResponse>("/api/v1/roles"),
+        enabled: !!tenantId,
+        staleTime: 0,
     });
 
-    const canDeleteRoles = can(permissions, "roles", "delete");
+    const canDeleteRoles = canDelete(permissions, "roles");
 
     if (isLoading) {
         return (
@@ -85,7 +88,7 @@ export function RolesList() {
                                 </Badge>
                             )}
                         </div>
-                        {!role.isDefault && canDeleteRoles && (
+                        {!role.isDefault && !!role.tenantId && canDeleteRoles && (
                             <DeleteRoleAction roleId={role.id} roleName={role.name} />
                         )}
                     </CardHeader>

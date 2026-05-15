@@ -1,0 +1,1 @@
+ALTER TABLE "agent_tasks" ADD COLUMN "mastra_run_id" text;

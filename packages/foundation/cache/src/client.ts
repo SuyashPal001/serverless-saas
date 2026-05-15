@@ -10,6 +10,11 @@ export type CacheClient = {
   exists: (...keys: string[]) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
   incr: (key: string) => Promise<number>;
+  sadd: (key: string, ...members: (string | number)[]) => Promise<number>;
+  srem: (key: string, ...members: (string | number)[]) => Promise<number>;
+  smembers: (key: string) => Promise<string[]>;
+  sismember: (key: string, member: string) => Promise<number>;
+  scan: (cursor: any, ...args: any[]) => Promise<[any, any[]]>;
 };
 
 let instance: CacheClient | null = null;
@@ -28,6 +33,11 @@ const createUpstashClient = (url: string, token: string): CacheClient => {
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
     incr: (key) => client.incr(key),
+    sadd: (key, ...members) => client.sadd(key, ...(members as [string, ...string[]])),
+    srem: (key, ...members) => client.srem(key, ...members),
+    smembers: (key) => client.smembers(key),
+    sismember: (key, member) => client.sismember(key, member),
+    scan: (cursor, ...args) => client.scan(cursor, ...(args as [])),
   };
 };
 
@@ -44,6 +54,11 @@ const createIoRedisClient = (url: string): CacheClient => {
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
     incr: (key) => client.incr(key),
+    sadd: (key, ...members) => client.sadd(key, ...members),
+    srem: (key, ...members) => client.srem(key, ...members),
+    smembers: (key) => client.smembers(key),
+    sismember: (key, member) => client.sismember(key, member),
+    scan: (cursor, ...args) => client.scan(cursor, ...args) as any,
   };
 };
 
@@ -73,3 +88,23 @@ export const getCacheClient = (): CacheClient => {
 export const resetCacheClient = (): void => {
   instance = null;
 };
+
+let healthChecked = false;
+
+/**
+ * Verify Redis connectivity on first use.
+ * Resets the cached instance if the ping fails so the next call retries.
+ * Call from initRuntimeSecrets() after setting UPSTASH credentials.
+ */
+export async function ensureCacheHealthy(): Promise<void> {
+  if (healthChecked) return;
+  const client = getCacheClient();
+  try {
+    await client.ping();
+    healthChecked = true;
+  } catch (err) {
+    resetCacheClient();
+    healthChecked = false;
+    throw new Error(`Redis health check failed: ${(err as Error).message}`);
+  }
+}

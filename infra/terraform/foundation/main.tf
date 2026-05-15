@@ -7,6 +7,13 @@ locals {
 }
 
 # -------------------------------------------------------
+# Data: WebSocket Lambda (deployed by SAM)
+# -------------------------------------------------------
+data "aws_lambda_function" "websocket" {
+  function_name = "serverless-saas-foundation-websocket-dev"
+}
+
+# -------------------------------------------------------
 # Module: Cognito
 # -------------------------------------------------------
 module "cognito" {
@@ -42,9 +49,9 @@ module "cognito" {
       ]
       allowed_oauth_flows          = ["code"]
       allowed_oauth_scopes         = ["email", "openid", "profile"]
-      callback_urls                = ["http://localhost:3000/auth/callback"]
-      logout_urls                  = ["http://localhost:3000"]
-      supported_identity_providers = ["COGNITO"]
+      callback_urls                = var.cognito_callback_urls
+      logout_urls                  = var.cognito_logout_urls
+      supported_identity_providers = ["COGNITO","Google"]
       read_attributes              = ["email", "name", "custom:tenantId", "custom:role", "custom:plan"]
       write_attributes             = ["email", "name"]
       generate_secret              = false
@@ -52,6 +59,22 @@ module "cognito" {
   }
 
   email_configuration = null
+  identity_providers = {
+    google = {
+      provider_name = "Google"
+      provider_type = "Google"
+      provider_details = {
+        client_id        = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_id"]
+        client_secret    = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_secret"]
+        authorize_scopes = "email openid profile"
+      }
+      attribute_mapping = {
+        email    = "email"
+        name     = "name"
+        username = "sub"
+      }
+    }
+  }
   tags                = {}
 }
 
@@ -71,6 +94,11 @@ module "sqs" {
     workflow = {
       name                       = var.workflow_queue_name
       visibility_timeout_seconds = var.visibility_timeout_seconds
+      message_retention_seconds  = var.message_retention_seconds
+    }
+    agent_task = {
+      name                       = var.agent_task_queue_name
+      visibility_timeout_seconds = 360
       message_retention_seconds  = var.message_retention_seconds
     }
   }
@@ -95,6 +123,33 @@ module "sns_events" {
 # -------------------------------------------------------
 # Module: EventBridge — Custom Event Bus
 # -------------------------------------------------------
+resource "aws_sqs_queue_policy" "workflow_eventbridge" {
+  queue_url = module.sqs.queue_urls["workflow"]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEventBridgeToSendMessage"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sqs:SendMessage"
+        Resource = module.sqs.queue_arns["workflow"]
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_cloudwatch_event_rule.workflow_scheduler.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# -------------------------------------------------------
+# Module: EventBridge — Custom Event Bus
+# -------------------------------------------------------
 module "eventbridge" {
   source = "../modules/messaging/aws/eventbridge"
 
@@ -104,6 +159,30 @@ module "eventbridge" {
     }
   }
   tags = {}
+}
+
+# -------------------------------------------------------
+# Scheduled workflow trigger — default event bus
+# Schedule rules are not supported on custom event buses;
+# they must use the default event bus.
+# -------------------------------------------------------
+resource "aws_cloudwatch_event_rule" "workflow_scheduler" {
+  name                = "${local.name_prefix}-workflow-scheduler"
+  description         = "Fires scheduled agent workflows every 5 minutes"
+  schedule_expression = "rate(5 minutes)"
+  # No event_bus_name — uses default event bus
+}
+
+resource "aws_cloudwatch_event_target" "workflow_scheduler" {
+  rule      = aws_cloudwatch_event_rule.workflow_scheduler.name
+  target_id = "workflow-sqs"
+  arn       = module.sqs.queue_arns["workflow"]
+
+  input_transformer {
+    input_template = jsonencode({
+      type = "workflow.fire"
+    })
+  }
 }
 
 # -------------------------------------------------------
@@ -127,6 +206,10 @@ module "cloudwatch" {
     }
     foundation_pretoken = {
       name              = "/aws/lambda/${local.name_prefix}-foundation-pretoken"
+      retention_in_days = var.log_retention_days
+    }
+    task_worker = {
+      name              = "/aws/lambda/${local.name_prefix}-task-worker"
       retention_in_days = var.log_retention_days
     }
   }
@@ -158,6 +241,21 @@ module "api_gateway" {
   }
 
   routes = {
+    google_oauth_callback = {
+      route_key       = "GET /api/v1/integrations/google/callback"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    zoho_oauth_callback = {
+      route_key       = "GET /api/v1/integrations/zoho/callback"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    jira_oauth_callback = {
+      route_key       = "GET /api/v1/integrations/jira/callback"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     api = {
       route_key       = "ANY /api/v1/{proxy+}"
       integration_key = "foundation_api"
@@ -173,9 +271,105 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    check_email = {
+      route_key       = "GET /api/v1/auth/check-email"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    invitations_get = {
+      route_key       = "GET /api/v1/invitations/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    invitations_accept = {
+      route_key       = "POST /api/v1/invitations/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    onboarding = {
+      route_key       = "POST /api/v1/onboarding/complete"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    api_internal = {
+      route_key       = "POST /api/v1/internal/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    api_internal_get = {
+      route_key       = "GET /api/v1/internal/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     }
 
   tags = {}
+}
+
+# -------------------------------------------------------
+# API Gateway: WebSocket API
+# -------------------------------------------------------
+resource "aws_apigatewayv2_api" "ws_api" {
+  name                         = "serverless-saas-websocket-dev"
+  protocol_type                = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+resource "aws_apigatewayv2_integration" "ws_lambda" {
+  api_id           = aws_apigatewayv2_api.ws_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = data.aws_lambda_function.websocket.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "connect" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$connect"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "disconnect" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$disconnect"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.ws_api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
+}
+
+resource "aws_apigatewayv2_stage" "ws_dev" {
+  api_id      = aws_apigatewayv2_api.ws_api.id
+  name        = "dev"
+  auto_deploy = true
+}
+
+# -------------------------------------------------------
+# Lambda Permissions for WebSocket API
+# -------------------------------------------------------
+resource "aws_lambda_permission" "allow_ws_connect" {
+  statement_id  = "AllowAPIGatewayWSConnect"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_ws_disconnect" {
+  statement_id  = "AllowAPIGatewayWSDisconnect"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_ws_default" {
+  statement_id  = "AllowAPIGatewayWSDefault"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_lambda_function.websocket.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.ws_api.execution_arn}/*/*"
 }
 
 # -------------------------------------------------------
@@ -189,6 +383,11 @@ module "esm" {
       queue_arn  = module.sqs.queue_arns["processing"]
       lambda_arn = var.foundation_worker_lambda_arn
       batch_size = 10
+    }
+    agent_task = {
+      queue_arn  = module.sqs.queue_arns["agent_task"]
+      lambda_arn = var.task_worker_lambda_arn
+      batch_size = 1
     }
   }
 }
@@ -240,6 +439,7 @@ module "iam" {
             Resource = [
               module.sqs.queue_arns["processing"],
               module.sqs.queue_arns["workflow"],
+              module.sqs.queue_arns["agent_task"],
             ]
           }]
         })
@@ -271,6 +471,22 @@ module "iam" {
               "cognito-idp:AdminSetUserPassword"
             ]
             Resource = module.cognito.user_pool_arn
+          }]
+        })
+        ses_send = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+            Resource = module.ses.domain_identity_arn
+          }]
+        })
+        manage_connections = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = "execute-api:ManageConnections"
+            Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
           }]
         })
       }
@@ -307,6 +523,22 @@ module "iam" {
             Effect   = "Allow"
             Action   = ["secretsmanager:GetSecretValue"]
             Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        s3_documents = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject",
+              "s3:ListBucket"
+            ]
+            Resource = [
+              "arn:aws:s3:::${var.project}-${var.environment}-files",
+              "arn:aws:s3:::${var.project}-${var.environment}-files/*"
+            ]
           }]
         })
         sns_publish = jsonencode({
@@ -358,6 +590,117 @@ module "iam" {
             Effect   = "Allow"
             Action   = ["secretsmanager:GetSecretValue"]
             Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+      }
+    }
+
+    foundation_websocket = {
+      name        = "${local.name_prefix}-foundation-websocket-role"
+      description = "Execution role for foundation WebSocket Lambda"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        manage_connections = jsonencode({
+            Version = "2012-10-17"
+            Statement = [{
+                Effect = "Allow"
+                Action = "execute-api:ManageConnections"
+                Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
+            }]
+        })
+      }
+    }
+
+    task_worker = {
+      name        = "${local.name_prefix}-task-worker-role"
+      description = "Execution role for Task Worker Lambda (SQS consumer)"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+      policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+        "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess",
+      ]
+      inline_policies = {
+        ssm_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+            Resource = "arn:aws:ssm:${var.region}:*:parameter/${var.project}/${var.environment}/*"
+          }]
+        })
+        secrets_read = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["secretsmanager:GetSecretValue"]
+            Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.project}/${var.environment}/*"
+          }]
+        })
+        sqs_consume = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "sqs:ReceiveMessage",
+              "sqs:DeleteMessage",
+              "sqs:GetQueueAttributes"
+            ]
+            Resource = module.sqs.queue_arns["agent_task"]
+          }]
+        })
+        sqs_publish = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = ["sqs:SendMessage"]
+            Resource = [
+              module.sqs.queue_arns["processing"],
+              module.sqs.queue_arns["workflow"],
+              module.sqs.queue_arns["agent_task"],
+            ]
+          }]
+        })
+        manage_connections = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = "execute-api:ManageConnections"
+            Resource = "arn:aws:execute-api:${var.region}:*:${aws_apigatewayv2_api.ws_api.id}/*"
           }]
         })
       }
@@ -442,6 +785,85 @@ resource "aws_ssm_parameter" "iam_foundation_pretoken_role_arn" {
   value = module.iam.role_arns["foundation_pretoken"]
 }
 
+resource "aws_ssm_parameter" "ws_token_secret" {
+  name  = "${local.ssm_prefix}/ws-token-secret"
+  type  = "SecureString"
+  value = var.ws_token_secret
+}
+
+# -------------------------------------------------------
+# SSM Bridge: WebSocket API
+# -------------------------------------------------------
+resource "aws_ssm_parameter" "ws_api_id" {
+  name  = "/${var.project}/${var.environment}/api-gateway/ws-api-id"
+  type  = "String"
+  value = aws_apigatewayv2_api.ws_api.id
+}
+
+resource "aws_ssm_parameter" "ws_api_endpoint" {
+  name  = "/${var.project}/${var.environment}/api-gateway/ws-api-endpoint"
+  type  = "String"
+  value = aws_apigatewayv2_stage.ws_dev.invoke_url
+}
+
+resource "aws_ssm_parameter" "iam_foundation_websocket_role_arn" {
+  name  = "/${var.project}/${var.environment}/iam/foundation-websocket-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["foundation_websocket"]
+}
+
+resource "aws_ssm_parameter" "sqs_agent_task_queue_url" {
+  name  = "${local.ssm_prefix}/sqs/agent-task-queue-url"
+  type  = "String"
+  value = module.sqs.queue_urls["agent_task"]
+}
+
+resource "aws_ssm_parameter" "iam_task_worker_role_arn" {
+  name  = "${local.ssm_prefix}/iam/task-worker-role-arn"
+  type  = "String"
+  value = module.iam.role_arns["task_worker"]
+}
+
+resource "aws_secretsmanager_secret" "token_encryption_key" {
+  name        = "${var.project}/${var.environment}/token-encryption-key"
+  description = "AES-256-GCM master key for token encryption"
+}
+
+resource "aws_secretsmanager_secret" "google_client_secret" {
+  name        = "${var.project}/${var.environment}/google-client-secret"
+  description = "Google OAuth client secret"
+}
+
+resource "aws_secretsmanager_secret" "jira_oauth" {
+  name        = "${var.project}/${var.environment}/jira-oauth"
+  description = "Atlassian OAuth 2.0 client credentials for Jira integration"
+}
+
+resource "aws_ssm_parameter" "jira_redirect_uri" {
+  name  = "${local.ssm_prefix}/jira-redirect-uri"
+  type  = "String"
+  value = var.jira_redirect_uri
+}
+
+resource "aws_ssm_parameter" "google_redirect_uri" {
+  name  = "${local.ssm_prefix}/google-redirect-uri"
+  type  = "String"
+  value = var.google_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "frontend_url" {
+  name  = "${local.ssm_prefix}/frontend-url"
+  type  = "String"
+  value = var.frontend_url
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
 
 resource "aws_secretsmanager_secret" "database" {
   name = "${var.project}/${var.environment}/database"
@@ -462,4 +884,33 @@ resource "aws_secretsmanager_secret_version" "cache" {
     url   = var.upstash_redis_rest_url
     token = var.upstash_redis_rest_token
   })
+}
+
+# -------------------------------------------------------
+# Module: SES — Sending domain
+# -------------------------------------------------------
+module "ses" {
+  source      = "../modules/messaging/aws/ses"
+  domain      = var.ses_from_domain
+  environment = var.environment
+  project     = var.project
+}
+
+resource "aws_ssm_parameter" "ses_from_email" {
+  name  = "${local.ssm_prefix}/ses/from-email"
+  type  = "String"
+  value = "mail@${var.ses_from_domain}"
+}
+
+resource "aws_ssm_parameter" "ses_domain_identity_arn" {
+  name  = "${local.ssm_prefix}/ses/domain-identity-arn"
+  type  = "String"
+  value = module.ses.domain_identity_arn
+}
+
+# -------------------------------------------------------
+# Data: Google OAuth credentials from Secrets Manager
+# -------------------------------------------------------
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id = "${var.project}/${var.environment}/google-oauth"
 }

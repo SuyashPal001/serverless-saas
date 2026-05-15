@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname, useParams } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
     LayoutDashboard,
     Users,
@@ -10,121 +10,232 @@ import {
     CreditCard,
     Key,
     Bot,
+    MessageSquare,
     Bell,
     FileText,
     Building2,
-    Sliders
+    Sliders,
+    Webhook,
+    FolderOpen,
+    Plug,
+    Lock,
+    ChevronRight,
+    PanelLeftClose,
+    PanelLeftOpen,
+    LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
-import { useUnreadCount } from "@/hooks/useUnreadCount"
+import { useNotifications } from "@/lib/notifications-context"
+import { useSidebar } from "./SidebarContext"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
+import { signOut } from "@/lib/auth"
+import { UsageBar } from "./UsageBar"
 
-interface SidebarItemProps {
-    href: string
-    label: string
-    icon: React.ElementType
+
+interface SidebarNavLinkProps {
+    item: SidebarItemType
+    isCollapsed?: boolean
+    unreadCount?: number
+    onLockedClick?: () => void
 }
 
-function SidebarItem({ href, label, icon: Icon }: SidebarItemProps) {
+function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: SidebarNavLinkProps) {
     const pathname = usePathname()
-    const isActive = pathname === href
+    const isActive = pathname === item.href
+    const Icon = item.icon
 
-    return (
-        <Link
-            href={href}
+    const content = (
+        <div
             className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                isActive
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all group relative",
+                item.locked ? "opacity-50 cursor-pointer" : "cursor-pointer",
+                isActive && !item.locked
                     ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                isCollapsed && "justify-center px-2"
             )}
+            onClick={(e) => {
+                if (item.locked) {
+                    e.preventDefault()
+                    onLockedClick?.()
+                }
+            }}
         >
-            <Icon className="w-4 h-4" />
-            <span>{label}</span>
-        </Link>
-    )
-}
-
-function NotificationsItem({ href, unreadCount }: { href: string; unreadCount: number }) {
-    const pathname = usePathname()
-    const isActive = pathname === href
-
-    return (
-        <Link
-            href={href}
-            className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+            <Icon className="w-4 h-4 shrink-0" />
+            
+            {!isCollapsed && (
+                <div className="flex items-center justify-between flex-1 min-w-0">
+                    <span className="truncate">{item.label}</span>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {item.showBusinessBadge && (
+                            <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-tighter bg-purple-500/10 text-purple-500 border-purple-500/20">
+                                business
+                            </Badge>
+                        )}
+                        {item.locked && <Lock className="w-3 h-3 text-muted-foreground" />}
+                        {item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
+                            <span className="bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold">
+                                {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                        )}
+                    </div>
+                </div>
             )}
-        >
-            <Bell className="w-4 h-4" />
-            <span>Notifications</span>
-            {unreadCount > 0 && (
-                <span className="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+
+            {isCollapsed && item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold border-2 border-card">
+                    {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
             )}
-        </Link>
+        </div>
     )
+
+    if (item.locked) {
+        return (
+            <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                    {content}
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2 font-medium">
+                    {isCollapsed
+                        ? `${item.label} (Locked)`
+                        : `Upgrade to ${item.planRequired ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1) : 'a higher plan'} to unlock`}
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
+
+    if (isCollapsed) {
+        return (
+            <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                    <Link href={item.href}>{content}</Link>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2">
+                    {item.label}
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
+
+    return <Link href={item.href}>{content}</Link>
 }
 
 export function Sidebar() {
-    const { tenantId, role } = useTenant()
-    const params = useParams()
-    const tenantSlug = params.tenant as string
-    const { unreadCount } = useUnreadCount()
+    const { tenantSlug, role, plan, name, email, entitlementFeatures = {} } = useTenant()
+    const { unreadCount } = useNotifications()
+    const { isSidebarCollapsed, toggleSidebar } = useSidebar()
 
-    const notificationsHref = `/${tenantSlug}/dashboard/notifications`
+    const entitlements = Object.fromEntries(
+        Object.entries(entitlementFeatures).map(([k, v]) => [k, { enabled: v as boolean }])
+    )
+    const sidebarItems = getSidebarItems(role, plan, tenantSlug || '', entitlements)
 
-    const navItems = [
-        { href: `/${tenantId}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
-        { href: `/${tenantId}/settings/members`, label: "Members", icon: Users },
-        { href: `/${tenantId}/settings/roles`, label: "Roles", icon: Shield },
-        { href: `/${tenantId}/billing`, label: "Billing", icon: CreditCard },
-        { href: `/${tenantId}/api-keys`, label: "API Keys", icon: Key },
-        { href: `/${tenantId}/agents`, label: "Agents", icon: Bot },
-        { href: `/${tenantId}/audit`, label: "Audit Log", icon: FileText },
-    ]
+    const getInitials = () => {
+        if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+        if (email) return email[0].toUpperCase()
+        return "US"
+    }
 
-    const opsItems = [
-        { href: `/${tenantId}/ops/tenants`, label: "All Tenants", icon: Building2 },
-        { href: `/${tenantId}/ops/overrides`, label: "Feature Overrides", icon: Sliders },
-    ]
+    const getAvatarBg = () => {
+        if (role === 'platform_admin') return "bg-[#ff7f50]" // Coral
+        if (role === 'member') return "bg-blue-500"
+        return "bg-zinc-500" // Admin/Owner default
+    }
 
     return (
-        <aside className="fixed left-0 top-0 bottom-0 w-[240px] flex flex-col bg-card border-r border-border py-6 px-4 z-50">
-            <div className="flex items-center gap-2 px-2 mb-8">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                    <span className="text-primary-foreground font-bold text-xl">P</span>
+        <TooltipProvider>
+            <aside className={cn(
+                "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
+                isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
+            )}>
+                {/* Logo Section */}
+                <div className={cn(
+                    "flex items-center gap-2 mb-8 transition-all px-2",
+                    isSidebarCollapsed ? "justify-center" : "px-2"
+                )}>
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                        <span className="text-primary-foreground font-bold text-xl uppercase">
+                            {tenantSlug?.[0] || 'P'}
+                        </span>
+                    </div>
+                    {!isSidebarCollapsed && (
+                        <span className="text-lg font-bold tracking-tight text-foreground truncate">
+                            Platform
+                        </span>
+                    )}
                 </div>
-                <span className="text-lg font-bold tracking-tight text-foreground">Platform</span>
-            </div>
 
-            <nav className="flex-1 space-y-1">
-                {navItems.map((item) => (
-                    <SidebarItem key={item.href} {...item} />
-                ))}
-                {/* Notifications — rendered separately to support the unread badge */}
-                <NotificationsItem
-                    href={notificationsHref}
-                    unreadCount={unreadCount}
-                />
-            </nav>
+                {/* Navigation Items */}
+                <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar pr-1 -mr-1">
+                    {sidebarItems.map((item, index) => {
+                        if (item.isDivider) {
+                            return !isSidebarCollapsed && (
+                                <div key={`divider-${index}`} className="my-4 px-3">
+                                    <div className="h-px bg-border/50 w-full" />
+                                </div>
+                            )
+                        }
 
-            {role === "platform_admin" && (
-                <div className="mt-8 pt-8 border-t border-border">
-                    <p className="px-2 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Ops
-                    </p>
-                    <nav className="space-y-1">
-                        {opsItems.map((item) => (
-                            <SidebarItem key={item.href} {...item} />
-                        ))}
-                    </nav>
+                        return (
+                            <React.Fragment key={item.href || `section-${index}`}>
+                                {item.sectionLabel && !isSidebarCollapsed && (
+                                    <p className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 font-mono">
+                                        {item.sectionLabel}
+                                    </p>
+                                )}
+                                <SidebarNavLink
+                                    item={item}
+                                    isCollapsed={isSidebarCollapsed}
+                                    unreadCount={item.label === "Notifications" ? unreadCount : undefined}
+                                    onLockedClick={() => {
+                                        window.dispatchEvent(new CustomEvent('plan-gate', {
+                                            detail: {
+                                                feature: item.planGateFeature || '',
+                                                requiredPlan: item.planRequired
+                                                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
+                                                    : 'Starter',
+                                            }
+                                        }))
+                                    }}
+                                />
+                            </React.Fragment>
+                        )
+                    })}
+                </nav>
+
+                {/* Messages usage — hidden when collapsed */}
+                {!isSidebarCollapsed && <UsageBar />}
+
+                {/* Footer Section */}
+                <div className="mt-auto pt-4">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleSidebar}
+                        className="w-full h-10 rounded-md hover:bg-accent hover:text-accent-foreground transition-all group"
+                    >
+                        {isSidebarCollapsed ? (
+                            <PanelLeftOpen className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
+                        ) : (
+                            <div className="flex items-center gap-3 w-full px-3">
+                                <PanelLeftClose className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+                                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">Collapse</span>
+                            </div>
+                        )}
+                    </Button>
                 </div>
-            )}
-        </aside>
+            </aside>
+
+        </TooltipProvider>
     )
 }

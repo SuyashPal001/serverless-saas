@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { can } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Key, Activity } from "lucide-react";
+import { AlertCircle, Key, Activity, BarChart3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -17,6 +19,8 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { RevokeApiKeyAction } from "./RevokeApiKeyAction";
+import { DeleteApiKeyAction } from "./DeleteApiKeyAction";
+import { KeyUsageModal } from "./KeyUsageModal";
 import { cn } from "@/lib/utils";
 
 export interface ApiKey {
@@ -24,17 +28,24 @@ export interface ApiKey {
     name: string;
     type: "rest" | "mcp" | "agent";
     status: "active" | "revoked";
+    permissions: string[];
     lastUsedAt: string | null;
     expiresAt: string | null;
     createdAt: string;
 }
 
 interface ApiKeysResponse {
-    apiKeys: ApiKey[];
+    data: ApiKey[];
 }
+
+const keyPreview = (type: string) => {
+    const prefix = type === "rest" ? "sk_" : type === "mcp" ? "mk_" : "ak_";
+    return `${prefix}${"•".repeat(8)}`;
+};
 
 export function ApiKeysList() {
     const { tenantId, permissions = [] } = useTenant();
+    const [usageKey, setUsageKey] = useState<{ id: string, name: string } | null>(null);
 
     const { data, isLoading, isError, error } = useQuery<ApiKeysResponse>({
         queryKey: ["api-keys", tenantId],
@@ -65,7 +76,7 @@ export function ApiKeysList() {
         );
     }
 
-    const apiKeys = data?.apiKeys || [];
+    const apiKeys = data?.data || [];
 
     if (apiKeys.length === 0) {
         return (
@@ -81,12 +92,14 @@ export function ApiKeysList() {
                 <TableHeader>
                     <TableRow>
                         <TableHead>Name</TableHead>
+                        <TableHead>Key</TableHead>
                         <TableHead>Type</TableHead>
+                        <TableHead>Permissions</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Created</TableHead>
                         <TableHead>Last Used</TableHead>
                         <TableHead>Expires</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                        <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -100,10 +113,26 @@ export function ApiKeysList() {
                                         {key.name}
                                     </div>
                                 </TableCell>
+                                <TableCell className="font-mono text-xs text-muted-foreground/60">
+                                    {keyPreview(key.type)}
+                                </TableCell>
                                 <TableCell>
                                     <Badge variant="outline" className="uppercase text-[10px] font-bold tracking-wider">
                                         {key.type}
                                     </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                        {key.permissions && key.permissions.length > 0 ? (
+                                            key.permissions.map((p) => (
+                                                <Badge key={p} variant="secondary" className="text-[9px] px-1 py-0 leading-none h-4">
+                                                    {p}
+                                                </Badge>
+                                            ))
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground italic">Full Access</span>
+                                        )}
+                                    </div>
                                 </TableCell>
                                 <TableCell>
                                     <Badge
@@ -130,16 +159,37 @@ export function ApiKeysList() {
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                     {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "Never"}
                                 </TableCell>
-                                <TableCell>
-                                    {!isRevoked && canRevokeKeys && (
-                                        <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
-                                    )}
+                                <TableCell className="text-right">
+                                    <div className="flex justify-end gap-1">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 text-muted-foreground opacity-70 hover:opacity-100" 
+                                            title="View Usage (Coming soon)"
+                                            onClick={() => setUsageKey({ id: key.id, name: key.name })}
+                                        >
+                                            <BarChart3 className="w-4 h-4" />
+                                        </Button>
+                                        {!isRevoked && canRevokeKeys && (
+                                            <RevokeApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
+                                        )}
+                                        <DeleteApiKeyAction apiKeyId={key.id} apiKeyName={key.name} />
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         );
                     })}
                 </TableBody>
             </Table>
+
+            {usageKey && (
+                <KeyUsageModal
+                    keyId={usageKey.id}
+                    keyName={usageKey.name}
+                    isOpen={!!usageKey}
+                    onClose={() => setUsageKey(null)}
+                />
+            )}
         </div>
     );
 }

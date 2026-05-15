@@ -8,6 +8,7 @@ const SYSTEM_ROLES = [
     { name: 'member', description: 'Standard access to product features', isDefault: true, isAgentRole: false },
     { name: 'ops-agent', description: 'Platform-provisioned ops agent', isDefault: true, isAgentRole: true },
     { name: 'custom-agent', description: 'Tenant-defined agent role baseline', isDefault: false, isAgentRole: true },
+    { name: 'platform_admin', description: 'Platform administrator — full ops portal access', isDefault: false, isAgentRole: false },
 ] as const;
 
 export async function seedRoles(db: typeof DB) {

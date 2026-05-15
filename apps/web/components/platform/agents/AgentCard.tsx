@@ -1,18 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { MoreHorizontal, Pause, Play, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { can } from "@/lib/permissions";
+import { Agent } from "./types";
 import {
     Card,
     CardContent,
     CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -34,141 +30,162 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
-import type { Agent, AgentStatus } from "./types";
 
 interface AgentCardProps {
     agent: Agent;
 }
 
-const typeColors: Record<string, string> = {
-    ops: "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20",
-    support: "bg-green-500/10 text-green-500 hover:bg-green-500/20",
-    billing: "bg-purple-500/10 text-purple-500 hover:bg-purple-500/20",
-    custom: "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20",
-};
-
-const statusColors: Record<AgentStatus, string> = {
-    active: "bg-emerald-500/10 text-emerald-500",
-    paused: "bg-yellow-500/10 text-yellow-500",
-    retired: "bg-red-500/10 text-red-500",
-};
-
 export function AgentCard({ agent }: AgentCardProps) {
+    const queryClient = useQueryClient();
     const params = useParams();
     const tenantSlug = params.tenant as string;
-    const { tenantId, permissions } = useTenant();
-    const queryClient = useQueryClient();
-    const [showRetireConfirm, setShowRetireConfirm] = useState(false);
+    const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
+
+    const formatRelativeTime = (date: string) => {
+        const now = new Date();
+        const diff = now.getTime() - new Date(date).getTime();
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}d ago`;
+        if (hours > 0) return `${hours}h ago`;
+        if (minutes > 0) return `${minutes}m ago`;
+        return "just now";
+    };
 
     const updateStatusMutation = useMutation({
-        mutationFn: (status: AgentStatus) => {
-            return api.patch(`/api/v1/agents/${agent.id}`, { status });
-        },
-        onSuccess: (_, status) => {
-            queryClient.invalidateQueries({ queryKey: ["agents", tenantId] });
-            toast.success(`Agent ${status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'retired'} successfully`);
-        },
-        onError: (error: any) => {
-            toast.error(error.data?.message || error.message || "Failed to update agent");
+        mutationFn: ({ status }: { status: Agent["status"] }) =>
+            api.patch(`/api/v1/agents/${agent.id}`, { status }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
         },
     });
 
-    const canUpdate = can(permissions, "agents", "update");
+    const getStatusBadgeVariant = (status: Agent["status"]) => {
+        switch (status) {
+            case "active":
+                return "bg-green-500/10 text-green-500 border-green-500/20";
+            case "paused":
+                return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+            case "retired":
+                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+            default:
+                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+        }
+    };
 
-    const formattedDate = new Intl.DateTimeFormat("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    }).format(new Date(agent.createdAt));
+    const getTypeBadgeVariant = (type: Agent["type"]) => {
+        switch (type) {
+            case "ops":
+                return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+            case "support":
+                return "bg-purple-500/10 text-purple-500 border-purple-500/20";
+            case "billing":
+                return "bg-orange-500/10 text-orange-500 border-orange-500/20";
+            case "custom":
+                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+            default:
+                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+        }
+    };
+
+    const isRetired = agent.status === "retired";
 
     return (
         <>
-            <Card className="group relative overflow-hidden transition-all hover:border-primary/50">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <Link
+                href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
+                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+            <Card className="relative overflow-hidden transition-colors hover:border-primary/40 hover:bg-muted/20">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                     <div className="space-y-1">
-                        <Link
-                            href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                            className="text-lg font-semibold hover:underline"
-                        >
-                            {agent.name}
-                        </Link>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className={typeColors[agent.type]}>
-                                {agent.type}
-                            </Badge>
-                            <Badge variant="outline" className={statusColors[agent.status]}>
-                                {agent.status}
-                            </Badge>
-                        </div>
+                        <CardTitle className="text-xl font-bold">{agent.name}</CardTitle>
+                        <CardDescription>
+                            Created {formatRelativeTime(agent.createdAt)}
+                        </CardDescription>
                     </div>
-                    {canUpdate && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                    <span className="sr-only">Open menu</span>
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {agent.status === 'active' ? (
-                                    <DropdownMenuItem onClick={() => updateStatusMutation.mutate('paused')}>
-                                        <Pause className="mr-2 h-4 w-4" />
-                                        Pause
-                                    </DropdownMenuItem>
-                                ) : agent.status === 'paused' ? (
-                                    <DropdownMenuItem onClick={() => updateStatusMutation.mutate('active')}>
-                                        <Play className="mr-2 h-4 w-4" />
-                                        Resume
-                                    </DropdownMenuItem>
-                                ) : null}
-                                {agent.status !== 'retired' && (
-                                    <DropdownMenuItem
-                                        onClick={() => setShowRetireConfirm(true)}
-                                        className="text-destructive focus:text-destructive"
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Retire
-                                    </DropdownMenuItem>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    )}
+                    <div onClick={(e) => e.preventDefault()}>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild disabled={isRetired}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                                <Link href={`/${tenantSlug}/dashboard/agents/${agent.id}`}>
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Configure
+                                </Link>
+                            </DropdownMenuItem>
+                            {agent.status === "active" && (
+                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
+                                    <Pause className="mr-2 h-4 w-4" />
+                                    Pause agent
+                                </DropdownMenuItem>
+                            )}
+                            {agent.status === "paused" && (
+                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "active" })}>
+                                    <Play className="mr-2 h-4 w-4" />
+                                    Reactivate agent
+                                </DropdownMenuItem>
+                            )}
+                            {(agent.status === "active" || agent.status === "paused") && (
+                                <DropdownMenuItem 
+                                    className="text-muted-foreground focus:text-foreground cursor-pointer"
+                                    onClick={() => setIsRetireDialogOpen(true)}
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Retire agent
+                                </DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid gap-2 text-sm text-muted-foreground">
-                        <div className="flex justify-between">
-                            <span>Model</span>
-                            <span className="font-medium text-foreground">{agent.model}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>Created</span>
-                            <span>{formattedDate}</span>
-                        </div>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant(agent.type))}>
+                            {agent.type}
+                        </Badge>
+                        <Badge variant="outline" className={cn("capitalize", getStatusBadgeVariant(agent.status))}>
+                            {agent.status}
+                        </Badge>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
+                        <span>Model</span>
+                        <span className="font-medium text-foreground">{agent.model || "Gemini 2.5 Flash"}</span>
                     </div>
                 </CardContent>
-                <Link
-                    href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                    className="absolute inset-0 z-0"
-                    aria-label={`View details for ${agent.name}`}
-                />
             </Card>
+            </Link>
 
-            <AlertDialog open={showRetireConfirm} onOpenChange={setShowRetireConfirm}>
+            <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogTitle>Retire this agent?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will permanently retire the agent. This action cannot be undone.
+                            This will permanently deactivate the agent and revoke its API 
+                            key. This cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel variant="ghost">Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                            onClick={() => updateStatusMutation.mutate('retired')}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                                updateStatusMutation.mutate({ status: "retired" });
+                                setIsRetireDialogOpen(false);
+                            }}
                         >
-                            Retire Agent
+                            Retire agent
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

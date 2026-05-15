@@ -97,3 +97,14 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "identity_providers" {
+  description = "Map of identity providers to federate with the user pool."
+  type = map(object({
+    provider_name     = string
+    provider_type     = string
+    provider_details  = map(string)
+    attribute_mapping = map(string)
+  }))
+  default = {}
+}

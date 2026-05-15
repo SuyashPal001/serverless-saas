@@ -1,63 +1,24 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
-import { notificationInbox } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
+import { handleGetInbox, handleMarkRead, handleMarkAllRead, handleArchive } from './notifications.inbox';
+import { handleGetPreferences, handleUpsertPreference } from './notifications.prefs';
+import { handleListWorkflows, handleGetWorkflow, handleTestFire } from './notifications.workflows';
 
 export const notificationsRoutes = new Hono<AppEnv>();
 
-// GET /notifications — list inbox items for current user
-notificationsRoutes.get('/', async (c) => {
-    const tenantId = c.get('tenantId');
-    const requestContext = c.get('requestContext') as any;
-    const userId = requestContext?.user?.id;
+// Inbox (read-all before :id to avoid shadowing)
+notificationsRoutes.get('/inbox', handleGetInbox);
+notificationsRoutes.post('/inbox/read-all', handleMarkAllRead);
+notificationsRoutes.patch('/inbox/:id/read', handleMarkRead);
+notificationsRoutes.patch('/inbox/:id/archive', handleArchive);
 
-    // Optional filter — unread only
-    const unreadOnly = c.req.query('unread') === 'true';
+// Preferences
+notificationsRoutes.get('/preferences', handleGetPreferences);
+notificationsRoutes.put('/preferences', handleUpsertPreference);
 
-    const conditions = [
-        eq(notificationInbox.tenantId, tenantId),
-        eq(notificationInbox.userId, userId),
-        eq(notificationInbox.archived, false),
-    ];
+// Workflows
+notificationsRoutes.get('/workflows', handleListWorkflows);
+notificationsRoutes.get('/workflows/:id', handleGetWorkflow);
 
-    if (unreadOnly) {
-        conditions.push(eq(notificationInbox.read, false));
-    }
-
-    const data = await db.query.notificationInbox.findMany({
-        where: and(...conditions),
-        orderBy: desc(notificationInbox.createdAt),
-        limit: 50,
-    });
-
-    return c.json({ data });
-});
-
-// PATCH /notifications/:id — mark as read
-notificationsRoutes.patch('/:id', async (c) => {
-    const tenantId = c.get('tenantId');
-    const requestContext = c.get('requestContext') as any;
-    const userId = requestContext?.user?.id;
-
-    const notificationId = c.req.param('id');
-
-    const existing = await db.query.notificationInbox.findFirst({
-        where: and(
-            eq(notificationInbox.id, notificationId),
-            eq(notificationInbox.tenantId, tenantId),
-            eq(notificationInbox.userId, userId)
-        ),
-    });
-
-    if (!existing) {
-        return c.json({ error: 'Notification not found' }, 404);
-    }
-
-    const [updated] = await db.update(notificationInbox)
-        .set({ read: true, readAt: new Date() })
-        .where(eq(notificationInbox.id, notificationId))
-        .returning();
-
-    return c.json({ data: updated });
-});
+// Test
+notificationsRoutes.post('/test-fire', handleTestFire);

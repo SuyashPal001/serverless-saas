@@ -145,6 +145,8 @@ resource "aws_cognito_user_pool_client" "this" {
   write_attributes = each.value.write_attributes
 
   generate_secret = each.value.generate_secret
+
+  depends_on = [aws_cognito_identity_provider.this]
 }
 
 # -------------------------------------------------------
@@ -158,4 +160,19 @@ resource "aws_lambda_permission" "pre_token_generation" {
   function_name = var.pre_token_generation_lambda_arn
   principal     = "cognito-idp.amazonaws.com"
   source_arn    = aws_cognito_user_pool.this.arn
+}
+
+# -------------------------------------------------------
+# Identity Providers
+# -------------------------------------------------------
+resource "aws_cognito_identity_provider" "this" {
+  for_each = var.identity_providers
+
+  user_pool_id  = aws_cognito_user_pool.this.id
+  provider_name = each.value.provider_name
+  provider_type = each.value.provider_type
+
+  provider_details = each.value.provider_details
+
+  attribute_mapping = each.value.attribute_mapping
 }

@@ -1,88 +1,119 @@
-"use client"
+import { useState, useEffect, useRef } from 'react';
+import { api } from '@/lib/api';
 
-import { useEffect, useRef } from "react"
-import { useQueryClient } from "@tanstack/react-query"
-import { useParams } from "next/navigation"
-import { NotificationsInboxResponse } from "@/components/platform/notifications/types"
-
-// The shape of a notification pushed over WebSocket
-export interface WsNotification {
-    id: string
-    title: string
-    body: string
-    messageType: string
-    createdAt: string
+export interface NotificationInboxEntry {
+  id: string;
+  tenantId: string;
+  userId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  readAt: string | null;
+  archived: boolean;
+  createdAt: string;
+  messageType: string;
+  metadata?: Record<string, unknown>;
 }
 
-// Hook signature — will be wired into the notifications page in a later task
-export function useNotificationsSocket() {
-    const queryClient = useQueryClient()
-    const { tenant: tenantSlug } = useParams<{ tenant: string }>()
-    const wsRef = useRef<WebSocket | null>(null)
-    const retryCountRef = useRef(0)
-    const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+export function useNotificationsSocket(options: {
+  tenantSlug: string;
+  onNotification: (notification: NotificationInboxEntry) => void;
+}): { connected: boolean } {
+  const { onNotification } = options;
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 5;
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    useEffect(() => {
-        const url = process.env.NEXT_PUBLIC_WS_URL
-        if (!url) {
-            console.warn("NEXT_PUBLIC_WS_URL is not set — WebSocket disabled")
-            return
+  useEffect(() => {
+    let isMounted = true;
+
+    const connect = async () => {
+      if (!isMounted || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+        return;
+      }
+
+      try {
+        const response = await api.get<{ token: string }>('/api/v1/auth/ws-token');
+        const token = response.token;
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+
+        if (!wsUrl) {
+          console.error('NEXT_PUBLIC_WS_URL is not defined');
+          return;
         }
 
-        const connect = () => {
-            const ws = new WebSocket(url)
-            wsRef.current = ws
+        const socket = new WebSocket(`${wsUrl}?token=${token}`);
+        wsRef.current = socket;
 
-            ws.onopen = () => {
-                retryCountRef.current = 0
+        socket.onopen = () => {
+          if (!isMounted) return;
+          console.log('WebSocket connected');
+          setConnected(true);
+          retryCountRef.current = 0;
+          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ action: 'ping' }));
             }
+          }, 5 * 60 * 1000);
+        };
 
-            ws.onmessage = (event) => {
-                try {
-                    const incoming = JSON.parse(event.data) as WsNotification
-                    queryClient.setQueryData(
-                        ["notifications-inbox", tenantSlug, 1],
-                        (old: NotificationsInboxResponse | undefined) => {
-                            if (!old) return old
-                            return {
-                                ...old,
-                                notifications: [
-                                    { ...incoming, read: false, readAt: null },
-                                    ...old.notifications,
-                                ],
-                                unreadCount: old.unreadCount + 1,
-                            }
-                        }
-                    )
-                } catch {
-                    console.warn("Failed to parse WebSocket message", event.data)
-                }
+        socket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'notification') {
+              const { type, ...notification } = message;
+              onNotification(notification as NotificationInboxEntry);
+            } else if (message.type === 'pong') {
+              // keepalive confirmed
             }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
+        };
 
-            ws.onclose = () => {
-                if (retryCountRef.current >= 5) {
-                    console.warn("WebSocket max retries reached")
-                    return
-                }
+        socket.onclose = () => {
+          if (!isMounted) return;
+          console.log('WebSocket disconnected');
+          setConnected(false);
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current++;
+            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = setTimeout(connect, 3000);
+          }
+        };
 
-                const delay = Math.min(1000 * 2 ** retryCountRef.current, 30000)
-                retryCountRef.current += 1
-                retryTimeoutRef.current = setTimeout(() => {
-                    connect()
-                }, delay)
-            }
-        }
+        socket.onerror = (error) => {
+          if (!isMounted) return;
+          console.error('WebSocket error:', error);
+          // onclose will be called, triggering reconnection logic
+          socket.close();
+        };
 
-        connect()
+      } catch (error) {
+        console.error('Failed to fetch WebSocket token:', error);
+      }
+    };
 
-        return () => {
-            if (retryTimeoutRef.current) {
-                clearTimeout(retryTimeoutRef.current)
-            }
-            if (wsRef.current) {
-                wsRef.current.close()
-                wsRef.current = null
-            }
-        }
-    }, [queryClient, tenantSlug])
+    connect();
+
+    return () => {
+      isMounted = false;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+    };
+  }, [onNotification]);
+
+  return { connected };
 }

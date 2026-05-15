@@ -19,4 +19,6 @@ function createDb() {
 }
 
 export const db = createDb();
+console.log('[db] schema keys registered:', Object.keys((db as any)._.schema || {}));
+console.log('[db] query keys:', Object.keys((db as any).query || {}));
 export type DB = typeof db;

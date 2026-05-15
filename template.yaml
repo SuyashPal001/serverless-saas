@@ -27,7 +27,13 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /serverless-saas/dev/iam/foundation-pretoken-role-arn
 
+  FoundationWebSocketRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/foundation-websocket-role-arn
 
+  TaskWorkerRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /serverless-saas/dev/iam/task-worker-role-arn
 
 Globals:
   Function:
@@ -65,7 +71,26 @@ Resources:
           EVENTBRIDGE_BUS_NAME: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/eventbridge/bus-name}}"
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
-          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          FROM_EMAIL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/ses/from-email}}"
+          UPSTASH_REDIS_TOKEN_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/cache"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+          DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
+          GCP_LOCATION: "us-central1"
+          GOOGLE_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/google-oauth:SecretString:client_id}}"
+          GOOGLE_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/google-oauth:SecretString:client_secret}}"
+          GOOGLE_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/google-redirect-uri}}"
+          ZOHO_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/zoho-oauth:SecretString:client_id}}"
+          ZOHO_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/zoho-oauth:SecretString:client_secret}}"
+          ZOHO_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/zoho-redirect-uri}}"
+          JIRA_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_id}}"
+          JIRA_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_secret}}"
+          JIRA_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/jira-redirect-uri}}"
+          TOKEN_ENCRYPTION_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/token-encryption-key"
+          FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
+          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
+          INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
+          AGENT_TASK_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/agent-task-queue-url}}"
     Metadata:
       BuildMethod: makefile
 
@@ -87,6 +112,10 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
+          GCP_LOCATION: "us-central1"
+          DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
+          SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
     Metadata:
       BuildMethod: makefile
 
@@ -109,6 +138,89 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+    Metadata:
+      BuildMethod: makefile
+
+# ─────────────────────────────────────────────
+  # WebSocket Lambda — handles $connect, $disconnect, $default
+  # ─────────────────────────────────────────────
+  FoundationWebSocketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-foundation-websocket-${EnvironmentName}"
+      Description: Foundation WebSocket — connection management
+      CodeUri: apps/api/
+      Handler: websocket.handler
+      Timeout: 29
+      MemorySize: 256
+      Role: !Ref FoundationWebSocketRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: websocket
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          WS_TOKEN_SECRET_SSM_PATH: !Sub "/${ProjectName}/${EnvironmentName}/ws-token-secret"
+          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+    Metadata:
+      BuildMethod: makefile
+
+  # ─────────────────────────────────────────────
+  # Task Worker Lambda — async planning/execution
+  # ─────────────────────────────────────────────
+  TaskWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-task-worker-${EnvironmentName}"
+      Description: Task Worker — async agent task planning via SQS
+      CodeUri: apps/api/
+      Handler: taskWorker.handler
+      Timeout: 300
+      MemorySize: 512
+      Role: !Ref TaskWorkerRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: task-worker
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
+          INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
+          GCP_LOCATION: "us-central1"
+    Metadata:
+      BuildMethod: makefile
+
+  # ─────────────────────────────────────────────
+  # Watchdog Lambda — marks stalled in_progress tasks as blocked
+  # ─────────────────────────────────────────────
+  WatchdogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-task-watchdog-${EnvironmentName}"
+      Description: Task Watchdog — EventBridge schedule, marks stalled in_progress tasks blocked
+      CodeUri: apps/api/
+      Handler: watchdogHandler.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !Ref TaskWorkerRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: watchdog
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+          INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
+          SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+      Events:
+        WatchdogSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: !Sub "${ProjectName}-task-watchdog-${EnvironmentName}"
+            Description: Runs task watchdog every 5 minutes to detect stalled tasks
+            Enabled: true
     Metadata:
       BuildMethod: makefile
 
@@ -127,3 +239,13 @@ Outputs:
     Value: !GetAtt FoundationPretokenFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-FoundationPretokenLambdaArn"
+
+  FoundationWebSocketLambdaArn:
+    Value: !GetAtt FoundationWebSocketFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FoundationWebSocketLambdaArn"
+
+  TaskWorkerLambdaArn:
+    Value: !GetAtt TaskWorkerFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-TaskWorkerLambdaArn"

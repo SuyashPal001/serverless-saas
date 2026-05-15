@@ -32,7 +32,7 @@ export function CancelSubscriptionAction({ status }: CancelSubscriptionActionPro
     const canUpdateBilling = can(permissions, "billing", "update");
 
     const cancelMutation = useMutation({
-        mutationFn: () => api.del("/api/v1/billing/subscription"),
+        mutationFn: () => api.post("/api/v1/billing/cancel"),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["subscription", tenantId] });
             toast.success("Subscription cancelled successfully");

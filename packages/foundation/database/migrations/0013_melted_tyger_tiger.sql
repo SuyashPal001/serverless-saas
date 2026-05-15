@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "integrations_tenant_provider_unique" ON "integrations" USING btree ("tenant_id","provider");

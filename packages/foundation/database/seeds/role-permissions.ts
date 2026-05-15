@@ -20,16 +20,28 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
     member: [
         'members:read',
-        'roles:read',
-        'api-keys:create',
-        'api-keys:read',
-        'api-keys:delete',
         'notifications:read',
         'notifications:update',
-        'audit_log:read',
         'tenant:read',
-        'agent-runs:read',
-        'integrations:read',
+        'usage:read',
+        'webhooks:read',
+        'conversations:create',
+        'conversations:read',
+        'conversations:update',
+        'conversations:delete',
+        'messages:create',
+        'messages:read',
+        'agent_tasks:create',
+        'agent_tasks:read',
+        'agent_tasks:update',
+        'project_plans:create',
+        'project_plans:read',
+        'project_plans:update',
+        'project_plans:delete',
+        'project_milestones:create',
+        'project_milestones:read',
+        'project_milestones:update',
+        'project_milestones:delete',
     ],
 
     'ops-agent': [
@@ -38,16 +50,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'billing:read',
         'invoices:read',
         'subscriptions:read',
-        'api-keys:read',
+        'api_keys:read',
         'agents:read',
-        'agent-workflows:read',
-        'agent-workflows:create',
-        'agent-runs:read',
-        'agent-runs:delete',
+        'agent_workflows:read',
+        'agent_workflows:create',
+        'agent_runs:read',
+        'agent_runs:delete',
         'audit_log:read',
         'tenant:read',
         'notifications:read',
         'integrations:read',
+        'usage:read',
     ],
 
     'custom-agent': [
@@ -56,16 +69,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'billing:read',
         'invoices:read',
         'subscriptions:read',
-        'api-keys:read',
+        'api_keys:read',
         'agents:read',
-        'agent-workflows:read',
-        'agent-workflows:create',
-        'agent-runs:read',
-        'agent-runs:delete',
+        'agent_workflows:read',
+        'agent_workflows:create',
+        'agent_runs:read',
+        'agent_runs:delete',
         'audit_log:read',
         'tenant:read',
         'notifications:read',
         'integrations:read',
+        'usage:read',
     ],
 };
 
@@ -84,9 +98,12 @@ export async function seedRolePermissions(db: typeof DB) {
             continue;
         }
 
-        let created = 0;
-        let skipped = 0;
+        // DELETE all existing assignments for this role first — makes the seed
+        // the authoritative source of truth
+        await db.delete(rolePermissions).where(eq(rolePermissions.roleId, role.id));
 
+        // Resolve permission IDs for every key in the list
+        const rows: { roleId: string; permissionId: string }[] = [];
         for (const key of permKeys) {
             const [resource, action] = key.split(':');
 
@@ -100,27 +117,13 @@ export async function seedRolePermissions(db: typeof DB) {
                 console.log(`  permission not found: ${key}`);
                 continue;
             }
-
-            const existing = await db
-                .select({ roleId: rolePermissions.roleId })
-                .from(rolePermissions)
-                .where(
-                    and(
-                        eq(rolePermissions.roleId, role.id),
-                        eq(rolePermissions.permissionId, perm.id)
-                    )
-                )
-                .limit(1);
-
-            if (existing.length > 0) {
-                skipped++;
-                continue;
-            }
-
-            await db.insert(rolePermissions).values({ roleId: role.id, permissionId: perm.id });
-            created++;
+            rows.push({ roleId: role.id, permissionId: perm.id });
         }
 
-        console.log(`  ${roleName}: inserted ${created}, skipped ${skipped}`);
+        if (rows.length > 0) {
+            await db.insert(rolePermissions).values(rows);
+        }
+
+        console.log(`  ${roleName}: deleted all, re-inserted ${rows.length}`);
     }
 }

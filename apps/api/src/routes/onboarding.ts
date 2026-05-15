@@ -1,14 +1,21 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
-import { eq, isNull, and } from 'drizzle-orm';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
+import { auditLog } from '@serverless-saas/database/schema/audit';
+import { agents, agentTemplates } from '@serverless-saas/database/schema/agents';
+import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { apiKeys } from '@serverless-saas/database/schema/access';
+import { eq, isNull, and, desc } from 'drizzle-orm';
+
 import type { AppEnv } from '../types';
 
 const onboardingSchema = z.object({
     workspaceName: z.string().min(3).max(20),
+    purpose: z.string().optional(),
 });
 
 const generateSlug = (name: string) => {
@@ -16,9 +23,7 @@ const generateSlug = (name: string) => {
 };
 
 const checkSlugAvailability = async (slug: string) => {
-    const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.slug, slug),
-    });
+    const tenant = (await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1))[0];
     return !tenant;
 };
 
@@ -49,43 +54,194 @@ onboardingRoutes.post('/complete', async (c) => {
     }
 
     // Step 4: Find owner role
-    const role = await db.query.roles.findFirst({
-        where: and(eq(roles.name, 'owner'), isNull(roles.tenantId)),
-    });
+    const role = (await db.select().from(roles).where(and(eq(roles.name, 'owner'), isNull(roles.tenantId))).limit(1))[0];
     if (!role) {
         return c.json({ error: 'System configuration error' }, 500);
     }
 
-    // Step 5: DB transaction
-    const { tenantId } = await db.transaction(async (tx: any) => {
-        const [tenant] = await tx.insert(tenants).values({
-            name: workspaceName,
-            slug: finalSlug,
-            type: 'startup',
-            status: 'active',
-        }).returning();
+    // Step 5: Sequential inserts (Neon HTTP driver does not support transactions)
+    const [tenant] = await db.insert(tenants).values({
+        name: workspaceName,
+        slug: finalSlug,
+        type: 'startup',
+        status: 'active',
+    }).returning();
 
-        await tx.insert(memberships).values({
-            userId,
-            tenantId: tenant.id,
-            roleId: role.id,
-            memberType: 'human',
-            status: 'active',
+    await db.insert(memberships).values({
+        userId,
+        tenantId: tenant.id,
+        roleId: role.id,
+        memberType: 'human',
+        status: 'active',
+        joinedAt: new Date(),
+    });
+
+    await db.insert(subscriptions).values({
+        tenantId: tenant.id,
+        plan: 'free',
+        status: 'active',
+        billingCycle: 'monthly',
+        startedAt: new Date(),
+    });
+
+    const tenantId = tenant.id;
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: userId ?? 'system',
+            actorType: 'human',
+            action: 'tenant_created',
+            resource: 'tenant',
+            resourceId: tenantId,
+            metadata: { slug: finalSlug },
+            traceId: c.get('traceId') ?? '',
         });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
 
-        await tx.insert(subscriptions).values({
-            tenantId: tenant.id,
-            plan: 'free',
-            status: 'active',
-            billingCycle: 'monthly',
-            startedAt: new Date(),
-        });
+    // Step 7: Seed default agent (Saarthi) for new tenant
+    // Note: if apiKeys insert fails, agents insert will throw FK error
+    // No rollback — acceptable for MVP, add transaction wrapper later
 
-        return { tenantId: tenant.id };
+    // Resolve system prompt from active published template (ADR-030).
+    // Falls back to hardcoded string if no published template exists.
+    const [publishedTemplate] = await db
+        .select({
+            systemPrompt: agentTemplates.systemPrompt,
+            tools: agentTemplates.tools,
+            model: agentTemplates.model,
+        })
+        .from(agentTemplates)
+        .where(eq(agentTemplates.status, 'published'))
+        .orderBy(desc(agentTemplates.version))
+        .limit(1);
+
+    if (!publishedTemplate) {
+        console.warn('[onboarding] No published agent template found, using fallback prompt');
+    }
+
+    const resolvedSystemPrompt = publishedTemplate
+        ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
+        : `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`;
+
+    const resolvedTools = publishedTemplate?.tools ?? [];
+    const resolvedModel = publishedTemplate?.model ?? null;
+
+    const rawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+
+    const [saarthiKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Saarthi API Key',
+        type: 'agent',
+        keyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+
+    const [saarthiAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Saarthi',
+        type: 'custom',
+        status: 'active',
+        apiKeyId: saarthiKey.id,
+        model: resolvedModel,
+        createdBy: userId,
+    }).returning();
+
+    await db.insert(agentSkills).values({
+        agentId: saarthiAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: resolvedSystemPrompt,
+        tools: resolvedTools,
+        status: 'active',
     });
 
     // Step 6: Return response
-    return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+    return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+});
+
+// GET /onboarding/provision-status/:agentId
+// Accessible with empty custom:tenantId (pre-auth, mounted before tenantResolutionMiddleware).
+// Used by the onboarding setup screen to poll container readiness before the first login.
+// Auth: verifies userId has a membership for the agent's tenant — no session or tenantId claim needed.
+onboardingRoutes.get('/provision-status/:agentId', async (c) => {
+    const userId = c.get('userId');
+    if (!userId) {
+        return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const agentId = c.req.param('agentId');
+
+    const agent = (await db.select().from(agents).where(eq(agents.id, agentId)).limit(1))[0];
+
+    if (!agent) {
+        return c.json({ status: 'not_found' });
+    }
+
+    // Verify the requesting user is a member of this agent's tenant
+    const membership = (await db.select()
+        .from(memberships)
+        .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, agent.tenantId)))
+        .limit(1))[0];
+
+    if (!membership) {
+        return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+
+    if (!relayUrl || !serviceKey) {
+        return c.json({ status: 'ready' }); // local dev — relay not wired up
+    }
+
+    try {
+        const res = await fetch(`${relayUrl}/health/${agent.tenantId}`, {
+            headers: { 'X-Service-Key': serviceKey },
+            signal: AbortSignal.timeout(5000),
+        });
+
+        if (res.ok) {
+            const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+            const isHealthy = data.healthy === true || data.status === 'running' || data.status === 'healthy';
+            return c.json({ status: isHealthy ? 'ready' : 'provisioning' });
+        }
+
+        if (res.status === 404) {
+            return c.json({ status: 'not_found' });
+        }
+
+        return c.json({ status: 'provisioning' });
+    } catch (err) {
+        console.warn(`[onboarding/provision-status] Health check failed for agent ${agentId}:`, err);
+        return c.json({ status: 'provisioning' });
+    }
+});
+
+onboardingRoutes.post('/provision/:tenantId', async (c) => {
+    const tenantId = c.req.param('tenantId');
+    const relayUrl = process.env.RELAY_URL;
+    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+
+    if (!relayUrl || !serviceKey) {
+        return c.json({ error: 'Relay not configured' }, 500);
+    }
+
+    // Fire-and-forget relay provision call
+    fetch(`${relayUrl}/provision/${tenantId}`, {
+        method: 'POST',
+        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    })
+        .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
+        .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
+
+    return c.json({ success: true, message: 'Provisioning started' });
 });
 
 export { onboardingRoutes };
