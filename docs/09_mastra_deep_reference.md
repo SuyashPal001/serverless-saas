@@ -1189,3 +1189,209 @@ export function getMastraMemory(): Memory {
   return memory
 }
 ```
+
+---
+## 21. Multi-Agent Architecture (PM System)
+
+### Finalized Project Tree
+
+```
+apps/relay/
+├── skills/                                    ← content, not code
+│   ├── prd-writing/
+│   │   └── SKILL.md                           ✅ done
+│   ├── requirements-gathering/
+│   │   └── SKILL.md                           ✅ done
+│   ├── roadmap-planning/
+│   │   └── SKILL.md                           ← TO ADD (Phase 2)
+│   └── task-breakdown/
+│       └── SKILL.md                           ← TO ADD (Phase 3)
+│
+└── src/mastra/
+    ├── index.ts                               ✅ registers everything
+    │
+    ├── agents/
+    │   ├── platformAgent.ts                   ✅ chat only, PRD suffix removed
+    │   ├── pmAgent.ts                         ← TO BUILD (Phase 1)
+    │   ├── prdAgent.ts                        ✅ workspace + workflows + scorers
+    │   ├── roadmapAgent.ts                    ← TO BUILD (Phase 2)
+    │   ├── taskAgent.ts                       ← TO BUILD (Phase 3)
+    │   └── formatterAgent.ts                  ✅ unchanged
+    │
+    ├── workflows/
+    │   ├── prdWorkflow.ts                     ✅ gatherStep→writeStep→formatStep
+    │   ├── roadmapWorkflow.ts                 ← TO BUILD (Phase 2)
+    │   ├── taskWorkflow.ts                    ← TO BUILD (Phase 3)
+    │   ├── taskExecution.ts                   ✅ unchanged
+    │   ├── documentWorkflow.ts                ✅ unchanged
+    │   ├── steps/
+    │   │   └── dodVerifyStep.ts               ✅ unchanged
+    │   └── scorers.ts                         ✅ dodPassScorer
+    │
+    ├── scorers/
+    │   ├── prdCompleteness.ts                 ✅ done
+    │   ├── roadmapCompleteness.ts             ← TO BUILD (Phase 2)
+    │   └── taskClarity.ts                     ← TO BUILD (Phase 3)
+    │
+    ├── workspace/
+    │   ├── prdWorkspace.ts                    ✅ done, path fixed
+    │   ├── roadmapWorkspace.ts                ← TO BUILD (Phase 2)
+    │   └── taskWorkspace.ts                   ← TO BUILD (Phase 3)
+    │
+    ├── tools/
+    │   ├── fetchAgentContext.ts               ← TO BUILD (Phase 1)
+    │   └── savePRD.ts                         ← TO BUILD (Phase 1)
+    │
+    ├── model.ts                               ✅ unchanged
+    ├── memory.ts                              ✅ unchanged
+    ├── thinking.ts                            ✅ unchanged
+    └── tools.ts                               ✅ MCP client cache
+```
+
+### Build Phases
+
+```
+Phase 1 — NOW
+  pmAgent.ts
+  tools/fetchAgentContext.ts + tools/savePRD.ts
+  agent_prds DB table
+  chatStream.ts routing (PM intent → pmAgent)
+
+Phase 2 — NEXT
+  roadmapAgent.ts + roadmapWorkspace.ts + roadmapWorkflow.ts
+  skills/roadmap-planning/SKILL.md
+  scorers/roadmapCompleteness.ts
+
+Phase 3 — LATER
+  taskAgent.ts + taskWorkspace.ts + taskWorkflow.ts
+  skills/task-breakdown/SKILL.md
+  scorers/taskClarity.ts
+```
+
+### Agent Responsibilities — One Job Per Agent
+
+```
+platformAgent   → chat interface only. Routes PM-intent to pmAgent.
+                  NEVER handles PRD, roadmap, or task generation directly.
+
+pmAgent         → supervisor/orchestrator only. Delegates to specialists.
+                  NEVER generates PRD or roadmap content itself.
+
+prdAgent        → PRD generation and refinement only.
+                  NEVER generates roadmap or task breakdown.
+
+roadmapAgent    → roadmap from approved PRD only.
+                  NEVER generates PRD or task breakdown.
+
+taskAgent       → task breakdown from approved roadmap only.
+                  NEVER generates PRD or roadmap.
+
+formatterAgent  → structured JSON output only. Unchanged.
+```
+
+### Supervisor Pattern — Correct Implementation
+
+.network() is DEPRECATED. Do NOT use it.
+Use .stream() or .generate() on the supervisor agent instead.
+
+```ts
+// CORRECT
+const stream = await pmAgent.stream(userMessage, {
+  maxSteps: 10,
+  delegation: {
+    onDelegationStart: async (context) => {
+      return { proceed: true }
+    }
+  }
+})
+
+// WRONG — deprecated, do not use
+await pmAgent.network(userMessage)
+```
+
+Rules:
+- Every subagent MUST have a description field on the Agent config
+- pmAgent decides delegation based on subagent descriptions
+- Use .stream() for chat responses, .generate() for non-streaming
+
+### A2A Protocol — Future Only
+
+A2A is Google's open standard for cross-platform agent communication.
+Mastra supports it via @mastra/client-js A2A class.
+
+DO NOT implement A2A now. Current agents are all internal to the
+same Mastra instance — use supervisor pattern instead.
+
+```
+Supervisor Pattern  ← same Mastra instance  ← USE NOW
+A2A                 ← cross-platform/server ← FUTURE ONLY
+MCP                 ← agent-to-tool         ← already in use
+```
+
+---
+## 22. PRD Agent — Design Decisions
+
+### Output Format
+
+```
+80% → markdown   triggers: default, simple requirements
+20% → HTML       triggers: user says "detailed" / "full" / "formatted"
+
+NEVER generate PDF or DOCX directly.
+Export is on-demand only — user clicks Export → backend
+calls docx/pdf skill → saved to documents table.
+```
+
+### PRD Lifecycle
+
+```
+user → platformAgent (chat)
+     → detects PM intent
+     → routes to pmAgent
+     → pmAgent delegates to prdAgent
+     → prdWorkflow runs: gatherStep → writeStep → formatStep
+     → streams markdown/HTML artifact to frontend
+     → user refines iteratively
+     → saved to agent_prds (status: draft)
+     → user submits for approval (status: pending_approval)
+     → leadership approves (status: approved)
+     → pmAgent delegates to roadmapAgent (Phase 2)
+```
+
+### agent_prds Table Schema
+
+```sql
+id                    uuid primary key default gen_random_uuid()
+tenant_id             uuid not null references tenants(id)
+agent_id              uuid not null references agents(id)
+title                 varchar not null
+content               text not null
+content_type          varchar not null default 'markdown'
+                      -- 'markdown' | 'html'
+status                varchar not null default 'draft'
+                      -- draft | pending_approval | approved | rejected
+version               integer not null default 1
+created_from_task_ids uuid[]
+created_at            timestamptz not null default now()
+updated_at            timestamptz not null default now()
+```
+
+### Memory Decision
+
+prdAgent has NO Mastra memory configured.
+Reason: PRD generation is a task, not a conversation.
+
+Pattern instead:
+- Active session: conversation history via thread/resourceId (automatic)
+- Resume session: load saved agent_prds.content into requestContext
+  at session start — inject as initial context, not memory
+
+```ts
+// In chatStream.ts when user reopens a PRD session:
+const existingPrd = await fetchPRDDraft(agentId)
+if (existingPrd) {
+  requestContext.set('existingPrdDraft', existingPrd.content)
+  requestContext.set('existingPrdId', existingPrd.id)
+}
+```
+```
