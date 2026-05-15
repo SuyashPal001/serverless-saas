@@ -51,7 +51,9 @@ function ChatPage() {
     const queryClient = useQueryClient();
 
     const tenantSlug = params.tenant as string;
-    const conversationId = searchParams.get("id");
+    const rawConvId = searchParams.get("id");
+    const incomingConvId = searchParams.get("conversationId");
+    const conversationId = rawConvId ?? incomingConvId;
     // Stable ref so callbacks always target the correct query cache key,
     // even if the component re-renders while a stream is in flight.
     const conversationIdRef = useRef(conversationId);
@@ -62,6 +64,16 @@ function ChatPage() {
     const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
     const [activePill, setActivePill] = useState<PillType | null>(null);
     const autoCreatingRef = useRef(false);
+
+    // Normalise ?conversationId= → ?id= so the standard selection path handles it.
+    // Runs once; after replace the param is gone so it won't re-trigger on refresh.
+    useEffect(() => {
+        if (incomingConvId) {
+            router.replace(`/${tenantSlug}/dashboard/chat?id=${incomingConvId}`);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [incomingConvId]);
+
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     const tenantClaims = useTenant();
     const firstName: string = tenantClaims.given_name ?? tenantClaims.name?.split(' ')[0] ?? 'there';

@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertCircle, Lock, Loader2, LockKeyhole } from "lucide-react";
+import { ArrowLeft, AlertCircle, Lock, Loader2, LockKeyhole, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -65,6 +65,7 @@ const statusColors: Record<string, string> = {
 
 export default function AgentDetailPage() {
     const params = useParams();
+    const router = useRouter();
     const agentId = params.agentId as string;
     const tenantSlug = params.tenant as string;
     const queryClient = useQueryClient();
@@ -161,6 +162,17 @@ export default function AgentDetailPage() {
         },
     });
 
+    const startChatMutation = useMutation({
+        mutationFn: () =>
+            api.post<{ data: { id: string } }>("/api/v1/conversations", { agentId }),
+        onSuccess: (res) => {
+            router.push(`/${tenantSlug}/dashboard/chat?id=${res.data.id}`);
+        },
+        onError: () => {
+            toast.error("Failed to start conversation");
+        },
+    });
+
     const handleWebSearchToggle = (checked: boolean) => {
         setWebSearchEnabled(checked);
         const currentTools = existingSkill?.tools ?? ["retrieve_documents"];
@@ -235,27 +247,39 @@ export default function AgentDetailPage() {
         <div className="space-y-8">
 
             {/* ── Header ───────────────────────────────────────────────────── */}
-            <div className="space-y-3">
-                <Link
-                    href={`/${tenantSlug}/dashboard/agents`}
-                    className="flex items-center text-sm text-muted-foreground hover:text-foreground w-fit"
+            <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                    <Link
+                        href={`/${tenantSlug}/dashboard/agents`}
+                        className="flex items-center text-sm text-muted-foreground hover:text-foreground w-fit"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back to Agents
+                    </Link>
+                    {isLoadingAgent ? (
+                        <Skeleton className="h-8 w-48" />
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl font-bold tracking-tight">{identityForm.name || agent?.name}</h1>
+                            <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
+                                {agent?.type}
+                            </Badge>
+                            <Badge variant="outline" className={statusColors[agent?.status || ""]}>
+                                {agent?.status}
+                            </Badge>
+                        </div>
+                    )}
+                </div>
+                <Button
+                    onClick={() => startChatMutation.mutate()}
+                    disabled={isLoadingAgent || startChatMutation.isPending}
+                    className="shrink-0"
                 >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Agents
-                </Link>
-                {isLoadingAgent ? (
-                    <Skeleton className="h-8 w-48" />
-                ) : (
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold tracking-tight">{identityForm.name || agent?.name}</h1>
-                        <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
-                            {agent?.type}
-                        </Badge>
-                        <Badge variant="outline" className={statusColors[agent?.status || ""]}>
-                            {agent?.status}
-                        </Badge>
-                    </div>
-                )}
+                    {startChatMutation.isPending
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : <MessageSquare className="mr-2 h-4 w-4" />}
+                    Chat with Agent
+                </Button>
             </div>
 
             {/* ── Section 1: Agent Identity ─────────────────────────────────── */}

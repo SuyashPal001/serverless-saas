@@ -21,6 +21,7 @@ export interface Agent {
     status: AgentStatus;
     model: string | null;
     llmProviderId: string | null;
+    isInternal: boolean;
     createdAt: string;
 }
 

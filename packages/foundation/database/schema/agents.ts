@@ -28,6 +28,7 @@ export const agents = pgTable('agents', {
   llmProviderId: uuid('llm_provider_id'),
   avatarUrl: text('avatar_url'),
   description: text('description'),
+  isInternal: boolean('is_internal').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
