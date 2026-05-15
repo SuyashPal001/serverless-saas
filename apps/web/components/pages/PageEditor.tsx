@@ -63,7 +63,7 @@ export function PageEditor({ pageId, initialHtml, isLocked, onSave }: PageEditor
 
     const editor = useEditor({
         extensions: [
-            StarterKit.configure({ heading: false, codeBlock: false }),
+            StarterKit.configure({ heading: false, codeBlock: false, link: false, underline: false }),
             Underline,
             Heading.configure({ levels: [1, 2, 3] }),
             CodeBlockLowlight.configure({ lowlight }),
