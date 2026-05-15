@@ -29,7 +29,7 @@ pagesRoutes.post('/', async (c) => {
   const result = z.object({
     planId: z.string().uuid(),
     title: z.string().min(1).max(500).optional(),
-    pageType: z.enum(['prd', 'roadmap', 'runbook', 'adr', 'manual', 'custom']).optional(),
+    pageType: z.enum(['prd', 'roadmap', 'runbook', 'adr', 'handover', 'manual', 'custom']).optional(),
     parentId: z.string().uuid().optional(),
     access: z.number().int().min(0).max(1).optional(),
   }).safeParse(await c.req.json());

@@ -114,6 +114,9 @@ export function createSlashSuggestion() {
 
                 onKeyDown: (props: { event: KeyboardEvent }) => {
                     if (props.event.key === 'Escape') {
+                        // stopImmediatePropagation so the PageEditor's document listener
+                        // doesn't also receive this Escape and exit edit mode
+                        props.event.stopImmediatePropagation()
                         popup?.[0]?.hide()
                         return true
                     }
