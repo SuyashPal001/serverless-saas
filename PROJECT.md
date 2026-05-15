@@ -1,6 +1,6 @@
 # PROJECT.md — Saarthi Agentic SaaS Platform
 
-Last updated: 2026-04-28 (task lifecycle hardening — full audit + bug fixes)
+Last updated: 2026-05-15 (PM agent Phase 1 steps 1–3 + relay build fix)
 
 ## Code Rules
 
@@ -128,6 +128,19 @@ Branching: `blocked` (clarification or failure), `cancelled`
 ---
 
 ## 4. What Was Built & Fixed
+
+### Session — May 15, 2026 — PM Agent Phase 1 (Steps 1–3)
+
+| # | Change | Details |
+|---|---|---|
+| 1 | **`agent_prds` DB table** | Migration 0023 applied to Neon. Drizzle schema in `packages/foundation/database/schema/pm.ts`. Enums: `prd_status` (draft\|pending_approval\|approved\|rejected), `prd_content_type` (markdown\|html). |
+| 2 | **`fetchAgentContext` tool** | `apps/relay/src/mastra/tools/fetchAgentContext.ts`. Calls `/api/v1/internal/retrieve` with `X-Service-Key`, joins chunks into context string. |
+| 3 | **`savePRD` tool** | `apps/relay/src/mastra/tools/savePRD.ts`. INSERT (new draft) or UPDATE (increment version) on `agent_prds`. Uses same `pg.Pool` pattern as `planService.ts`. |
+| 4 | **Relay build fixed** | `tsc` was OOMing since May 14 (pre-existing, caused by @mastra/core 580 `.d.ts` files). Replaced with `build.mjs` (esbuild, bundle:false). `npm run build` unchanged. |
+
+**No Lambda deploy needed.** Schema migration applied. Relay rebuilt + restarted.
+
+---
 
 ### Session — Apr 28, 2026 — Task lifecycle hardening
 
@@ -339,11 +352,15 @@ sam build && sam deploy --config-env staging  # staging
 
 ### GCP VM — Relay
 ```bash
-cd /opt/agent-relay
-npm run build                          # tsc compile
-pm2 restart agent-relay --update-env  # restart
-pm2 logs agent-relay --lines 100      # check logs
+cd /home/suyashresearchwork/serverless-saas/apps/relay
+npm run build                 # esbuild (not tsc — see Known Issues below)
+pm2 restart agent-relay       # restart
+pm2 logs agent-relay --lines 100 --nostream
 ```
+
+**Note:** `tsc` OOMs due to @mastra/core having 580 `.d.ts` files. Build now uses
+`node build.mjs` (esbuild, bundle:false) — fixed May 15 2026. Type checking:
+`npm run type-check` (tsc --noEmit, separate step).
 
 ### GCP VM — MCP server
 ```bash
@@ -478,3 +495,4 @@ Makefile        — Lambda build targets (esbuild)
 | [Bugfix Notes](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/bugfix-notes.md) | Ongoing log of specific bug resolutions and edge cases |
 | [PMBJP RFP Mapping](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/08_rfp_mapping_pmbjp.md) | Technical mapping against AI-Driven Drug Forecasting RFP |
 | [Mastra Deep Reference](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/09_mastra_deep_reference.md) | Complete API & Architecture Reference for Mastra Platform |
+| [PM Agent Implementation](docs/10_pm_agent_implementation.md) | Phase 1–3 build plan, status tracker, known issues |

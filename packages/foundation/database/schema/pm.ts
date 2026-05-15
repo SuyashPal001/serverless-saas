@@ -2,7 +2,7 @@ import {
     pgTable, pgEnum, uuid, text, integer, timestamp, jsonb, decimal,
     primaryKey, uniqueIndex, index,
 } from 'drizzle-orm/pg-core';
-import { taskPriorityEnum } from './agents';
+import { taskPriorityEnum, agents } from './agents';
 import { tenants } from './tenancy';
 import { users } from './auth';
 
@@ -72,3 +72,28 @@ export type ProjectPlan      = typeof projectPlans.$inferSelect;
 export type NewProjectPlan   = typeof projectPlans.$inferInsert;
 export type ProjectMilestone = typeof projectMilestones.$inferSelect;
 export type NewProjectMilestone = typeof projectMilestones.$inferInsert;
+
+// ── Agent PRDs ────────────────────────────────────────────────────────────────
+
+export const prdStatusEnum = pgEnum('prd_status', ['draft', 'pending_approval', 'approved', 'rejected']);
+export const prdContentTypeEnum = pgEnum('prd_content_type', ['markdown', 'html']);
+
+export const agentPrds = pgTable('agent_prds', {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    tenantId:           uuid('tenant_id').notNull().references(() => tenants.id),
+    agentId:            uuid('agent_id').notNull().references(() => agents.id),
+    title:              text('title').notNull(),
+    content:            text('content').notNull(),
+    contentType:        prdContentTypeEnum('content_type').notNull().default('markdown'),
+    status:             prdStatusEnum('status').notNull().default('draft'),
+    version:            integer('version').notNull().default(1),
+    createdFromTaskIds: uuid('created_from_task_ids').array(),
+    createdAt:          timestamp('created_at').notNull().defaultNow(),
+    updatedAt:          timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+    tenantAgentIdx: index('agent_prds_tenant_agent_idx').on(t.tenantId, t.agentId),
+    tenantStatusIdx: index('agent_prds_tenant_status_idx').on(t.tenantId, t.status),
+}));
+
+export type AgentPrd    = typeof agentPrds.$inferSelect;
+export type NewAgentPrd = typeof agentPrds.$inferInsert;

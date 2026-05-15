@@ -3,11 +3,13 @@ import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { platformAgent } from '../mastra/index.js'
+import { pmAgent } from '../mastra/agents/pmAgent.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
+import { isPmIntent, fetchPrdDraft } from './pmRouting.js'
 
 export interface ChatStreamOpts {
   message: string
@@ -168,11 +170,27 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // lastMessages: false disables the 0.57s recall step; memory:save still runs (history kept).
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
-    const agentStream = await (platformAgent as any).stream(mastraMessage, {
-      memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId, ...(memoryOptions ? { options: memoryOptions } : {}) },
-      requestContext,
-      providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
-    })
+    let agentStream: any
+
+    if (isPmIntent(message)) {
+      const draft = await fetchPrdDraft(agentId, tenantId)
+      if (draft) {
+        requestContext.set('existingPrdDraft', draft.content)
+        requestContext.set('existingPrdId', draft.id)
+      }
+      console.log(`[sse:${sessionId}] PM intent detected — routing to pmAgent draft=${!!draft}`)
+      agentStream = await pmAgent.stream(mastraMessage, {
+        maxSteps: 10,
+        requestContext,
+        delegation: { onDelegationStart: async () => ({ proceed: true }) },
+      })
+    } else {
+      agentStream = await (platformAgent as any).stream(mastraMessage, {
+        memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId, ...(memoryOptions ? { options: memoryOptions } : {}) },
+        requestContext,
+        providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
+      })
+    }
 
     let fullText = ''
     let planResult: unknown

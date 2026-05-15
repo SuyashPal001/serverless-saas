@@ -20,6 +20,7 @@ import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
 import { platformAgent, SERVER_TOOLS } from './agents/platformAgent.js'
 import { formatterAgent } from './agents/formatterAgent.js'
 import { prdAgent } from './agents/prdAgent.js'
+import { pmAgent } from './agents/pmAgent.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 // ---------------------------------------------------------------------------
 
 export const mastra = new Mastra({
-  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent },
+  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent },
   workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow },
   storage: getMastraStore(),
   scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer },

@@ -4,7 +4,8 @@
   "description": "Hono WebSocket relay — bridges frontend to OpenClaw gateway",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "node build.mjs",
+    "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run"

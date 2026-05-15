@@ -162,6 +162,13 @@
       "when": 1747008000000,
       "tag": "0022_rich_text_html_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1778838516150,
+      "tag": "0023_warm_zarda",
+      "breakpoints": true
     }
   ]
 }
