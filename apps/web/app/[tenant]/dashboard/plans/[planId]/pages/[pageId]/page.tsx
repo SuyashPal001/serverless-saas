@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Lock, Unlock, Loader2 } from 'lucide-react'
+import { ChevronRight, Copy, Lock, Unlock, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { pmKeys, pagesKeys } from '@/lib/query-keys/pm'
@@ -27,6 +27,7 @@ type Plan = { id: string; title: string }
 // ─── PageDetailPage ───────────────────────────────────────────────────────────
 
 export default function PageDetailPage() {
+    const router = useRouter()
     const params = useParams()
     const tenantSlug = params.tenant as string
     const planId = params.planId as string
@@ -50,6 +51,16 @@ export default function PageDetailPage() {
         mutationFn: (title: string) => api.patch(`/api/v1/pages/${pageId}`, { title }),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: pagesKeys.detail(pageId) }),
         onError: () => toast.error('Failed to save title'),
+    })
+
+    const duplicate = useMutation({
+        mutationFn: () => api.post(`/api/v1/pages/${pageId}/duplicate`, {}) as Promise<{ data: { id: string } }>,
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: pagesKeys.list(planId) })
+            toast.success('Page duplicated')
+            router.push(`/${tenantSlug}/dashboard/plans/${planId}/pages/${res.data.id}`)
+        },
+        onError: () => toast.error('Failed to duplicate page'),
     })
 
     const toggleLock = useMutation({
@@ -121,19 +132,33 @@ export default function PageDetailPage() {
                         </h1>
                     )}
                 </div>
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
-                    onClick={() => toggleLock.mutate()}
-                    disabled={toggleLock.isPending}
-                >
-                    {toggleLock.isPending
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : page.isLocked
-                            ? <><Unlock className="w-3.5 h-3.5" />Unlock</>
-                            : <><Lock className="w-3.5 h-3.5" />Lock</>}
-                </Button>
+                <div className="flex items-center gap-1">
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+                        onClick={() => duplicate.mutate()}
+                        disabled={duplicate.isPending}
+                        title="Duplicate page"
+                    >
+                        {duplicate.isPending
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+                        onClick={() => toggleLock.mutate()}
+                        disabled={toggleLock.isPending}
+                    >
+                        {toggleLock.isPending
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : page.isLocked
+                                ? <><Unlock className="w-3.5 h-3.5" />Unlock</>
+                                : <><Lock className="w-3.5 h-3.5" />Lock</>}
+                    </Button>
+                </div>
             </div>
 
             {/* Editor */}

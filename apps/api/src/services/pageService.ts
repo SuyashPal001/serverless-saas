@@ -304,6 +304,31 @@ export async function listVersions(
   return rows.map(rowToVersion)
 }
 
+export async function duplicatePage(
+  tenantId: string,
+  userId: string,
+  pageId: string,
+): Promise<Page> {
+  const source = await getPage(tenantId, pageId)
+  if (!source) throw new Error('Page not found')
+  const { rows } = await getPool().query<Record<string, unknown>>(
+    `INSERT INTO project_pages
+       (id, tenant_id, plan_id, parent_id, owned_by, created_by,
+        title, description_html, description_json, description_stripped,
+        page_type, source, access)
+     VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8::jsonb, $9, $10, $11, $12)
+     RETURNING *`,
+    [
+      randomUUID(), tenantId, source.planId, source.parentId,
+      userId, `Copy of ${source.title}`,
+      source.descriptionHtml, JSON.stringify(source.descriptionJson),
+      source.descriptionStripped,
+      source.pageType, 'human', source.access,
+    ],
+  )
+  return rowToPage(rows[0])
+}
+
 export async function restoreVersion(
   tenantId: string,
   userId: string,
