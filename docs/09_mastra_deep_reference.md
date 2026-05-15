@@ -1214,13 +1214,13 @@ apps/relay/
     │   ├── platformAgent.ts                   ✅ chat only, PRD suffix removed
     │   ├── pmAgent.ts                         ✅ done
     │   ├── prdAgent.ts                        ✅ workspace + workflows + scorers
-    │   ├── roadmapAgent.ts                    ← TO BUILD (Phase 2)
+    │   ├── roadmapAgent.ts                    ✅ done
     │   ├── taskAgent.ts                       ← TO BUILD (Phase 3)
     │   └── formatterAgent.ts                  ✅ unchanged
     │
     ├── workflows/
     │   ├── prdWorkflow.ts                     ✅ gatherStep→writeStep→formatStep
-    │   ├── roadmapWorkflow.ts                 ← TO BUILD (Phase 2)
+    │   ├── roadmapWorkflow.ts                 ✅ done
     │   ├── taskWorkflow.ts                    ← TO BUILD (Phase 3)
     │   ├── taskExecution.ts                   ✅ unchanged
     │   ├── documentWorkflow.ts                ✅ unchanged
@@ -1232,17 +1232,19 @@ apps/relay/
     │   ├── prdCompleteness.ts                 ✅ done
     │   ├── delegationAccuracy.ts              ✅ done
     │   ├── clarityBeforeDelegate.ts           ✅ done
-    │   ├── roadmapCompleteness.ts             ← TO BUILD (Phase 2)
+    │   ├── roadmapCompleteness.ts             ✅ done
     │   └── taskClarity.ts                     ← TO BUILD (Phase 3)
     │
     ├── workspace/
     │   ├── prdWorkspace.ts                    ✅ done, path fixed
-    │   ├── roadmapWorkspace.ts                ← TO BUILD (Phase 2)
+    │   ├── roadmapWorkspace.ts                ✅ done
     │   └── taskWorkspace.ts                   ← TO BUILD (Phase 3)
     │
     ├── tools/
     │   ├── fetchAgentContext.ts               ✅ done
-    │   └── savePRD.ts                         ✅ done
+    │   ├── savePRD.ts                         ✅ done
+    │   ├── fetchPRD.ts                        ✅ done
+    │   └── savePlan.ts                        ✅ done
     │
     ├── model.ts                               ✅ unchanged
     ├── memory.ts                              ✅ unchanged
