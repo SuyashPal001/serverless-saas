@@ -20,7 +20,7 @@
     "@serverless-saas/cache": "workspace:*",
     "@serverless-saas/database": "workspace:*",
     "@serverless-saas/notifications": "workspace:*",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "mammoth": "^1.7.0",
     "pdf-parse": "^1.1.1",
     "uuid": "^13.0.0"

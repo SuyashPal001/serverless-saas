@@ -15,7 +15,7 @@
     "@serverless-saas/cache": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@upstash/redis": "^1.36.3",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.0"
   },

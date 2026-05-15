@@ -12,6 +12,6 @@
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "@serverless-saas/types": "workspace:*",
-    "drizzle-orm": "^0.36.4"
+    "drizzle-orm": "^0.45.2"
   }
 }
