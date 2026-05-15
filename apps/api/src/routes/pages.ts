@@ -6,13 +6,12 @@ import {
   createPage,
   listPages,
   getPage,
-  savePage,
   archivePage,
   toggleLock,
   listVersions,
-  restoreVersion,
   duplicatePage,
 } from '../services/pageService.js';
+import { savePage, restoreVersion } from '../services/pageSaveService.js';
 
 export const pagesRoutes = new Hono<AppEnv>();
 
