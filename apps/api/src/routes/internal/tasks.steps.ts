@@ -15,7 +15,7 @@ const authCheck = (c: Context<AppEnv>) =>
 export async function handleGetComments(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select({ id: agentTasks.id, tenantId: agentTasks.tenantId })
         .from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
@@ -31,8 +31,8 @@ export async function handleGetComments(c: Context<AppEnv>) {
 export async function handleStartStep(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
-    const stepId = c.req.param('stepId');
+    const taskId = c.req.param('taskId') as string;
+    const stepId = c.req.param('stepId') as string;
 
     const step = (await db.select().from(taskSteps).where(and(eq(taskSteps.id, stepId), eq(taskSteps.taskId, taskId))).limit(1))[0];
     if (!step) return c.json({ error: 'Step not found' }, 404);
@@ -60,8 +60,8 @@ export async function handleStartStep(c: Context<AppEnv>) {
 export async function handleDeltaStep(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
-    const stepId = c.req.param('stepId');
+    const taskId = c.req.param('taskId') as string;
+    const stepId = c.req.param('stepId') as string;
 
     const bodySchema = z.object({
         tenantId: z.string().uuid(),
@@ -97,8 +97,8 @@ export async function handleDeltaStep(c: Context<AppEnv>) {
 export async function handleCompleteStep(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
-    const stepId = c.req.param('stepId');
+    const taskId = c.req.param('taskId') as string;
+    const stepId = c.req.param('stepId') as string;
     const traceId = c.req.header('x-trace-id') ?? '';
 
     const bodySchema = z.object({
@@ -138,8 +138,8 @@ export async function handleCompleteStep(c: Context<AppEnv>) {
 export async function handleFailStep(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
-    const stepId = c.req.param('stepId');
+    const taskId = c.req.param('taskId') as string;
+    const stepId = c.req.param('stepId') as string;
     const traceId = c.req.header('x-trace-id') ?? '';
 
     const parsed = z.object({ error: z.string().min(1) }).safeParse(await c.req.json());

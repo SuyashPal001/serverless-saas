@@ -76,7 +76,7 @@ export async function handleCreateTeamMember(c: Context<AppEnv>) {
 export async function handleDeleteTeamMember(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const targetUserId = c.req.param('userId');
+    const targetUserId = c.req.param('userId') as string;
     const requestingUserId = c.get('userId') as string;
 
     if (targetUserId === requestingUserId) return c.json({ error: 'You cannot remove yourself', code: 'SELF_REMOVE' }, 400);

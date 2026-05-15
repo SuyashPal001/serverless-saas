@@ -58,7 +58,7 @@ export async function handleAgentStatus(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const agentId = c.req.param('id');
+    const agentId = c.req.param('id') as string;
     const agent = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!agent) return c.json({ error: 'Agent not found' }, 404);
 

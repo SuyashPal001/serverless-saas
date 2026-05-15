@@ -32,7 +32,7 @@ export async function handleGetWorkflow(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'notifications', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const workflowId = c.req.param('id');
+    const workflowId = c.req.param('id') as string;
     const workflow = await db
         .select({ id: notificationWorkflows.id, messageType: notificationWorkflows.messageType, critical: notificationWorkflows.critical, status: notificationWorkflows.status })
         .from(notificationWorkflows)

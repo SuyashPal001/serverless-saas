@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
-import { and, eq, sql, inArray, count } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskEvents, taskSteps } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskEvents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
@@ -21,7 +21,7 @@ export async function handlePlanTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select().from(agentTasks).where(and(
         eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId),
     )).limit(1))[0];
@@ -71,7 +71,7 @@ export async function handleClarifyTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const schema = z.object({ answer: z.string().min(1) });
     const result = schema.safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
@@ -133,7 +133,7 @@ export async function handleVoteTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const schema = z.object({ type: z.enum(['up', 'down']) });
     const result = schema.safeParse(await c.req.json());
     if (!result.success) return c.json({ error: 'Invalid vote type' }, 400);

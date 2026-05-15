@@ -25,7 +25,7 @@ const fireNotification = async (sqsUrl: string | undefined, tenantId: string, me
 export async function handleCompleteTask(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const parsed = z.object({ summary: z.string().optional(), tenantId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
@@ -58,7 +58,7 @@ export async function handleCompleteTask(c: Context<AppEnv>) {
 export async function handleFailTask(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const parsed = z.object({ error: z.string().min(1), tenantId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
@@ -86,7 +86,7 @@ export async function handleFailTask(c: Context<AppEnv>) {
 export async function handleClarifyTask(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const parsed = z.object({ questions: z.array(z.string().min(1)).min(1), tenantId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
@@ -119,7 +119,7 @@ export async function handleClarifyTask(c: Context<AppEnv>) {
 export async function handleMastraRun(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const parsed = z.object({ mastraRunId: z.string().min(1) }).safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 
@@ -135,7 +135,7 @@ export async function handleMastraRun(c: Context<AppEnv>) {
 export async function handleSuspendTask(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select().from(agentTasks).where(eq(agentTasks.id, taskId)).limit(1))[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
 
@@ -153,7 +153,7 @@ export async function handleSuspendTask(c: Context<AppEnv>) {
 export async function handlePostComment(c: Context<AppEnv>) {
     if (authCheck(c)) return c.json({ error: 'Unauthorized' }, 401);
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const parsed = z.object({ content: z.string().min(1), agentId: z.string().uuid(), parentId: z.string().uuid().optional(), tenantId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.errors[0].message }, 400);
 

@@ -18,7 +18,7 @@ export async function handleListComments(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select({ id: agentTasks.id }).from(agentTasks).where(and(
         eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId),
     )).limit(1))[0];
@@ -58,7 +58,7 @@ export async function handleAddComment(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const schema = z.object({
         content: z.string().min(1),
         contentHtml: z.string().nullable().optional(),

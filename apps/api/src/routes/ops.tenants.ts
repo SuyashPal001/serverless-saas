@@ -1,9 +1,9 @@
-import { and, eq, ilike, desc, count, isNull, gte, lte, countDistinct } from 'drizzle-orm';
+import { and, eq, ilike, desc, count, isNull, gte, lte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { conversationMetrics } from '@serverless-saas/database/schema/conversations';
+
 import { isPlatformAdmin } from './ops.guard';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
@@ -34,7 +34,7 @@ export async function handleListTenants(c: Context<AppEnv>) {
 export async function handleGetTenant(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const tenantId = c.req.param('id');
+    const tenantId = c.req.param('id') as string;
     const tenant = (await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1))[0];
     if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
 
@@ -89,7 +89,7 @@ export async function handleGetTenant(c: Context<AppEnv>) {
 export async function handlePatchTenant(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const tenantId = c.req.param('id');
+    const tenantId = c.req.param('id') as string;
     const result = z.object({ status: z.enum(['active', 'suspended']) }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 

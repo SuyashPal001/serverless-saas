@@ -1,7 +1,7 @@
 import { and, eq, desc, count, avg, sql, countDistinct } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants, conversations } from '@serverless-saas/database/schema';
-import { auditLog } from '@serverless-saas/database/schema/audit';
+
 import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { conversationMetrics, evalResults, conversationFeedback, messages } from '@serverless-saas/database/schema/conversations';
 import { isPlatformAdmin } from './ops.guard';

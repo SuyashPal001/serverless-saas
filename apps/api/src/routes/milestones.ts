@@ -110,7 +110,7 @@ milestonesRoutes.patch('/:milestoneId', async (c) => {
     if (targetDate          !== undefined) updates.targetDate          = targetDate ? new Date(targetDate) : null;
     if (assigneeId          !== undefined) updates.assigneeId          = assigneeId;
     if (priority            !== undefined) updates.priority            = priority;
-    if (acceptanceCriteria  !== undefined) updates.acceptanceCriteria  = acceptanceCriteria;
+    if (acceptanceCriteria  !== undefined) updates.acceptanceCriteria  = acceptanceCriteria as any;
     if (estimatedHours      !== undefined) updates.estimatedHours      = estimatedHours != null ? String(estimatedHours) : null;
 
     const [updated] = await db

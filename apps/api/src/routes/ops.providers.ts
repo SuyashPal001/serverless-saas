@@ -61,7 +61,7 @@ export async function handleCreateProvider(c: Context<AppEnv>) {
 export async function handlePatchProvider(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const id = c.req.param('id');
+    const id = c.req.param('id') as string;
     const result = z.object({ status: z.enum(['live', 'coming_soon']) }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 

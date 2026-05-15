@@ -37,7 +37,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const agentId = c.req.param('id');
+    const agentId = c.req.param('id') as string;
     const agent = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
@@ -106,7 +106,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     const isOwner = role === 'owner';
     if (!isOwner && !canFullUpdate) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const agentId = c.req.param('id');
+    const agentId = c.req.param('id') as string;
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
 
@@ -143,7 +143,7 @@ export async function handleDeleteAgent(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const agentId = c.req.param('id');
+    const agentId = c.req.param('id') as string;
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
 

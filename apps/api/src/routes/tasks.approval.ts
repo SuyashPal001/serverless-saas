@@ -24,7 +24,7 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const schema = z.object({
         approved: z.boolean(),
         stepFeedback: z.array(z.object({ stepId: z.string().uuid(), feedback: z.string() })).optional(),
@@ -179,7 +179,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId })
         .from(agentTasks)
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { integrations } from '@serverless-saas/database/schema/integrations';
+
 import { encryptCredentials } from './integrations.crypto';
 import { syncToolsAndNotifyRelay } from './integrations.sync';
 import type { AppEnv } from '../types';

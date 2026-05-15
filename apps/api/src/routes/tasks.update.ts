@@ -1,7 +1,7 @@
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskEvents, agents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, agents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
@@ -50,7 +50,7 @@ export async function handleUpdateTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const result = patchTaskSchema.safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
@@ -127,7 +127,7 @@ export async function handleDeleteTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
     const task = (await db.select().from(agentTasks).where(and(
         eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId),
     )).limit(1))[0];

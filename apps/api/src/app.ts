@@ -49,6 +49,7 @@ import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import { tasksRoutes } from './routes/tasks';
 import { plansRoutes } from './routes/plans';
 import { milestonesRoutes } from './routes/milestones';
+import { pagesRoutes } from './routes/pages';
 import internalEvalsRoute from './routes/internal/evals';
 import internalToolCallsRoute from './routes/internal/tool-calls';
 import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
@@ -199,6 +200,7 @@ api.route('/documents', documentsRoutes);
 api.route('/tasks', tasksRoutes);
 api.route('/plans', plansRoutes);
 api.route('/milestones', milestonesRoutes);
+api.route('/pages', pagesRoutes);
 
 const internalApi = new Hono<AppEnv>();
 internalApi.route('/internal', internalRetrieveRoute);

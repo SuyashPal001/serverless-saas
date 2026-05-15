@@ -43,7 +43,7 @@ export async function handleMarkRead(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId') as string;
-    const id = c.req.param('id');
+    const id = c.req.param('id') as string;
 
     const [updated] = await db.update(notificationInbox)
         .set({ read: true, readAt: new Date() })
@@ -73,7 +73,7 @@ export async function handleArchive(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId') as string;
-    const id = c.req.param('id');
+    const id = c.req.param('id') as string;
 
     const [updated] = await db.update(notificationInbox)
         .set({ archived: true, archivedAt: new Date() })

@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '@serverless-saas/database/schema';
-import { agentTasks, taskSteps, files } from '@serverless-saas/database/schema';
+import { taskSteps, files } from '@serverless-saas/database/schema';
 import { eq, asc, and, sql, inArray } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
 import pdfParse from 'pdf-parse';

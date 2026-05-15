@@ -62,7 +62,7 @@ export async function handleCreateOverride(c: Context<AppEnv>) {
 export async function handleRevokeOverride(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const overrideId = c.req.param('id');
+    const overrideId = c.req.param('id') as string;
     const userId = c.get('userId') as string;
 
     const existing = (await db.select().from(tenantFeatureOverrides).where(eq(tenantFeatureOverrides.id, overrideId)).limit(1))[0];

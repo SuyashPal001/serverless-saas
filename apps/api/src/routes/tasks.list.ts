@@ -61,7 +61,7 @@ export async function handleGetTask(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const taskId = c.req.param('taskId');
+    const taskId = c.req.param('taskId') as string;
 
     const task = (await db.select().from(agentTasks).where(and(
         eq(agentTasks.id, taskId),
