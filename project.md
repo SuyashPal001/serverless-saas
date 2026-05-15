@@ -476,3 +476,5 @@ Makefile        — Lambda build targets (esbuild)
 | [Tech Constraints](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/technology-constraints.md) | Engineering reference for language and framework choices |
 | [Engineer Onboarding](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/engineer-onboarding.md) | Essential context for any engineer building on the Platform OS |
 | [Bugfix Notes](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/bugfix-notes.md) | Ongoing log of specific bug resolutions and edge cases |
+| [PMBJP RFP Mapping](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/08_rfp_mapping_pmbjp.md) | Technical mapping against AI-Driven Drug Forecasting RFP |
+| [Mastra Deep Reference](file:///Users/suyash/Desktop/projects/serverless-app/serverless-saas/docs/09_mastra_deep_reference.md) | Complete API & Architecture Reference for Mastra Platform |
