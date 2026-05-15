@@ -19,13 +19,16 @@ import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
 import { delegationAccuracyScorer } from './scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from './scorers/clarityBeforeDelegate.js'
 import { roadmapCompletenessScorer } from './scorers/roadmapCompleteness.js'
+import { taskCompletenessScorer } from './scorers/taskCompleteness.js'
 
 import { platformAgent, SERVER_TOOLS } from './agents/platformAgent.js'
 import { formatterAgent } from './agents/formatterAgent.js'
 import { prdAgent } from './agents/prdAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { roadmapAgent } from './agents/roadmapAgent.js'
+import { taskAgent } from './agents/taskAgent.js'
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
+import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -34,10 +37,10 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 // ---------------------------------------------------------------------------
 
 export const mastra = new Mastra({
-  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow },
+  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent, task: taskAgent },
+  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow },
   storage: getMastraStore(),
-  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer },
+  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
   editor: new MastraEditor(),
   observability: new Observability({
     configs: {

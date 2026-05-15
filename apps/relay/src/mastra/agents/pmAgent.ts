@@ -3,6 +3,7 @@ import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { prdAgent } from './prdAgent.js'
 import { roadmapAgent } from './roadmapAgent.js'
+import { taskAgent } from './taskAgent.js'
 import { prdWorkflow } from '../workflows/prdWorkflow.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
 import { savePRD } from '../tools/savePRD.js'
@@ -27,8 +28,10 @@ You are a product management supervisor. Your job is to route and coordinate —
 - User says "roadmap from PRD", "create a plan", "generate milestones"
 - PRD status must be approved — if not approved, tell the user to approve the PRD first
 
-## When to delegate to taskAgent (Phase 3 — not yet available)
-- Roadmap is approved and user asks to break it into tasks
+## When to delegate to taskAgent
+- User asks to break down a roadmap, generate tasks, or create a task list
+- User says "create tasks", "break into tasks", "generate tasks from roadmap"
+- Plan status must be approved — if not approved, tell the user to approve the roadmap first
 
 ## Stopping conditions
 - Specialist agent has produced a complete artifact (PRD, roadmap, or task list)
@@ -46,7 +49,7 @@ You are a product management supervisor. Your job is to route and coordinate —
 - Ask the user if they want to refine the PRD or submit it for approval`,
   model: saarthiModel,
   memory: getMastraMemory(),
-  agents: { prdAgent, roadmapAgent },
+  agents: { prdAgent, roadmapAgent, taskAgent },
   workflows: { prdWorkflow },
   tools: { fetchAgentContext, savePRD },
   scorers: {
