@@ -1212,7 +1212,7 @@ apps/relay/
     │
     ├── agents/
     │   ├── platformAgent.ts                   ✅ chat only, PRD suffix removed
-    │   ├── pmAgent.ts                         ← TO BUILD (Phase 1)
+    │   ├── pmAgent.ts                         ✅ done
     │   ├── prdAgent.ts                        ✅ workspace + workflows + scorers
     │   ├── roadmapAgent.ts                    ← TO BUILD (Phase 2)
     │   ├── taskAgent.ts                       ← TO BUILD (Phase 3)
@@ -1230,6 +1230,8 @@ apps/relay/
     │
     ├── scorers/
     │   ├── prdCompleteness.ts                 ✅ done
+    │   ├── delegationAccuracy.ts              ✅ done
+    │   ├── clarityBeforeDelegate.ts           ✅ done
     │   ├── roadmapCompleteness.ts             ← TO BUILD (Phase 2)
     │   └── taskClarity.ts                     ← TO BUILD (Phase 3)
     │
@@ -1239,8 +1241,8 @@ apps/relay/
     │   └── taskWorkspace.ts                   ← TO BUILD (Phase 3)
     │
     ├── tools/
-    │   ├── fetchAgentContext.ts               ← TO BUILD (Phase 1)
-    │   └── savePRD.ts                         ← TO BUILD (Phase 1)
+    │   ├── fetchAgentContext.ts               ✅ done
+    │   └── savePRD.ts                         ✅ done
     │
     ├── model.ts                               ✅ unchanged
     ├── memory.ts                              ✅ unchanged
