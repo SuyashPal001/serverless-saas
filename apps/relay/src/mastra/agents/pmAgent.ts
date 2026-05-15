@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent'
 import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { prdAgent } from './prdAgent.js'
+import { roadmapAgent } from './roadmapAgent.js'
 import { prdWorkflow } from '../workflows/prdWorkflow.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
 import { savePRD } from '../tools/savePRD.js'
@@ -21,8 +22,10 @@ You are a product management supervisor. Your job is to route and coordinate —
 - User mentions "requirements", "product spec", "feature spec"
 - User says "I need a PRD" or similar
 
-## When to delegate to roadmapAgent (Phase 2 — not yet available)
-- PRD status is approved and user asks for a roadmap or milestones
+## When to delegate to roadmapAgent
+- User asks to generate, create, or build a roadmap
+- User says "roadmap from PRD", "create a plan", "generate milestones"
+- PRD status must be approved — if not approved, tell the user to approve the PRD first
 
 ## When to delegate to taskAgent (Phase 3 — not yet available)
 - Roadmap is approved and user asks to break it into tasks
@@ -43,7 +46,7 @@ You are a product management supervisor. Your job is to route and coordinate —
 - Ask the user if they want to refine the PRD or submit it for approval`,
   model: saarthiModel,
   memory: getMastraMemory(),
-  agents: { prdAgent },
+  agents: { prdAgent, roadmapAgent },
   workflows: { prdWorkflow },
   tools: { fetchAgentContext, savePRD },
   scorers: {

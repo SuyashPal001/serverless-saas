@@ -18,11 +18,14 @@ import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
 import { delegationAccuracyScorer } from './scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from './scorers/clarityBeforeDelegate.js'
+import { roadmapCompletenessScorer } from './scorers/roadmapCompleteness.js'
 
 import { platformAgent, SERVER_TOOLS } from './agents/platformAgent.js'
 import { formatterAgent } from './agents/formatterAgent.js'
 import { prdAgent } from './agents/prdAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
+import { roadmapAgent } from './agents/roadmapAgent.js'
+import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -31,10 +34,10 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 // ---------------------------------------------------------------------------
 
 export const mastra = new Mastra({
-  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow },
+  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent },
+  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow },
   storage: getMastraStore(),
-  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer },
+  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer },
   editor: new MastraEditor(),
   observability: new Observability({
     configs: {

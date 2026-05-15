@@ -152,6 +152,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set(MASTRA_THREAD_ID_KEY, conversationId)
     requestContext.set('tenantId', tenantId)
     requestContext.set('agentId', agentId)
+    requestContext.set('userId', internalUserId)
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
