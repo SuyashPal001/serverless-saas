@@ -8,3 +8,9 @@ export const pmKeys = {
     planTasks:      (planId: string)       => ['planTasks', planId] as const,
     subtasks:       (taskId: string)       => ['subtasks', taskId] as const,
 }
+
+export const pagesKeys = {
+    list:     (planId: string)  => ['pages', planId] as const,
+    detail:   (pageId: string)  => ['page', pageId] as const,
+    versions: (pageId: string)  => ['pageVersions', pageId] as const,
+}

@@ -852,6 +852,7 @@ export default function PlanDetailPage() {
                     <TabsTrigger value="overview">Overview</TabsTrigger>
                     <TabsTrigger value="milestones">Milestones</TabsTrigger>
                     <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                    <TabsTrigger value="pages" onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${planId}/pages`)}>Pages</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -865,6 +866,8 @@ export default function PlanDetailPage() {
                 <TabsContent value="tasks">
                     <TasksTab planId={planId} tenantSlug={tenantSlug} milestones={milestones} />
                 </TabsContent>
+
+                <TabsContent value="pages" />
             </Tabs>
 
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
