@@ -82,6 +82,14 @@ export const fetchPlan = createTool({
       }
 
       const row = rows[0]
+
+      if (row.status !== 'active') {
+        return {
+          plan: null,
+          reason: `Plan "${row.title}" has status "${row.status}" — it must be active before generating tasks`,
+        }
+      }
+
       // json_agg returns [null] when there are no milestones (LEFT JOIN with no matches)
       const milestones = (row.milestones ?? []).filter((m) => m.id !== null)
 

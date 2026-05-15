@@ -1203,9 +1203,9 @@ apps/relay/
 │   ├── requirements-gathering/
 │   │   └── SKILL.md                           ✅ done
 │   ├── roadmap-planning/
-│   │   └── SKILL.md                           ← TO ADD (Phase 2)
+│   │   └── SKILL.md                           ✅ done
 │   └── task-breakdown/
-│       └── SKILL.md                           ← TO ADD (Phase 3)
+│       └── SKILL.md                           ✅ done
 │
 └── src/mastra/
     ├── index.ts                               ✅ registers everything
@@ -1215,13 +1215,13 @@ apps/relay/
     │   ├── pmAgent.ts                         ✅ done
     │   ├── prdAgent.ts                        ✅ workspace + workflows + scorers
     │   ├── roadmapAgent.ts                    ✅ done
-    │   ├── taskAgent.ts                       ← TO BUILD (Phase 3)
+    │   ├── taskAgent.ts                       ✅ done
     │   └── formatterAgent.ts                  ✅ unchanged
     │
     ├── workflows/
     │   ├── prdWorkflow.ts                     ✅ gatherStep→writeStep→formatStep
     │   ├── roadmapWorkflow.ts                 ✅ done
-    │   ├── taskWorkflow.ts                    ← TO BUILD (Phase 3)
+    │   ├── taskWorkflow.ts                    ✅ done
     │   ├── taskExecution.ts                   ✅ unchanged
     │   ├── documentWorkflow.ts                ✅ unchanged
     │   ├── steps/
@@ -1233,18 +1233,20 @@ apps/relay/
     │   ├── delegationAccuracy.ts              ✅ done
     │   ├── clarityBeforeDelegate.ts           ✅ done
     │   ├── roadmapCompleteness.ts             ✅ done
-    │   └── taskClarity.ts                     ← TO BUILD (Phase 3)
+    │   └── taskCompleteness.ts                ✅ done
     │
     ├── workspace/
     │   ├── prdWorkspace.ts                    ✅ done, path fixed
     │   ├── roadmapWorkspace.ts                ✅ done
-    │   └── taskWorkspace.ts                   ← TO BUILD (Phase 3)
+    │   └── taskWorkspace.ts                   ✅ done
     │
     ├── tools/
     │   ├── fetchAgentContext.ts               ✅ done
     │   ├── savePRD.ts                         ✅ done
     │   ├── fetchPRD.ts                        ✅ done
-    │   └── savePlan.ts                        ✅ done
+    │   ├── savePlan.ts                        ✅ done
+    │   ├── fetchPlan.ts                       ✅ done
+    │   └── saveTasks.ts                       ✅ done
     │
     ├── model.ts                               ✅ unchanged
     ├── memory.ts                              ✅ unchanged
@@ -1266,10 +1268,11 @@ Phase 2 — NEXT
   skills/roadmap-planning/SKILL.md
   scorers/roadmapCompleteness.ts
 
-Phase 3 — LATER
+Phase 3 — COMPLETE ✅
   taskAgent.ts + taskWorkspace.ts + taskWorkflow.ts
   skills/task-breakdown/SKILL.md
-  scorers/taskClarity.ts
+  scorers/taskCompleteness.ts
+  tools/fetchPlan.ts + tools/saveTasks.ts
 ```
 
 ### Agent Responsibilities — One Job Per Agent

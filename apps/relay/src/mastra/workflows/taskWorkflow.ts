@@ -101,11 +101,26 @@ export const generateStep = createStep({
     const { analysis } = inputData
     const initData = getInitData<z.infer<typeof workflowInputSchema>>()
 
+    // Always surface all milestone IDs even if the full JSON is large.
+    // Truncating planData risks cutting UUIDs — the LLM would invent them,
+    // causing FK violations or orphaned rows in saveTasks.
+    let milestoneRef = initData.planData.slice(0, 20000)
+    try {
+      const parsed = JSON.parse(initData.planData)
+      const idLines = (parsed?.milestones ?? [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((m: any) => `${m.id} — ${m.title}`)
+        .join('\n')
+      if (idLines) {
+        milestoneRef = `Plan data excerpt:\n${initData.planData.slice(0, 20000)}\n\nAll milestone IDs (never invent these):\n${idLines}`
+      }
+    } catch { /* use raw slice */ }
+
     const prompt = [
       `Use the task-breakdown skill to generate tasks for each milestone.`,
       ``,
       `Original plan data (milestone IDs must be copied exactly — do not invent IDs):`,
-      initData.planData.slice(0, 4000),
+      milestoneRef,
       ``,
       `Milestone analysis:`,
       analysis,

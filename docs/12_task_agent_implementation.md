@@ -1,5 +1,7 @@
 # Task Agent — Phase 3 Implementation Guide
 
+**Phase 3 status: COMPLETE — committed 75fce03 (code) + bug fixes applied post-review**
+
 Reference this document at the start of every task agent session.
 Read docs/11_roadmap_agent_implementation.md and docs/09_mastra_deep_reference.md
 sections 21 and 22 first for architecture context.
