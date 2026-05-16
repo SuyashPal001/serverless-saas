@@ -173,13 +173,17 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     let agentStream: any
 
-    if (isPmIntent(message)) {
-      const draft = await fetchPrdDraft(agentId, tenantId)
+    // Route to pmAgent if explicit PM intent OR an existing draft is in progress
+    // (keeps follow-up messages in the same PM session instead of switching personas)
+    const draft = await fetchPrdDraft(agentId, tenantId)
+    const usePmAgent = isPmIntent(message) || !!draft
+
+    if (usePmAgent) {
       if (draft) {
         requestContext.set('existingPrdDraft', draft.content)
         requestContext.set('existingPrdId', draft.id)
       }
-      console.log(`[sse:${sessionId}] PM intent detected — routing to pmAgent draft=${!!draft}`)
+      console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} draft=${!!draft}`)
       agentStream = await pmAgent.stream(mastraMessage, {
         maxSteps: 10,
         requestContext,
