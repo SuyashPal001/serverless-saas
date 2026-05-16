@@ -34,7 +34,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const [artifact, setArtifact] = useState<ArtifactState | null>(null);
-  const [activeTab, setActiveTab] = useState<'artifact' | 'knowledge'>('knowledge');
+  const [activeTab, setActiveTab] = useState<'artifact' | 'knowledge'>('artifact');
 
   // Clean up expired overlays
   useEffect(() => {
@@ -54,6 +54,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
 
     // Handle artifact streaming actions first
     if (action === 'artifact_start') {
+      console.log('[canvas] artifact_start received:', data);
       setArtifact({
         type: data.artifactType!,
         title: data.artifactTitle!,
@@ -240,7 +241,11 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         {activeTab === 'artifact' ? (
           artifact ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <ArtifactPanel artifact={artifact} onApprove={handleApprove} />
+              <ArtifactPanel
+                artifact={artifact}
+                onApprove={handleApprove}
+                onContentLoaded={(content) => setArtifact(prev => prev ? { ...prev, content } : prev)}
+              />
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">

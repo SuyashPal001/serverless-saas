@@ -4,11 +4,13 @@ import { useEffect, useRef } from 'react';
 import { FileText, Map, CheckSquare, Loader2, Check, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { api } from '@/lib/api';
 import type { ArtifactState, ArtifactType } from './types';
 
 interface ArtifactPanelProps {
   artifact: ArtifactState;
   onApprove: () => Promise<void>;
+  onContentLoaded: (content: string) => void;
 }
 
 const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
@@ -52,10 +54,22 @@ function MarkdownLine({ line }: { line: string }) {
   return <p>{line}</p>;
 }
 
-export function ArtifactPanel({ artifact, onApprove }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifact, onApprove, onContentLoaded }: ArtifactPanelProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const showFooter = !artifact.isStreaming && artifact.entityId !== null;
+
+  // Fetch PRD content from DB when artifact_done fires (streaming chunks don't carry content)
+  useEffect(() => {
+    if (!artifact.entityId || artifact.isStreaming || artifact.content) return;
+    if (artifact.type !== 'prd') return;
+    api.get<{ data: { content: string } }>(`/api/v1/prds/${artifact.entityId}`)
+      .then(res => {
+        const content = res.data?.content;
+        if (typeof content === 'string' && content) onContentLoaded(content);
+      })
+      .catch(() => { /* silently ignore — content stays empty */ });
+  }, [artifact.entityId, artifact.isStreaming, artifact.type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll to bottom as content streams in
   useEffect(() => {

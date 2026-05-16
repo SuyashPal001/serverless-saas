@@ -36,8 +36,10 @@ export function useCanvas() {
 
   // Handle canvas update (called from useAgentEvents)
   const handleCanvasUpdate = useCallback((action: CanvasAction, data: CanvasEventData) => {
-    // Auto-open canvas on first activity
-    if (!isCanvasOpen && action === 'screenshot') {
+    console.log('[canvas] handleCanvasUpdate:', action, data);
+    console.log('[canvas] window.__canvasUpdate exists:', !!(window as any).__canvasUpdate);
+    // Auto-open canvas when browser automation or artifact streaming starts
+    if (!isCanvasOpen && (action === 'screenshot' || action === 'artifact_start')) {
       setIsCanvasOpen(true);
     }
 

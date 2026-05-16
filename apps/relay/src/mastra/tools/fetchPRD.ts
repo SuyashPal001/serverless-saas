@@ -22,18 +22,26 @@ const prdRowSchema = z.object({
   status: z.string(),
 })
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+  agentId: z.string().optional(),
+  userId: z.string().optional(),
+})
+
 export const fetchPRD = createTool({
   id: 'fetch-prd',
   description: 'Reads an agent_prds record by id. Returns null with a reason if not found or status is not approved.',
+  requestContextSchema,
   inputSchema: z.object({
     prdId: z.string(),
-    tenantId: z.string(),
   }),
   outputSchema: z.object({
     prd: prdRowSchema.nullable(),
     reason: z.string().nullable(),
   }),
-  execute: async ({ context: { prdId, tenantId } }) => {
+  execute: async (inputData, execContext) => {
+    const prdId = inputData?.prdId ?? ''
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const client = await getPool().connect()
     try {
       const { rows } = await client.query<{

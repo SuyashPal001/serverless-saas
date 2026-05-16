@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { z } from 'zod'
 import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { prdAgent } from './prdAgent.js'
@@ -47,6 +48,11 @@ You are a product management supervisor. Your job is to route and coordinate —
 - Use fetchAgentContext to load product/company context before delegating to prdAgent
 - After prdAgent completes, use savePRD to persist the draft, then summarize what was produced
 - Ask the user if they want to refine the PRD or submit it for approval`,
+  requestContextSchema: z.object({
+    tenantId: z.string().optional().default(''),
+    agentId: z.string().optional().default(''),
+    userId: z.string().optional().default(''),
+  }),
   model: saarthiModel,
   memory: getMastraMemory(),
   agents: { prdAgent, roadmapAgent, taskAgent },

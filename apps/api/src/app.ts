@@ -48,6 +48,7 @@ import internalRetrieveRoute from './routes/internal/retrieve';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import { tasksRoutes } from './routes/tasks';
 import { plansRoutes } from './routes/plans';
+import { prdsRoutes } from './routes/prds';
 import { milestonesRoutes } from './routes/milestones';
 import { pagesRoutes } from './routes/pages';
 import internalEvalsRoute from './routes/internal/evals';
@@ -199,6 +200,7 @@ api.route('/llm-providers', llmProvidersRoutes);
 api.route('/documents', documentsRoutes);
 api.route('/tasks', tasksRoutes);
 api.route('/plans', plansRoutes);
+api.route('/prds', prdsRoutes);
 api.route('/milestones', milestonesRoutes);
 api.route('/pages', pagesRoutes);
 
