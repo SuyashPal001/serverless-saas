@@ -1,10 +1,17 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { z } from 'zod'
 
-// Import agents directly (not via index.js) to avoid circular dependency:
-// roadmapAgent → roadmapWorkflow → index → roadmapAgent
-import { roadmapAgent } from '../agents/roadmapAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
+
+// Load skill content once at module init — injected into generateText prompts
+// so workflow steps get the same context roadmapAgent.generate() used to provide
+// via its workspace. process.cwd() = relay root (PM2 exec cwd).
+const roadmapSkill = readFileSync(
+  resolve(process.cwd(), 'skills/roadmap-planning/SKILL.md'),
+  'utf-8',
+)
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +81,7 @@ export const analyzeStep = createStep({
     let analysis = ''
 
     try {
-      const result = await roadmapAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`)
       analysis = result.text ?? ''
       console.log(`[analyzeStep] analysis length=${analysis.length}`)
     } catch (err) {
@@ -120,7 +127,7 @@ export const planStep = createStep({
     let roadmapDraft = ''
 
     try {
-      const result = await roadmapAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`)
       roadmapDraft = result.text ?? ''
       console.log(`[planStep] roadmapDraft length=${roadmapDraft.length}`)
     } catch (err) {

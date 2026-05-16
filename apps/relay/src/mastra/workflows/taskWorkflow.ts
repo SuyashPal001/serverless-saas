@@ -1,10 +1,17 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { z } from 'zod'
 
-// Import agents directly (not via index.js) to avoid circular dependency:
-// taskAgent → taskWorkflow → index → taskAgent
-import { taskAgent } from '../agents/taskAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
+
+// Load skill content once at module init — injected into generateText prompts
+// so workflow steps get the same context taskAgent.generate() used to provide
+// via its workspace. process.cwd() = relay root (PM2 exec cwd).
+const taskSkill = readFileSync(
+  resolve(process.cwd(), 'skills/task-breakdown/SKILL.md'),
+  'utf-8',
+)
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +83,7 @@ export const analyzeStep = createStep({
     let analysis = ''
 
     try {
-      const result = await taskAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${taskSkill}\n\n${prompt}`)
       analysis = result.text ?? ''
       console.log(`[analyzeStep:tasks] analysis length=${analysis.length}`)
     } catch (err) {
@@ -140,7 +147,7 @@ export const generateStep = createStep({
     let taskDraft = ''
 
     try {
-      const result = await taskAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${taskSkill}\n\n${prompt}`)
       taskDraft = result.text ?? ''
       console.log(`[generateStep:tasks] taskDraft length=${taskDraft.length}`)
     } catch (err) {
@@ -167,19 +174,26 @@ export const formatStep = createStep({
     const { taskDraft } = inputData
     const initData = getInitData<z.infer<typeof workflowInputSchema>>()
 
-    // Extract planId from the original plan data for the output root
+    // Parse real IDs from planData — never trust LLM to copy UUIDs correctly
     let planId = ''
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let realMilestones: Array<{ id: string; title: string }> = []
     try {
       const parsed = JSON.parse(initData.planData)
       planId = parsed?.plan?.id ?? parsed?.id ?? ''
+      realMilestones = (parsed?.milestones ?? [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((m: any) => ({ id: m.id as string, title: m.title as string }))
+        .filter((m: { id: string }) => !!m.id)
     } catch {
-      // planId stays empty — formatterAgent will extract it from the draft
+      // planId stays empty, realMilestones stays []
     }
 
     const prompt = [
       `Convert the task draft below into a structured JSON object matching the schema exactly.`,
       `milestoneId on every milestone must be a real UUID from the plan — never invent IDs.`,
       `acceptanceCriteria must be an array of plain strings (not objects).`,
+      `estimatedHours must always be a positive integer, minimum 1, never 0 or null.`,
       planId ? `planId must be: "${planId}"` : `Extract planId from the task draft or plan data.`,
       ``,
       `--- Task Draft ---`,
@@ -213,8 +227,27 @@ export const formatStep = createStep({
         structuredOutput: { schema: formatOutputSchema },
       })
       if (result.object) {
+        const output = result.object as z.infer<typeof formatOutputSchema>
+
+        // Post-process: overwrite planId and milestoneIds from real data
+        output.taskData.planId = planId || output.taskData.planId
+
+        // Match LLM milestones to real milestones by order (LLM preserves order)
+        // then overwrite milestoneId with the real UUID
+        for (let i = 0; i < output.taskData.milestones.length; i++) {
+          const llmMilestone = output.taskData.milestones[i]
+          if (i < realMilestones.length) {
+            llmMilestone.milestoneId = realMilestones[i].id
+            llmMilestone.milestoneName = llmMilestone.milestoneName || realMilestones[i].title
+          }
+          // Clamp estimatedHours: minimum 1, never 0/null/undefined
+          for (const task of llmMilestone.tasks) {
+            task.estimatedHours = Math.max(1, task.estimatedHours ?? 1)
+          }
+        }
+
         console.log('[formatStep:tasks] structured task data produced successfully')
-        return result.object as z.infer<typeof formatOutputSchema>
+        return output
       }
     } catch (err) {
       console.error('[formatStep:tasks] error:', (err as Error).message)
