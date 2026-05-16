@@ -120,6 +120,10 @@ export const writeStep = createStep({
       `Goals, Non-Goals, User Stories (with acceptance criteria), Functional Requirements,`,
       `Non-Functional Requirements, Success Metrics, Open Questions.`,
       `Write in structured plain text. Do not produce JSON.`,
+      `IMPORTANT: Output ONLY the PRD document itself.`,
+      `Do NOT include skill instructions, guidelines, metadata, or any text that`,
+      `is not part of the PRD. Start directly with "## TL;DR" and end with the`,
+      `Open Questions section. Nothing before or after.`,
     ].filter(Boolean).join('\n')
 
     let prdText = ''
@@ -153,7 +157,7 @@ export const formatStep = createStep({
       `Convert the PRD below into a structured JSON object matching the schema exactly.`,
       ``,
       `--- PRD ---`,
-      prdText.slice(0, 6000),
+      prdText.slice(0, 25000),
       `--- End PRD ---`,
       ``,
       `Return: { "prd": { "tldr": "...", "problemStatement": "...", "goals": [...],`,
