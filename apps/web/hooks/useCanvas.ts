@@ -53,9 +53,17 @@ export function useCanvas() {
       setHasActivity(false);
     }, 3000);
 
-    // Forward to canvas component
-    if (typeof window !== 'undefined' && (window as any).__canvasUpdate) {
-      (window as any).__canvasUpdate(action, data);
+    // Forward to canvas component; queue if not mounted yet
+    if (typeof window !== 'undefined') {
+      if ((window as any).__canvasUpdate) {
+        (window as any).__canvasUpdate(action, data);
+      } else {
+        // Canvas effect hasn't fired yet — buffer and replay on mount
+        const q: Array<{ action: CanvasAction; data: CanvasEventData }> =
+          (window as any).__canvasPendingEvents ?? [];
+        q.push({ action, data });
+        (window as any).__canvasPendingEvents = q;
+      }
     }
   }, [isCanvasOpen]);
 

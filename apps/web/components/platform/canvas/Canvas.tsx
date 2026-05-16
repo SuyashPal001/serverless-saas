@@ -142,6 +142,13 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug }:
   useEffect(() => {
     (window as any).__canvasUpdate = handleCanvasUpdate;
     (window as any).__canvasReset = handleReset;
+    // Drain any events queued before this effect ran
+    const pending = (window as any).__canvasPendingEvents as
+      Array<{ action: CanvasAction; data: CanvasEventData }> | undefined;
+    if (pending?.length) {
+      pending.forEach(({ action, data }) => handleCanvasUpdate(action, data));
+      delete (window as any).__canvasPendingEvents;
+    }
     return () => {
       delete (window as any).__canvasUpdate;
       delete (window as any).__canvasReset;

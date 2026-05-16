@@ -320,11 +320,12 @@ function ChatPage() {
             const agentMeta = AGENT_ARTIFACT_META[toolName];
             if (agentMeta) {
                 artifactToolActiveRef.current = toolName;
+                // Open canvas first so Canvas is mounted when artifact_start drains from queue
+                openCanvas();
                 handleCanvasUpdate('artifact_start', {
                     artifactType: agentMeta.type,
                     artifactTitle: agentMeta.titlePrefix,
                 });
-                openCanvas();
             }
         }, [handleCanvasUpdate, openCanvas]),
 
