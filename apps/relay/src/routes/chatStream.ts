@@ -9,7 +9,7 @@ import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
-import { isPmIntent, fetchPrdDraft } from './pmRouting.js'
+import { isPmIntent, fetchPrdDraft, markPmSession, isPmSession } from './pmRouting.js'
 
 export interface ChatStreamOpts {
   message: string
@@ -173,17 +173,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     let agentStream: any
 
-    // Route to pmAgent if explicit PM intent OR an existing draft is in progress
-    // (keeps follow-up messages in the same PM session instead of switching personas)
-    const draft = await fetchPrdDraft(agentId, tenantId)
-    const usePmAgent = isPmIntent(message) || !!draft
+    // Route to pmAgent if:
+    //   1. explicit PM intent keywords in message, OR
+    //   2. in-process session flag (tracks clarifying-questions phase before draft is saved), OR
+    //   3. existing draft in DB (handles cross-session "continue my PRD" scenarios)
+    const pmSession = isPmSession(conversationId)
+    const draft = (isPmIntent(message) || pmSession) ? await fetchPrdDraft(agentId, tenantId) : null
+    const usePmAgent = isPmIntent(message) || pmSession || !!draft
 
     if (usePmAgent) {
+      markPmSession(conversationId)  // keep session alive through clarifying questions
       if (draft) {
         requestContext.set('existingPrdDraft', draft.content)
         requestContext.set('existingPrdId', draft.id)
       }
-      console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} draft=${!!draft}`)
+      console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} session=${pmSession} draft=${!!draft}`)
       agentStream = await pmAgent.stream(mastraMessage, {
         maxSteps: 10,
         requestContext,

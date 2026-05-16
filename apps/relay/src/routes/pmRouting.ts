@@ -1,5 +1,23 @@
 import pg from 'pg'
 
+// ── PM session tracking ───────────────────────────────────────────────────────
+// Keeps routing to pmAgent through the clarifying-questions phase, before any
+// draft is saved to the DB. Lost on relay restart (acceptable for ~minute sessions).
+
+const _pmSessions = new Map<string, number>() // conversationId → expiresAt ms
+const PM_SESSION_TTL_MS = 2 * 60 * 60 * 1000  // 2 hours
+
+export function markPmSession(conversationId: string): void {
+  _pmSessions.set(conversationId, Date.now() + PM_SESSION_TTL_MS)
+}
+
+export function isPmSession(conversationId: string): boolean {
+  const exp = _pmSessions.get(conversationId)
+  if (!exp) return false
+  if (Date.now() > exp) { _pmSessions.delete(conversationId); return false }
+  return true
+}
+
 // ── PM intent routing ────────────────────────────────────────────────────────
 
 const PM_SIGNALS = [
