@@ -2,13 +2,28 @@
  * Canvas Types
  */
 
-export type CanvasAction = 
-  | 'screenshot' 
-  | 'click' 
-  | 'type' 
-  | 'navigate' 
-  | 'scroll' 
-  | 'file_created';
+export type ArtifactType = 'prd' | 'roadmap' | 'tasks'
+
+export interface ArtifactState {
+  type: ArtifactType
+  title: string
+  content: string
+  isStreaming: boolean
+  entityId: string | null
+  entityMeta: Record<string, unknown> | null
+  approveStatus: 'idle' | 'loading' | 'done' | 'error'
+}
+
+export type CanvasAction =
+  | 'screenshot'
+  | 'click'
+  | 'type'
+  | 'navigate'
+  | 'scroll'
+  | 'file_created'
+  | 'artifact_start'
+  | 'artifact_chunk'
+  | 'artifact_done'
 
 export interface CanvasEvent {
   id: string;
@@ -27,19 +42,20 @@ export interface CanvasEventData {
   x?: number;
   y?: number;
   scrollTop?: number;
+  // Artifact streaming
+  artifactType?: ArtifactType;
+  artifactTitle?: string;
+  chunk?: string;
+  entityId?: string;
+  entityMeta?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
 export interface CanvasState {
-  /** Current screenshot being displayed */
   currentScreenshot: string | null;
-  /** Current URL the agent is on */
   currentUrl: string | null;
-  /** History of actions for timeline */
   actionHistory: CanvasEvent[];
-  /** Whether canvas is actively receiving updates */
   isActive: boolean;
-  /** Overlay indicators (click ripples, type highlights) */
   overlays: CanvasOverlay[];
 }
 
@@ -49,5 +65,5 @@ export interface CanvasOverlay {
   x?: number;
   y?: number;
   text?: string;
-  expiresAt: number; // Timestamp when overlay should disappear
+  expiresAt: number;
 }

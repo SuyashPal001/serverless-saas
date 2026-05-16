@@ -15,7 +15,7 @@ import { Attachment } from "@/types/agent-events";
 import { useChat } from "@/hooks/useChat";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { useCanvas } from "@/hooks/useCanvas";
-import type { CanvasAction, CanvasEventData } from "@/components/platform/canvas/types";
+import type { CanvasAction, CanvasEventData, ArtifactType } from "@/components/platform/canvas/types";
 import { VoiceModal } from "@/components/platform/voice";
 import { useVoice } from "@/hooks/useVoice";
 import { Bot, MessageSquare, Plus, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive, RefreshCw } from "lucide-react";
@@ -43,6 +43,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+// ---------------------------------------------------------------------------
+// Artifact tool constants — defined outside component to avoid re-creation
+// ---------------------------------------------------------------------------
+const ARTIFACT_TOOL_NAMES = ['save-prd', 'save-plan', 'save-tasks'] as const;
+type ArtifactToolName = typeof ARTIFACT_TOOL_NAMES[number];
+const ARTIFACT_META: Record<ArtifactToolName, { type: ArtifactType; titlePrefix: string }> = {
+    'save-prd':   { type: 'prd',     titlePrefix: 'PRD' },
+    'save-plan':  { type: 'roadmap', titlePrefix: 'Roadmap' },
+    'save-tasks': { type: 'tasks',   titlePrefix: 'Tasks' },
+};
 
 function ChatPage() {
     const params = useParams();
@@ -131,6 +142,7 @@ function ChatPage() {
         hasActivity,
         toggleCanvas,
         toggleExpand,
+        openCanvas,
         handleCanvasUpdate,
     } = useCanvas();
 
@@ -151,6 +163,8 @@ function ChatPage() {
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const prevToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
+
+    const artifactToolActiveRef = useRef<ArtifactToolName | null>(null);
 
     // -------------------------------------------------------------------------
     // SSE chat hook — replaces WebSocket-based useAgentEvents
@@ -177,6 +191,10 @@ function ChatPage() {
                 activeToolCalls.forEach((_tool, toolCallId) => {
                     handleToolDone(toolCallId, undefined);
                 });
+            }
+            // Stream delta into artifact panel when a save-* tool is active
+            if (artifactToolActiveRef.current) {
+                handleCanvasUpdate('artifact_chunk', { chunk: delta });
             }
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
@@ -205,9 +223,15 @@ function ChatPage() {
                     ),
                 };
             });
-        }, [queryClient, activeToolCalls, handleToolDone]),
+        }, [queryClient, activeToolCalls, handleToolDone, handleCanvasUpdate]),
 
         onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown) => {
+            // Relay doesn't emit tool_done events, so if an artifact tool is still
+            // active when the stream finishes, close it out here as a fallback.
+            if (artifactToolActiveRef.current) {
+                handleCanvasUpdate('artifact_done', { entityId: undefined, entityMeta: undefined });
+                artifactToolActiveRef.current = null;
+            }
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
                 const newData = old ? [...old.data] : [];
                 const existingIndex = newData.findIndex(m => m.id === messageId);
@@ -261,7 +285,7 @@ function ChatPage() {
                 queryClient.invalidateQueries({ queryKey: ["conversations"] });
                 queryClient.invalidateQueries({ queryKey: ["conversation", conversationIdRef.current] });
             }, 2000);
-        }, [queryClient]),
+        }, [queryClient, handleCanvasUpdate]),
 
         onError: useCallback((code: string, message: string) => {
             if (code === 'AGENT_TIMEOUT') {
@@ -289,9 +313,27 @@ function ChatPage() {
                 });
                 return next;
             });
-        }, []),
+            if ((ARTIFACT_TOOL_NAMES as readonly string[]).includes(toolName)) {
+                artifactToolActiveRef.current = toolName as ArtifactToolName;
+                const meta = ARTIFACT_META[toolName as ArtifactToolName];
+                handleCanvasUpdate('artifact_start', {
+                    artifactType: meta.type,
+                    artifactTitle: meta.titlePrefix,
+                });
+                openCanvas();
+            }
+        }, [handleCanvasUpdate, openCanvas]),
 
-        onToolDone: handleToolDone,
+        onToolDone: useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+            handleToolDone(toolCallId, results);
+            if (artifactToolActiveRef.current) {
+                handleCanvasUpdate('artifact_done', {
+                    entityId: (results as any)?.prdId ?? (results as any)?.planId ?? null,
+                    entityMeta: results as unknown as Record<string, unknown> ?? null,
+                });
+                artifactToolActiveRef.current = null;
+            }
+        }, [handleToolDone, handleCanvasUpdate]),
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
             queryClient.setQueryData<MessagesResponse>(["messages", conversationIdRef.current], (old) => {
@@ -841,7 +883,7 @@ function ChatPage() {
                         "transition-all overflow-hidden h-full z-10 bg-background",
                         isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0")
                     )}>
-                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={() => {}} />
+                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={() => {}} tenantSlug={tenantSlug} />
                     </div>
                 </div>
             </div>
