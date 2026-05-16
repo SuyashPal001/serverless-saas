@@ -3,12 +3,26 @@ import pg from 'pg'
 // ── PM intent routing ────────────────────────────────────────────────────────
 
 const PM_SIGNALS = [
+  // PRD
   'create a prd',
   'write a prd',
   'product requirements',
   'prd for',
   'requirements document',
   'i need a prd',
+  // Roadmap / plan
+  'create a roadmap',
+  'build a roadmap',
+  'write a roadmap',
+  'create a plan',
+  'build a plan',
+  'project plan',
+  'release plan',
+  // Tasks
+  'create tasks',
+  'generate tasks',
+  'break down into tasks',
+  'create a task list',
 ]
 
 export function isPmIntent(msg: string): boolean {

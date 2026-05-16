@@ -47,13 +47,14 @@ import {
 // ---------------------------------------------------------------------------
 // Artifact tool constants — defined outside component to avoid re-creation
 // ---------------------------------------------------------------------------
-const ARTIFACT_TOOL_NAMES = ['save-prd', 'save-plan', 'save-tasks'] as const;
-type ArtifactToolName = typeof ARTIFACT_TOOL_NAMES[number];
-const ARTIFACT_META: Record<ArtifactToolName, { type: ArtifactType; titlePrefix: string }> = {
-    'save-prd':   { type: 'prd',     titlePrefix: 'PRD' },
-    'save-plan':  { type: 'roadmap', titlePrefix: 'Roadmap' },
-    'save-tasks': { type: 'tasks',   titlePrefix: 'Tasks' },
+// Delegation tools — fire at the START of sub-agent work; trigger artifact streaming
+const AGENT_ARTIFACT_META: Record<string, { type: ArtifactType; titlePrefix: string }> = {
+    'agent-prdagent':     { type: 'prd',     titlePrefix: 'PRD' },
+    'agent-roadmapagent': { type: 'roadmap', titlePrefix: 'Roadmap' },
+    'agent-taskagent':    { type: 'tasks',   titlePrefix: 'Tasks' },
 };
+// Save tools — fire at the END; carry entityId for the approve button
+const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks']);
 
 function ChatPage() {
     const params = useParams();
@@ -150,6 +151,9 @@ function ChatPage() {
         handleCanvasUpdate(action as CanvasAction, data as CanvasEventData);
     }, [handleCanvasUpdate]);
 
+    // Stable noop — avoids re-creating window.__canvasUpdate on every render
+    const noopActivity = useCallback(() => {}, []);
+
     const {
         isModalOpen,
         session,
@@ -164,7 +168,7 @@ function ChatPage() {
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const prevToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
 
-    const artifactToolActiveRef = useRef<ArtifactToolName | null>(null);
+    const artifactToolActiveRef = useRef<string | null>(null);
 
     // -------------------------------------------------------------------------
     // SSE chat hook — replaces WebSocket-based useAgentEvents
@@ -313,23 +317,23 @@ function ChatPage() {
                 });
                 return next;
             });
-            if ((ARTIFACT_TOOL_NAMES as readonly string[]).includes(toolName)) {
-                artifactToolActiveRef.current = toolName as ArtifactToolName;
-                const meta = ARTIFACT_META[toolName as ArtifactToolName];
+            const agentMeta = AGENT_ARTIFACT_META[toolName];
+            if (agentMeta) {
+                artifactToolActiveRef.current = toolName;
                 handleCanvasUpdate('artifact_start', {
-                    artifactType: meta.type,
-                    artifactTitle: meta.titlePrefix,
+                    artifactType: agentMeta.type,
+                    artifactTitle: agentMeta.titlePrefix,
                 });
                 openCanvas();
             }
         }, [handleCanvasUpdate, openCanvas]),
 
-        onToolDone: useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+        onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
             handleToolDone(toolCallId, results);
-            if (artifactToolActiveRef.current) {
+            if (SAVE_TOOL_NAMES.has(toolName) && artifactToolActiveRef.current) {
                 handleCanvasUpdate('artifact_done', {
-                    entityId: (results as any)?.prdId ?? (results as any)?.planId ?? null,
-                    entityMeta: results as unknown as Record<string, unknown> ?? null,
+                    entityId: (result?.prdId ?? result?.planId) as string | undefined,
+                    entityMeta: result as Record<string, unknown>,
                 });
                 artifactToolActiveRef.current = null;
             }
@@ -883,7 +887,7 @@ function ChatPage() {
                         "transition-all overflow-hidden h-full z-10 bg-background",
                         isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0")
                     )}>
-                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={() => {}} tenantSlug={tenantSlug} />
+                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} />
                     </div>
                 </div>
             </div>

@@ -92,7 +92,7 @@ export interface UseChatOptions {
   onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown) => void;
   onError?: (code: string, message: string) => void;
   onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
-  onToolDone?: (toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
+  onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
   onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
 }
 
@@ -390,6 +390,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             case 'tool_done': {
               onToolDoneRef.current?.(
                 payload.toolCallId as string,
+                payload.toolName as string ?? '',
+                payload.result as Record<string, unknown> ?? {},
                 payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
               );
               break;
