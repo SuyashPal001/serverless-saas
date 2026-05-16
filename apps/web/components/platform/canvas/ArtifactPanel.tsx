@@ -85,7 +85,7 @@ export function ArtifactPanel({ artifact, onApprove }: ArtifactPanelProps) {
       {/* Scrollable content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 font-mono text-sm text-foreground/90 leading-relaxed"
+        className="flex-1 overflow-y-auto px-4 py-3 text-sm text-foreground/90 leading-relaxed"
       >
         {artifact.content.split('\n').map((line, i) => (
           <MarkdownLine key={i} line={line} />
