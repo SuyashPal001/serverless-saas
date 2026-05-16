@@ -7,6 +7,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import { nextSequenceId } from '../lib/sequence';
 import type { AppEnv } from '../types';
 import { handlePlanSummary, handleListMilestones, handleCreateMilestone, handlePlanTasks } from './plans.milestones';
+import { handlePlanTimeline } from './plans.timeline';
 
 export const plansRoutes = new Hono<AppEnv>();
 
@@ -113,3 +114,4 @@ plansRoutes.get('/:planId/summary', handlePlanSummary);
 plansRoutes.get('/:planId/milestones', handleListMilestones);
 plansRoutes.post('/:planId/milestones', handleCreateMilestone);
 plansRoutes.get('/:planId/tasks', handlePlanTasks);
+plansRoutes.get('/:planId/timeline', handlePlanTimeline);

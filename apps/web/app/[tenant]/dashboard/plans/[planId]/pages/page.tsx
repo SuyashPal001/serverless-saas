@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, FileText, Lock, Bot, Loader2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -37,21 +37,21 @@ const TYPE_CFG: Record<string, { label: string; color: string; bg: string }> = {
 
 // ─── PagesListPage ────────────────────────────────────────────────────────────
 
-export default function PagesListPage() {
-    const params = useParams()
-    const tenantSlug = params.tenant as string
-    const planId = params.planId as string
+export default function PagesListPage({ planId, tenantSlug }: { planId: string; tenantSlug: string }) {
     const router = useRouter()
     const queryClient = useQueryClient()
 
     const { data, isLoading, isError } = useQuery<{ data: Page[] }>({
         queryKey: pagesKeys.list(planId),
         queryFn: () => api.get(`/api/v1/pages?planId=${planId}`),
+        enabled: !!planId,
     })
 
     const createPage = useMutation({
-        mutationFn: (): Promise<CreatePageResponse> =>
-            api.post('/api/v1/pages', { planId, title: 'Untitled', pageType: 'custom' }),
+        mutationFn: (): Promise<CreatePageResponse> => {
+            if (!planId) return Promise.reject(new Error('planId missing'))
+            return api.post('/api/v1/pages', { planId, title: 'Untitled', pageType: 'custom' })
+        },
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: pagesKeys.list(planId) })
             router.push(`/${tenantSlug}/dashboard/plans/${planId}/pages/${res.data.id}`)
@@ -87,10 +87,7 @@ export default function PagesListPage() {
                 <div className="flex flex-col items-center justify-center py-24 text-center">
                     <FileText className="w-10 h-10 text-muted-foreground/20 mb-3" />
                     <p className="text-sm font-medium text-muted-foreground">No pages yet</p>
-                    <p className="text-xs text-muted-foreground/50 mt-1 mb-4">Create your first page to document this plan</p>
-                    <Button size="sm" onClick={() => createPage.mutate()} disabled={createPage.isPending}>
-                        <Plus className="w-4 h-4 mr-1.5" /> New Page
-                    </Button>
+                    <p className="text-xs text-muted-foreground/50 mt-1">Create your first page to document this plan</p>
                 </div>
             )}
 
