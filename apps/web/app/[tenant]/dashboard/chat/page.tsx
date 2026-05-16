@@ -317,7 +317,9 @@ function ChatPage() {
                 });
                 return next;
             });
-            const agentMeta = AGENT_ARTIFACT_META[toolName];
+            // Mastra emits camelCase (agent-prdAgent, agent_prdAgent) — normalise to lowercase+dashes
+            const normTool = toolName.toLowerCase().replace(/_/g, '-');
+            const agentMeta = AGENT_ARTIFACT_META[normTool];
             if (agentMeta) {
                 artifactToolActiveRef.current = toolName;
                 // Open canvas first so Canvas is mounted when artifact_start drains from queue
@@ -331,7 +333,8 @@ function ChatPage() {
 
         onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
             handleToolDone(toolCallId, results);
-            if (SAVE_TOOL_NAMES.has(toolName) && artifactToolActiveRef.current) {
+            const normDone = toolName.toLowerCase().replace(/_/g, '-');
+            if (SAVE_TOOL_NAMES.has(normDone) && artifactToolActiveRef.current) {
                 handleCanvasUpdate('artifact_done', {
                     entityId: (result?.prdId ?? result?.planId) as string | undefined,
                     entityMeta: result as Record<string, unknown>,
