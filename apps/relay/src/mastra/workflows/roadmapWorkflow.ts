@@ -32,6 +32,7 @@ const milestoneSchema = z.object({
   title: z.string(),
   description: z.string(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']),
+  targetDate: z.string().optional(),
   tasks: z.array(z.any()).default([]),
 })
 
@@ -174,7 +175,7 @@ export const formatStep = createStep({
       `Return:`,
       `{ "prdData": {`,
       `    "plan": { "title": "...", "description": "...", "targetDate": "ISO string or omit" },`,
-      `    "milestones": [{ "title": "...", "description": "...", "priority": "low|medium|high|urgent", "tasks": [] }],`,
+      `    "milestones": [{ "title": "...", "description": "...", "priority": "low|medium|high|urgent", "targetDate": "YYYY-MM-DD", "tasks": [] }],`,
       `    "risks": ["..."],`,
       `    "totalEstimatedHours": number or omit`,
       `  }`,
