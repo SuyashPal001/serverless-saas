@@ -17,6 +17,7 @@ interface CanvasProps {
   onActivity?: () => void;
   onExpand?: () => void;
   tenantSlug: string;
+  flushPending: () => void;
 }
 
 const initialState: CanvasState = {
@@ -29,7 +30,7 @@ const initialState: CanvasState = {
 
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const [artifact, setArtifact] = useState<ArtifactState | null>(null);
@@ -142,18 +143,12 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug }:
   useEffect(() => {
     (window as any).__canvasUpdate = handleCanvasUpdate;
     (window as any).__canvasReset = handleReset;
-    // Drain any events queued before this effect ran
-    const pending = (window as any).__canvasPendingEvents as
-      Array<{ action: CanvasAction; data: CanvasEventData }> | undefined;
-    if (pending?.length) {
-      pending.forEach(({ action, data }) => handleCanvasUpdate(action, data));
-      delete (window as any).__canvasPendingEvents;
-    }
+    flushPending();
     return () => {
       delete (window as any).__canvasUpdate;
       delete (window as any).__canvasReset;
     };
-  }, [handleCanvasUpdate, handleReset]);
+  }, [handleCanvasUpdate, handleReset, flushPending]);
 
   const handleApprove = useCallback(async () => {
     if (!artifact) return;
@@ -186,34 +181,32 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug }:
         )}
       </div>
 
-      {/* Tab bar — only visible when an artifact exists */}
-      {artifact && (
-        <div className="flex-none flex border-b border-border">
-          <button
-            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === 'artifact'
-                ? 'text-foreground border-b-2 border-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            onClick={() => setActiveTab('artifact')}
-          >
-            Artifact
-            {artifact.isStreaming && (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            )}
-          </button>
-          <button
-            className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
-              activeTab === 'knowledge'
-                ? 'text-foreground border-b-2 border-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            onClick={() => setActiveTab('knowledge')}
-          >
-            Knowledge Base
-          </button>
-        </div>
-      )}
+      {/* Tab bar — always visible */}
+      <div className="flex-none flex border-b border-border">
+        <button
+          className={`flex-1 px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
+            activeTab === 'artifact'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('artifact')}
+        >
+          Artifact
+          {artifact?.isStreaming && (
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+          )}
+        </button>
+        <button
+          className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
+            activeTab === 'knowledge'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('knowledge')}
+        >
+          Knowledge Base
+        </button>
+      </div>
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto flex flex-col">
@@ -244,10 +237,17 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug }:
         )}
 
         {/* Tab content */}
-        {artifact && activeTab === 'artifact' ? (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <ArtifactPanel artifact={artifact} onApprove={handleApprove} />
-          </div>
+        {activeTab === 'artifact' ? (
+          artifact ? (
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <ArtifactPanel artifact={artifact} onApprove={handleApprove} />
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
+              <p className="text-sm text-muted-foreground">No artifact yet.</p>
+              <p className="text-xs text-muted-foreground/60">Ask the agent to create a PRD, roadmap, or task list.</p>
+            </div>
+          )
         ) : (
           <KnowledgeBaseSection />
         )}

@@ -7,6 +7,7 @@ export function useCanvas() {
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
   const activityTimeoutRef = useRef<NodeJS.Timeout>(null);
+  const pendingActionsRef = useRef<Array<{ action: CanvasAction; data: CanvasEventData }>>([]);
 
   const [isCanvasExpanded, setIsCanvasExpanded] = useState(false);
 
@@ -58,14 +59,21 @@ export function useCanvas() {
       if ((window as any).__canvasUpdate) {
         (window as any).__canvasUpdate(action, data);
       } else {
-        // Canvas effect hasn't fired yet — buffer and replay on mount
-        const q: Array<{ action: CanvasAction; data: CanvasEventData }> =
-          (window as any).__canvasPendingEvents ?? [];
-        q.push({ action, data });
-        (window as any).__canvasPendingEvents = q;
+        pendingActionsRef.current.push({ action, data });
       }
     }
   }, [isCanvasOpen]);
+
+  const flushPending = useCallback(() => {
+    if (pendingActionsRef.current.length === 0) return;
+    const queue = [...pendingActionsRef.current];
+    pendingActionsRef.current = [];
+    queue.forEach(({ action, data }) => {
+      if ((window as any).__canvasUpdate) {
+        (window as any).__canvasUpdate(action, data);
+      }
+    });
+  }, []);
 
   // Reset canvas state
   const resetCanvas = useCallback(() => {
@@ -85,5 +93,6 @@ export function useCanvas() {
     closeCanvas,
     handleCanvasUpdate,
     resetCanvas,
+    flushPending,
   };
 }
