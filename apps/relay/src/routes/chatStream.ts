@@ -215,6 +215,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
           break
         }
+        case 'tool-result': {
+          const p = part.payload ?? part
+          const toolCallId = (p.toolCallId ?? '') as string
+          const toolName   = (p.toolName ?? '') as string
+          const result     = (p.result ?? p.output ?? {}) as Record<string, unknown>
+          sendEvent('tool_done', { toolCallId, toolName, result, conversationId })
+          break
+        }
         case 'finish': {
           const usage = part.payload?.output?.usage ?? part.usage
           inputTokens = (usage?.promptTokens as number | undefined) ?? 0
