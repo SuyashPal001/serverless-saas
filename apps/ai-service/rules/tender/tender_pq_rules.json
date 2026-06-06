@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "domain": "GFR 2017 — Pre-Qualification Evaluation",
+  "rules": [
+    {
+      "id": "PQ001",
+      "name": "Annual Turnover Threshold",
+      "check": "avg_turnover_crore >= 5",
+      "error": "Turnover below threshold. Declared average: ₹{avg_turnover_crore} Cr, required ≥ ₹5 Cr (last 3 financial years).",
+      "provision": "GFR 2017 Rule 160 — Minimum Financial Capacity",
+      "inputs": ["avg_turnover_crore"]
+    },
+    {
+      "id": "PQ002",
+      "name": "Similar Work Experience",
+      "check": "max_similar_work_crore >= 2",
+      "error": "Insufficient similar work experience. Highest single similar project: ₹{max_similar_work_crore} Cr, required ≥ ₹2 Cr.",
+      "provision": "GFR 2017 Rule 161 — Technical Capability",
+      "inputs": ["max_similar_work_crore"]
+    },
+    {
+      "id": "PQ003",
+      "name": "OEM Authorization",
+      "check": "has_oem_auth >= 1",
+      "error": "OEM authorization letter not found in submitted documents.",
+      "provision": "RFP Clause 2.4 — OEM Authorization Requirement",
+      "inputs": ["has_oem_auth"]
+    },
+    {
+      "id": "PQ004",
+      "name": "No Blacklisting",
+      "check": "is_blacklisted == 0",
+      "error": "Bidder is blacklisted by a Government entity. Not eligible to participate.",
+      "provision": "GFR 2017 Rule 175 — Disqualification Criteria",
+      "inputs": ["is_blacklisted"]
+    }
+  ]
+}

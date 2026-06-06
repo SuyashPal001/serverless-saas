@@ -15,6 +15,7 @@ import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
 import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
 import { pensionWorkflow } from './workflows/pensionWorkflow.js'
+import { tenderEvaluationWorkflow } from './workflows/tenderEvaluationWorkflow.js'
 import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
@@ -61,6 +62,7 @@ export const mastra = new Mastra({
     documentWorkflow,
     documentIngestion: ingestionWorkflow,
     'pension-pre-scrutiny': pensionWorkflow,
+    'tender-evaluation': tenderEvaluationWorkflow,
     prd: prdWorkflow,
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
