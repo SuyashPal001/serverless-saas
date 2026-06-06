@@ -64,3 +64,5 @@ apps/agent-server/portmap.json
 
 # Mastra Studio request-context presets (contain real tenantIds — VM-local only)
 apps/relay/presets.json
+scratch/tender-samples/*.pdf
+scratch/

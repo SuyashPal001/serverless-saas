@@ -1,97 +1,91 @@
 import { createStep } from '@mastra/core/workflows'
-import { db, bidders, tenders, technicalFindings } from '@serverless-saas/database'
+import { db, bidders, tenders, technicalFindings, tenderClauses } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
-import { pqStepOutputSchema, techStepOutputSchema, techBidderResultSchema } from './tenderEvaluationWorkflow.schemas.js'
+import * as crypto from 'crypto'
+import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
+import { pqStepOutputSchema, techStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
 
-const INFERENCE_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'gemini-2.5-flash'
+const GATEWAY_URL = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001').trim()
 
-// Clause definitions from the RFP — in production these come from tender_clauses table
-const RFP_CLAUSES = [
-  { clauseNo: '3.2', clauseTitle: 'Core HRMS Modules (Payroll, Leave, Attendance)', requirement: 'All three modules must be delivered as integrated suite with single sign-on.' },
-  { clauseNo: '3.5', clauseTitle: 'Integration with Govt Systems (PFMS, Treasury)', requirement: 'Bidirectional real-time API integration with PFMS and State Treasury System.' },
-  { clauseNo: '3.8', clauseTitle: 'System Uptime SLA', requirement: 'Minimum 99.5% uptime guaranteed with downtime reporting within 1 hour.' },
-  { clauseNo: '3.9', clauseTitle: 'Response Time SLA', requirement: 'Less than 2 seconds for 95% of transactions under normal load.' },
-  { clauseNo: '3.12', clauseTitle: 'Training & Capacity Building', requirement: 'Classroom training for 200 users, 20 admins. Training material in Hindi + English.' },
-  { clauseNo: '3.15', clauseTitle: 'Data Security & Compliance', requirement: 'ISO 27001 certified. Data hosted in India. Encryption at rest and in transit.' },
-  { clauseNo: '4.3', clauseTitle: 'Go-live Timeline', requirement: 'Full go-live within 6 months of work order. Phased rollout acceptable with milestones.' },
-  { clauseNo: '5.1', clauseTitle: 'Attendance Module — Biometric Integration', requirement: 'Integration with biometric devices via standard protocol (not proprietary). Specify protocol.' },
-]
+function bidderFolderId(tenantId: string, tenderId: string, stem: string): string {
+  const h = crypto.createHash('sha256').update(`${tenantId}:bidder:${tenderId}:${stem}`).digest('hex')
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20,32)}`
+}
 
-async function runLiveEvaluation(bidderLabel: string, rfpNumber: string): Promise<typeof techBidderResultSchema._type['clauses']> {
-  const systemPrompt = `You are a government procurement Technical Evaluation Committee (TEC) member evaluating a bid for an IT procurement tender under GFR 2017.
+interface ClauseRow {
+  clauseNo: string
+  title: string
+  content: string
+}
 
-For each RFP clause provided, evaluate the bidder's compliance based on their technical proposal and return structured JSON.
+interface EvalResult {
+  status: 'complied' | 'deviation' | 'not_found' | 'cannot_evaluate'
+  narration: string
+  bidderResponse?: string
+  sourceDoc?: string | null
+  sourcePage?: number | null
+}
+
+async function evaluateClause(
+  model: string,
+  clause: ClauseRow,
+  retrievedText: string,
+  bidderName: string,
+): Promise<EvalResult> {
+  const systemPrompt = `You are a government procurement Technical Evaluation Committee (TEC) member under GFR 2017.
+Evaluate ONE RFP clause against the extracted bid text provided. Base your finding ONLY on the bid text below — never guess or infer.
 
 Status values:
-- "complied": bidder explicitly meets the requirement
-- "deviation": bidder meets partially or proposes an alternative
-- "not_found": requirement not addressed in bid
-
-Always cite which section/page of the bid document the finding is based on. Be concise and factual.
+- "complied": bid explicitly meets the requirement
+- "deviation": bid partially meets or proposes an alternative
+- "not_found": requirement is not addressed in the extracted bid text
+- "cannot_evaluate": bid text is insufficient to assess
 
 Return ONLY valid JSON, no markdown:
-{
-  "clauses": [
-    {
-      "clauseNo": "3.2",
-      "clauseTitle": "...",
-      "status": "complied|deviation|not_found",
-      "narration": "one factual sentence",
-      "bidderResponse": "what the bid says",
-      "sourceDoc": "Technical Proposal",
-      "sourcePage": 12
-    }
-  ]
-}`
+{"status":"complied|deviation|not_found|cannot_evaluate","narration":"one factual sentence citing the bid text","bidderResponse":"verbatim or paraphrase from bid","sourceDoc":"document name","sourcePage":12}`
 
-  const userPrompt = `Tender: ${rfpNumber}
-Bidder: ${bidderLabel}
+  const userPrompt = `Bidder: ${bidderName}
+Clause ${clause.clauseNo} — ${clause.title}
+RFP Requirement: ${clause.content}
 
-Evaluate compliance for these RFP clauses:
-${RFP_CLAUSES.map(c => `Clause ${c.clauseNo} — ${c.clauseTitle}: "${c.requirement}"`).join('\n')}
+Extracted bid text:
+${retrievedText || '(no relevant text found in indexed bid documents)'}`
 
-Based on typical IT procurement bids, evaluate ${bidderLabel}'s technical proposal.
-InfraVision Technologies has a strong HRMS track record but their Clause 5.1 biometric integration spec uses a proprietary protocol rather than HL7/FHIR as required. Their Clause 3.9 response time guarantee is <3s not <2s.`
+  const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      stream: false,
+    }),
+  })
 
-  try {
-    const res = await fetch(`${INFERENCE_URL}/v1/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: NARRATION_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        stream: false,
-        response_format: { type: 'json_object' },
-      }),
-    })
+  if (!res.ok) {
+    throw new Error(`Inference gateway ${res.status} for clause ${clause.clauseNo}`)
+  }
 
-    if (!res.ok) throw new Error(`Inference gateway returned ${res.status}`)
-    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
-    const content = data.choices?.[0]?.message?.content ?? '{}'
-    const parsed = JSON.parse(content) as { clauses?: Array<{
-      clauseNo: string; clauseTitle: string; status: string;
-      narration: string; bidderResponse?: string; sourceDoc?: string; sourcePage?: number
-    }> }
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  const rawContent = (data.choices?.[0]?.message?.content ?? '').trim()
+  if (!rawContent) throw new Error(`Empty model response for clause ${clause.clauseNo}`)
+  // Strip markdown fences — Vertex doesn't enforce response_format: json_object
+  const raw = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
 
-    return (parsed.clauses ?? []).map(c => ({
-      clauseNo: c.clauseNo, clauseTitle: c.clauseTitle,
-      status: (['complied', 'deviation', 'not_found', 'cannot_evaluate'].includes(c.status)
-        ? c.status : 'cannot_evaluate') as 'complied' | 'deviation' | 'not_found' | 'cannot_evaluate',
-      narration: c.narration ?? '',
-      bidderResponse: c.bidderResponse,
-      sourceDoc: c.sourceDoc ?? 'Technical Proposal',
-      sourcePage: c.sourcePage ?? null,
-    }))
-  } catch (err) {
-    console.error('[technicalEvaluate] live run failed, using fallback', err)
-    return RFP_CLAUSES.map(c => ({
-      clauseNo: c.clauseNo, clauseTitle: c.clauseTitle,
-      status: 'cannot_evaluate' as const, narration: 'Evaluation could not be completed.',
-      sourceDoc: null, sourcePage: null,
-    }))
+  const parsed = JSON.parse(raw) as Partial<EvalResult>
+  const validStatuses = ['complied', 'deviation', 'not_found', 'cannot_evaluate']
+  const status = validStatuses.includes(parsed.status ?? '')
+    ? parsed.status as EvalResult['status']
+    : 'cannot_evaluate'
+
+  return {
+    status,
+    narration: parsed.narration ?? '',
+    bidderResponse: parsed.bidderResponse,
+    sourceDoc: parsed.sourceDoc ?? null,
+    sourcePage: parsed.sourcePage ?? null,
   }
 }
 
@@ -101,11 +95,25 @@ export const technicalEvaluateStep = createStep({
   outputSchema: techStepOutputSchema,
   execute: async ({ inputData }) => {
     const { tenderId, tenantId, qualifiedBidderIds } = inputData
-    const [tender] = await db.select().from(tenders).where(eq(tenders.id, tenderId))
-    const rfpNumber = tender?.rfpNumber ?? tenderId
 
-    // Pick the first qualified bidder for live run (InfraVision / Bidder A)
-    const liveRunBidderId = qualifiedBidderIds[0]
+    const model = (process.env.TENDER_MODEL ?? '').trim()
+    if (!model) {
+      throw new Error(
+        'TENDER_MODEL env var is not set. Set it to an on-prem model ID (e.g. ollama/qwen3:8b) in apps/relay/.env and restart.'
+      )
+    }
+
+    const clauses = await db.select().from(tenderClauses).where(
+      and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId))
+    )
+    if (clauses.length === 0) {
+      throw new Error(
+        `No clauses found for tenderId=${tenderId}. ` +
+        `Run POST /internal/tender/ingest first to ingest rfp.pdf and extract clauses.`
+      )
+    }
+
+    const [tender] = await db.select().from(tenders).where(eq(tenders.id, tenderId))
     const techResults = []
 
     for (const bidderId of qualifiedBidderIds) {
@@ -114,49 +122,71 @@ export const technicalEvaluateStep = createStep({
       )
       if (!bidder) continue
 
-      const isLiveRun = bidderId === liveRunBidderId
-      let clauses: Awaited<ReturnType<typeof runLiveEvaluation>>
+      // Derive the folder ID that was used when ingesting this bidder's docs.
+      // Convention: stem = bidder display label lowercased + hyphenated (e.g. "bidder-a")
+      const stem = bidder.displayLabel.toLowerCase().replace(/\s+/g, '-')
+      const folderId = bidderFolderId(tenantId, tenderId, stem)
 
-      if (isLiveRun) {
-        // LIVE: call inference gateway
-        console.log(`[technicalEvaluate] running LIVE evaluation for ${bidder.name}`)
-        clauses = await runLiveEvaluation(bidder.name, rfpNumber)
-      } else {
-        // Pre-seeded results for NovaSys (Bidder C) — minor deviation on mobile offline
-        clauses = RFP_CLAUSES.map(c => ({
-          clauseNo: c.clauseNo, clauseTitle: c.clauseTitle,
-          status: c.clauseNo === '5.1' ? 'complied' as const : 'complied' as const,
-          narration: c.clauseNo === '3.12'
-            ? 'Bidder proposes e-learning for admin training instead of classroom as specified — minor deviation.'
-            : `Bidder complies with ${c.clauseTitle} requirement.`,
-          rfpRequirement: c.requirement,
-          bidderResponse: `As per Section 4 of Technical Proposal.`,
-          sourceDoc: 'Technical Proposal', sourcePage: Math.floor(Math.random() * 40) + 5,
-        }))
-        if (clauses[3]) clauses[3] = { ...clauses[3], status: 'deviation', narration: 'Bidder commits to <3s response time — RFP requires <2s for 95% of transactions.' }
-      }
+      console.log(`[technicalEvaluate] evaluating ${bidder.name} (${clauses.length} clauses)`)
 
-      // Persist to DB
-      const savedClauses = await Promise.all(clauses.map(async (c) => {
+      const savedClauses = []
+      for (const clause of clauses) {
+        // Retrieve relevant chunks from this bidder's indexed documents
+        let retrievedText = ''
+        try {
+          const chunks = await retrieveTenderChunks(
+            `${clause.clauseNo} ${clause.title} ${clause.content}`,
+            tenantId, folderId, 5, 0.3
+          )
+          retrievedText = chunks.map((ch, i) =>
+            `[${i + 1}] ${ch.documentName} p.${ch.chunkIndex + 1}\n${ch.content}`
+          ).join('\n\n')
+        } catch (err) {
+          console.warn(`[technicalEvaluate] RAG failed for clause ${clause.clauseNo}:`, (err as Error).message)
+          // retrievedText stays empty — model sees "(no relevant text found)"
+        }
+
+        let result: EvalResult
+        try {
+          result = await evaluateClause(model, clause, retrievedText, bidder.name)
+        } catch (err) {
+          const msg = (err as Error).message
+          console.error(`[technicalEvaluate] model error clause ${clause.clauseNo}:`, msg)
+          result = { status: 'cannot_evaluate', narration: `Evaluation error: ${msg}` }
+        }
+
         const [row] = await db.insert(technicalFindings).values({
           tenantId, tenderId, bidderId,
-          clauseNo: c.clauseNo, clauseTitle: c.clauseTitle,
+          clauseNo: clause.clauseNo,
+          clauseTitle: clause.title,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          status: c.status as any,
-          narration: c.narration,
-          sourceDoc: c.sourceDoc ?? null, sourcePage: c.sourcePage ?? null,
-          rfpRequirement: (c as { rfpRequirement?: string }).rfpRequirement ?? null,
-          bidderResponse: c.bidderResponse ?? null,
-          runId: isLiveRun ? 'live' : 'seeded',
+          status: result.status as any,
+          narration: result.narration,
+          rfpRequirement: clause.content,
+          bidderResponse: result.bidderResponse ?? null,
+          sourceDoc: result.sourceDoc ?? null,
+          sourcePage: result.sourcePage ?? null,
+          runId: 'live',
         }).returning({ id: technicalFindings.id })
-        return { ...c, findingId: row.id }
-      }))
 
-      const compliedCount = savedClauses.filter(c => c.status === 'complied').length
-      const deviationCount = savedClauses.filter(c => c.status === 'deviation').length
-      const notFoundCount = savedClauses.filter(c => c.status === 'not_found').length
+        savedClauses.push({
+          clauseNo: clause.clauseNo,
+          clauseTitle: clause.title,
+          status: result.status,
+          narration: result.narration,
+          rfpRequirement: clause.content,
+          bidderResponse: result.bidderResponse,
+          sourceDoc: result.sourceDoc ?? null,
+          sourcePage: result.sourcePage ?? null,
+          findingId: row.id,
+        })
+      }
 
       await db.update(bidders).set({ status: 'tech_evaluated' }).where(eq(bidders.id, bidderId))
+
+      const compliedCount  = savedClauses.filter(c => c.status === 'complied').length
+      const deviationCount = savedClauses.filter(c => c.status === 'deviation').length
+      const notFoundCount  = savedClauses.filter(c => c.status === 'not_found').length
 
       techResults.push({
         bidderId, bidderName: bidder.name, displayLabel: bidder.displayLabel,
@@ -164,6 +194,6 @@ export const technicalEvaluateStep = createStep({
       })
     }
 
-    return { ...inputData, techResults, liveRunBidderId: liveRunBidderId ?? undefined }
+    return { ...inputData, techResults, liveRunBidderId: qualifiedBidderIds[0] ?? undefined }
   },
 })
