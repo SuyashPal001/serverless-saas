@@ -1,6 +1,6 @@
 /**
  * Seed script: Government Tender Evaluation Demo
- * Tender: HRMS procurement — DIT/HRMS/2024-25/001, Dept of IT, Govt of Punjab
+ * Tender: HRMS procurement — MP-DIT/HRMS/2024-25/001, Dept of IT, Govt of Madhya Pradesh
  *
  * Bidders:
  *   A — InfraVision Technologies (PASSES PQ, has tech deviations → clarification)
@@ -45,9 +45,9 @@ async function seed() {
   const tenderId = await upsert('tenders', {
     id: 'a0000000-0000-0000-0000-000000000001',
     tenant_id: TENANT_ID,
-    rfp_number: 'DIT/HRMS/2024-25/001',
-    title: 'Supply & Implementation of Human Resource Management System (HRMS) for District Administration, Punjab',
-    department: 'Department of Information Technology, Govt. of Punjab',
+    rfp_number: 'MP-DIT/HRMS/2024-25/001',
+    title: 'Supply & Implementation of Human Resource Management System (HRMS) for State Departments, Madhya Pradesh',
+    department: 'Department of Information Technology, Govt. of Madhya Pradesh',
     budget: '85000000',
     eval_method: 'L1',
     status: 'evaluation',
@@ -87,7 +87,7 @@ async function seed() {
     ])])
   const queries = [
     { no: 'Q-001', q: 'Can biometric integration be proposed via API rather than direct SDK?', r: 'Yes, API-based integration is acceptable provided it uses a non-proprietary standard protocol.' },
-    { no: 'Q-002', q: 'Is cloud hosting acceptable or must servers be on-premises?', r: 'Cloud hosting on MeitY-empanelled CSPs is acceptable. Data must remain within India.' },
+    { no: 'Q-002', q: 'Is cloud hosting acceptable or must servers be on-premises?', r: 'Cloud hosting on MeitY-empanelled CSPs is acceptable. Data must remain within India. MP State Data Centre hosting is preferred.' },
     { no: 'Q-003', q: 'Can training be delivered via e-learning for admin users?', r: 'Classroom training is mandatory for all 200 end-users. E-learning may supplement but cannot replace classroom training.' },
   ]
   for (const q of queries) {
@@ -130,7 +130,7 @@ async function seed() {
   const pqData = [
     // Bidder A — passes all
     { bidder: 'b0000000-0000-0000-0000-000000000101', ruleId: 'PQ001', name: 'Annual Turnover Threshold', status: 'qualified', provision: 'GFR 2017 Rule 160', narration: 'InfraVision Technologies reports average annual turnover of ₹6.8 Cr over the last 3 financial years, meeting the minimum threshold of ₹5 Cr.', declared: '₹6.8 Cr', threshold: '₹5 Cr', doc: 'Audited Balance Sheet FY2021-24', page: 3 },
-    { bidder: 'b0000000-0000-0000-0000-000000000101', ruleId: 'PQ002', name: 'Similar Work Experience', status: 'qualified', provision: 'GFR 2017 Rule 161', narration: 'Bidder has executed HRMS implementation for HPMC valued at ₹3.2 Cr, exceeding the minimum similar work threshold of ₹2 Cr.', declared: '₹3.2 Cr', threshold: '₹2 Cr', doc: 'Work Order HPMC/IT/2022/047', page: 1 },
+    { bidder: 'b0000000-0000-0000-0000-000000000101', ruleId: 'PQ002', name: 'Similar Work Experience', status: 'qualified', provision: 'GFR 2017 Rule 161', narration: 'Bidder has executed HRMS implementation for MPSEDC valued at ₹3.2 Cr, exceeding the minimum similar work threshold of ₹2 Cr.', declared: '₹3.2 Cr', threshold: '₹2 Cr', doc: 'Work Order MPSEDC/IT/2022/047', page: 1 },
     { bidder: 'b0000000-0000-0000-0000-000000000101', ruleId: 'PQ003', name: 'OEM Authorization', status: 'qualified', provision: 'RFP Clause 2.4', narration: 'Valid OEM authorization letter from SAP India Pvt. Ltd. submitted, effective until March 2026.', declared: null, threshold: null, doc: 'OEM Authorization Letter', page: 1 },
     { bidder: 'b0000000-0000-0000-0000-000000000101', ruleId: 'PQ004', name: 'No Blacklisting', status: 'qualified', provision: 'GFR 2017 Rule 175', narration: 'Self-declaration submitted. No blacklisting orders found against InfraVision Technologies.', declared: null, threshold: null, doc: 'Self-Declaration Affidavit', page: 1 },
     // Bidder B — FAILS turnover
@@ -194,7 +194,7 @@ async function seed() {
     await db.query(`
       INSERT INTO clarification_requests (tenant_id, tender_id, shortfall_id, bidder_id, drafted_text, deadline_days)
       VALUES ($1,$2,$3,'b0000000-0000-0000-0000-000000000101',
-        'With reference to your technical bid submitted against RFP No. DIT/HRMS/2024-25/001, it is observed that Clause 5.1 requires biometric integration using a non-proprietary standard protocol. Your proposal mentions the "InfraVis Biometric API" without specifying the underlying protocol. You are requested to clarify whether the proposed integration uses HL7/FHIR or another standard non-proprietary protocol as mandated. Response required within 7 working days. No change in quoted price or technical specifications shall be permitted.',
+        'With reference to your technical bid submitted against RFP No. MP-DIT/HRMS/2024-25/001, it is observed that Clause 5.1 requires biometric integration using a non-proprietary standard protocol. Your proposal mentions the "InfraVis Biometric API" without specifying the underlying protocol. You are requested to clarify whether the proposed integration uses HL7/FHIR or another standard non-proprietary protocol as mandated. Response required within 7 working days. No change in quoted price or technical specifications shall be permitted.',
         7) ON CONFLICT DO NOTHING`,
       [TENANT_ID, tenderId, sfResult.rows[0].id])
   }
@@ -239,7 +239,7 @@ async function seed() {
       JSON.stringify({ total: 3, qualified: 2, disqualified: 1 }),
       JSON.stringify({ evaluated: 2, deviations: { 'Bidder A': 2, 'Bidder C': 1 } }),
       JSON.stringify({ l1: 'InfraVision Technologies', l1Amount: 78200000 }),
-      'Based on PQ scrutiny (2 of 3 qualified), technical evaluation (clause-wise compliance assessed), and financial bid comparison, InfraVision Technologies Pvt. Ltd. (Bidder A) is determined as L1 with a corrected total bid value of ₹7.82 Cr. Recommend award of contract subject to officer approval and resolution of Clause 5.1 clarification, in compliance with GFR 2017 Rule 166.',
+      'Based on PQ scrutiny (2 of 3 qualified), technical evaluation (clause-wise compliance assessed), and financial bid comparison, InfraVision Technologies Pvt. Ltd. (Bidder A) is determined as L1 with a corrected total bid value of ₹7.82 Cr for RFP MP-DIT/HRMS/2024-25/001. Recommend award of contract subject to officer approval and resolution of Clause 5.1 clarification, in compliance with GFR 2017 Rule 166.',
     ])
   console.log('  ✓ evaluation report')
   console.log('\n✅ Seed complete. Open /[tenant]/dashboard/tender-evaluation to view the cockpit.')

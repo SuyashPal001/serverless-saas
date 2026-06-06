@@ -2,7 +2,7 @@
 
 **Submission:** EOI demo · Monday 2026-06-08  
 **Route:** `/[tenant]/dashboard/tender-evaluation`  
-**Tender:** DIT/HRMS/2024-25/001 — HRMS Procurement, Dept of IT, Govt. of Punjab
+**Tender:** MP-DIT/HRMS/2024-25/001 — HRMS Procurement, Dept of IT, Govt. of Madhya Pradesh
 
 ---
 
