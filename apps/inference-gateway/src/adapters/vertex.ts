@@ -146,11 +146,6 @@ function toGeminiContents(messages: OpenAIMessage[]): {
   return { systemInstruction, contents };
 }
 
-// Tool names handled outside of functionDeclarations — excluded from function tool list.
-// web_search is now handled by Exa (real function call) so it's no longer excluded.
-// code_execution and web_fetch map to native Gemini codeExecution/urlContext.
-const GEMINI_SERVER_TOOL_NAMES = new Set(['code_execution', 'web_fetch']);
-
 // Vertex AI rejects $schema, propertyNames, and bare anyOf — strip them recursively.
 // Zod v4 (used by @ai-sdk/openai-compatible) adds these; @ai-sdk/google stripped them automatically.
 function sanitizeSchema(schema: unknown): unknown {
@@ -190,33 +185,18 @@ function sanitizeSchema(schema: unknown): unknown {
 function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
   if (!tools || tools.length === 0) return undefined;
 
-  const result: Tool[] = [];
-
-  // Regular function tools (exclude server tools — web_search is handled by Exa,
-  // code_execution and web_fetch are handled natively by the LLM provider)
+  // All tools passed as functionDeclarations — no native Vertex tools mixed in.
+  // Mixing native tools (urlContext, codeExecution) with functionDeclarations causes
+  // "Multiple tools are supported only when they are all search tools" from Vertex AI.
   const functionDeclarations: FunctionDeclaration[] = tools
-    .filter((t) => t.type === 'function' && t.function && !GEMINI_SERVER_TOOL_NAMES.has(t.function.name))
+    .filter((t) => t.type === 'function' && t.function)
     .map((t) => ({
       name: t.function.name,
       description: t.function.description ?? '',
       parameters: sanitizeSchema(t.function.parameters) as FunctionDeclaration['parameters'],
     }));
 
-  if (functionDeclarations.length > 0) {
-    result.push({ functionDeclarations });
-  }
-
-  // Native Gemini server tools for code_execution and web_fetch only.
-  // web_search is now handled by Exa (real function call) — no googleSearch needed.
-  const names = tools.map((t) => t.function?.name);
-  if (names.includes('code_execution')) {
-    result.push({ codeExecution: {} } as unknown as Tool);
-  }
-  if (names.includes('web_fetch')) {
-    result.push({ urlContext: {} } as unknown as Tool);
-  }
-
-  return result.length > 0 ? result : undefined;
+  return functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined;
 }
 
 function toGeminiToolConfig(choice: OpenAIToolChoice | undefined): ToolConfig | undefined {
