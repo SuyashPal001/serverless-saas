@@ -35,6 +35,7 @@ import { taskAgent } from './agents/taskAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
 import { aiParasAgent } from './agents/aiParasAgent.js'
 import { documentIntelligenceAgent } from './agents/documentIntelligenceAgent.js'
+import { tenderAuthorAgent } from './agents/tenderAuthorAgent.js'
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { pmWorkflow } from './workflows/pmWorkflow.js'
@@ -56,6 +57,7 @@ export const mastra = new Mastra({
     task: taskAgent,
     'ai-paras': aiParasAgent,            // Tier 2: pension pre-scrutiny lead
     'document-intelligence': documentIntelligenceAgent, // Tier 3: document reader
+    'tender-author': tenderAuthorAgent,  // RFP authoring agent
   },
   workflows: {
     taskExecution: taskExecutionWorkflow,

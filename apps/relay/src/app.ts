@@ -15,6 +15,7 @@ import { explanationRouter } from './routes/explanation.js'
 import { ingestRoute } from './routes/ingest.js'
 import { pensionRoutes } from './routes/pension.js'
 import { tenderRoutes } from './routes/tender.js'
+import { tenderAuthoringRoutes } from './routes/tenderAuthoring.js'
 import {
   API_BASE_URL, sessions,
 } from './types.js'
@@ -40,6 +41,7 @@ app.route('', explanationRouter)
 app.route('', ingestRoute)
 app.route('', pensionRoutes)
 app.route('', tenderRoutes)
+app.route('', tenderAuthoringRoutes)
 
 await initStudio(app)
 

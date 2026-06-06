@@ -32,6 +32,10 @@ export const saarthiModel = gateway(process.env.MASTRA_MODEL ?? 'gemini-2.5-flas
 // Lightweight model for conversational turns (thinkingBudget === 0).
 export const saarthiLiteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
 
+// Cloud model for document-heavy generation tasks (tender authoring, pension scrutiny).
+// Always uses Gemini regardless of MASTRA_MODEL env var, which may point to a local model.
+export const saarthiCloudModel = gateway(process.env.MASTRA_CLOUD_MODEL ?? 'gemini-2.5-flash')
+
 // Private-only model for restricted data (CASA/KYC).
 // x-data-classification header forces OllamaAdapter — never hits cloud providers.
 export const saarthiPrivateModel = gatewayPrivate(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')

@@ -5,7 +5,7 @@ import { users } from './auth';
 // ── Enums ────────────────────────────────────────────────────────────────────
 
 export const tenderStatusEnum = pgEnum('tender_status', [
-  'draft', 'published', 'pre_bid', 'evaluation', 'awarded', 'cancelled',
+  'authoring', 'draft', 'published', 'pre_bid', 'evaluation', 'awarded', 'cancelled',
 ]);
 
 export const bidStatusEnum = pgEnum('bid_status', [
@@ -39,8 +39,11 @@ export const tenders = pgTable('tenders', {
   budget:       numeric('budget'),                      // in rupees
   evalMethod:   text('eval_method').notNull().default('L1'),  // L1 | QCBS
   status:       tenderStatusEnum('status').notNull().default('evaluation'),
-  pqCriteria:   jsonb('pq_criteria').notNull().default('{}'),
-  version:      integer('version').notNull().default(1),
+  pqCriteria:      jsonb('pq_criteria').notNull().default('{}'),
+  templateFields:  jsonb('template_fields').default('{}'),  // authoring form inputs
+  requirementText: text('requirement_text'),                // extracted requirement doc text
+  authoringStatus: text('authoring_status').default('idle'), // idle|generating|completed|failed
+  version:         integer('version').notNull().default(1),
   publishedAt:  timestamp('published_at', { withTimezone: true }),
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

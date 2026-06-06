@@ -320,6 +320,9 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
   if (openaiReq.thinkingBudget !== undefined) {
     generationConfig.thinkingConfig = { thinkingBudget: openaiReq.thinkingBudget };
   }
+  if (openaiReq.response_format?.type === 'json_object') {
+    generationConfig.responseMimeType = 'application/json';
+  }
 
   const request: GenerateContentRequest = { contents };
   if (systemInstruction) request.systemInstruction = systemInstruction;

@@ -281,6 +281,13 @@
       "when": 1780758252636,
       "tag": "0039_strange_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780786353847,
+      "tag": "0040_fat_shadowcat",
+      "breakpoints": true
     }
   ]
 }
