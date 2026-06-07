@@ -4,15 +4,17 @@ import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Loader2, Upload, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Upload, X, CheckCircle2, AlertCircle, Eye } from "lucide-react";
 
-interface FileStatus { name: string; status: "extracting" | "done" | "failed"; error?: string }
+interface FileStatus {
+    name: string; status: "extracting" | "done" | "failed";
+    error?: string; charCount?: number;
+}
 
 interface FormState {
     title: string; department: string; estimatedValue: string;
     category: string; procurementMode: string; contractDuration: string;
-    bidSubmissionDate: string; preBidDate: string;
-    requirementText: string;
+    bidSubmissionDate: string; preBidDate: string; requirementText: string;
 }
 
 const CATEGORIES = ["IT/Software", "Infrastructure", "Consultancy", "Supply & Installation", "Maintenance & AMC", "Other"];
@@ -31,17 +33,28 @@ export default function CreateTenderPage() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
     const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
+    const [extractedTexts, setExtractedTexts] = useState<Record<string, string>>({});
+    const [previewFile, setPreviewFile] = useState<string | null>(null);
 
-    function setField(k: keyof FormState) { return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value })); }
+    function setField(k: keyof FormState) {
+        return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+            setForm(f => ({ ...f, [k]: e.target.value }));
+    }
+
+    function removeFile(name: string) {
+        setFileStatuses(fs => fs.filter(f => f.name !== name));
+        setExtractedTexts(et => { const n = { ...et }; delete n[name]; return n; });
+    }
 
     async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
         const files = Array.from(e.target.files ?? []);
         if (!files.length) return;
 
-        setFileStatuses(files.map(f => ({ name: f.name, status: "extracting" })));
-        setForm(f => ({ ...f, requirementText: "" }));
+        setFileStatuses(prev => [
+            ...prev.filter(f => f.status !== "extracting"),
+            ...files.map(f => ({ name: f.name, status: "extracting" as const })),
+        ]);
 
-        // Base64-encode each file and send as JSON — avoids API Gateway multipart corruption
         const encoded = await Promise.all(files.map(async (f) => {
             const buf = await f.arrayBuffer();
             const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -57,15 +70,23 @@ export default function CreateTenderPage() {
             const data = await res.json() as { results?: Array<{ filename: string; text: string; status: string; error?: string }> };
             const results = data.results ?? [];
 
-            setFileStatuses(results.map(r => ({ name: r.filename, status: r.status as "done" | "failed", error: r.error })));
-
-            const combined = results
-                .filter(r => r.status === "done" && r.text)
-                .map(r => `--- ${r.filename} ---\n${r.text}`)
-                .join("\n\n");
-            if (combined) setForm(f => ({ ...f, requirementText: combined }));
+            setExtractedTexts(prev => {
+                const n = { ...prev };
+                results.forEach(r => { if (r.status === "done" && r.text) n[r.filename] = r.text; });
+                return n;
+            });
+            setFileStatuses(prev => {
+                const incoming = new Map(results.map(r => [r.filename, r]));
+                return prev.map(f => {
+                    const r = incoming.get(f.name);
+                    if (!r) return f;
+                    return { name: r.filename, status: r.status as "done" | "failed", error: r.error, charCount: r.text?.length };
+                });
+            });
         } catch (err) {
-            setFileStatuses(files.map(f => ({ name: f.name, status: "failed", error: (err as Error).message })));
+            setFileStatuses(prev => prev.map(f =>
+                f.status === "extracting" ? { ...f, status: "failed" as const, error: (err as Error).message } : f
+            ));
         }
     }
 
@@ -74,25 +95,27 @@ export default function CreateTenderPage() {
         if (!form.title.trim() || !form.department.trim()) { setError("Title and Department are required."); return; }
         setSubmitting(true); setError("");
 
+        const fileText = fileStatuses
+            .filter(f => f.status === "done")
+            .map(f => `--- ${f.name} ---\n${extractedTexts[f.name] ?? ""}`)
+            .join("\n\n");
+
         try {
             const res = await fetch("/api/proxy/api/v1/tender/authoring", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    title: form.title.trim(),
-                    department: form.department.trim(),
+                    title: form.title.trim(), department: form.department.trim(),
                     budget: form.estimatedValue ? Number(form.estimatedValue.replace(/[₹,\s]/g, "")) : undefined,
-                    category: form.category,
-                    procurementMode: form.procurementMode,
+                    category: form.category, procurementMode: form.procurementMode,
                     contractDuration: `${form.contractDuration} months`,
                     keyDates: {
                         ...(form.preBidDate ? { preBidMeeting: form.preBidDate } : {}),
                         ...(form.bidSubmissionDate ? { bidSubmission: form.bidSubmissionDate } : {}),
                     },
-                    requirementText: form.requirementText.trim() || undefined,
+                    requirementText: (fileText || form.requirementText).trim() || undefined,
                 }),
             });
-
             if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? "Failed to create tender"); }
             const data = await res.json();
             router.push(`/${tenant}/dashboard/tender-evaluation/${data.tenderId}`);
@@ -101,6 +124,8 @@ export default function CreateTenderPage() {
             setSubmitting(false);
         }
     }
+
+    const hasFiles = fileStatuses.length > 0;
 
     return (
         <div className="max-w-2xl space-y-6">
@@ -140,7 +165,7 @@ export default function CreateTenderPage() {
                             </select>
                             {form.procurementMode !== PROC_MODES[0] && (
                                 <p className="mt-1.5 text-xs text-amber-400 leading-relaxed">
-                                    This demo runs the Two-Bid (Technical + Financial) evaluation flow. The production platform supports all procurement methods; this mode is not enabled in the demo.
+                                    This demo runs the Two-Bid evaluation flow. The production platform supports all procurement methods; this mode is not enabled in the demo.
                                 </p>
                             )}
                         </Field>
@@ -157,40 +182,77 @@ export default function CreateTenderPage() {
                         <div className="flex items-center gap-3 flex-wrap">
                             <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground border border-border rounded px-3 py-2 hover:border-foreground/40 transition-colors">
                                 <Upload className="w-3.5 h-3.5" />
-                                {fileStatuses.length ? `${fileStatuses.length} file${fileStatuses.length > 1 ? "s" : ""} attached` : "Attach indent / DPR / note"}
-                                {fileStatuses.length > 0 && (
-                                    <button type="button" onClick={() => { setFileStatuses([]); setForm(f => ({ ...f, requirementText: "" })); }} className="ml-1"><X className="w-3 h-3" /></button>
-                                )}
+                                {hasFiles ? "Attach more" : "Attach indent / DPR / note"}
                                 <input type="file" accept=".txt,.md,.pdf,.docx" multiple onChange={handleFileChange} className="hidden" />
                             </label>
-                            <span className="text-xs text-muted-foreground">PDF, DOCX, TXT, MD · up to 5 files · or paste text below</span>
+                            {!hasFiles && <span className="text-xs text-muted-foreground">PDF · DOCX · TXT · up to 5 files · or paste below</span>}
                         </div>
-                        {fileStatuses.length > 0 && (
-                            <div className="space-y-1">
+
+                        {hasFiles && (
+                            <div className="space-y-1.5">
                                 {fileStatuses.map(f => (
-                                    <div key={f.name} className="flex items-center gap-2 text-xs">
-                                        {f.status === "extracting" && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-                                        {f.status === "done" && <CheckCircle2 className="w-3 h-3 text-green-400" />}
-                                        {f.status === "failed" && <AlertCircle className="w-3 h-3 text-red-400" />}
-                                        <span className={f.status === "failed" ? "text-red-400" : "text-foreground"}>{f.name}</span>
-                                        {f.status === "extracting" && <span className="text-muted-foreground">extracting…</span>}
-                                        {f.status === "failed" && <span className="text-red-400">{f.error ?? "failed"}</span>}
+                                    <div key={f.name} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-xs">
+                                        {f.status === "extracting" && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />}
+                                        {f.status === "done" && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                                        {f.status === "failed" && <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                                        <span className="font-medium text-foreground truncate flex-1 min-w-0">{f.name}</span>
+                                        {f.status === "done" && !!f.charCount && (
+                                            <span className="text-muted-foreground shrink-0">{(f.charCount / 1000).toFixed(1)}K chars</span>
+                                        )}
+                                        {f.status === "extracting" && <span className="text-muted-foreground shrink-0">extracting…</span>}
+                                        {f.status === "failed" && <span className="text-red-400 shrink-0 max-w-[140px] truncate">{f.error ?? "failed"}</span>}
+                                        {f.status === "done" && (
+                                            <button type="button" onClick={() => setPreviewFile(f.name)}
+                                                className="flex items-center gap-1 shrink-0 text-primary hover:text-primary/80 font-medium transition-colors">
+                                                <Eye className="w-3 h-3" /> Preview
+                                            </button>
+                                        )}
+                                        <button type="button" onClick={() => removeFile(f.name)}
+                                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
                                 ))}
+                                <button type="button" onClick={() => { setFileStatuses([]); setExtractedTexts({}); }}
+                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors pl-0.5">
+                                    Clear all
+                                </button>
                             </div>
                         )}
-                        <Textarea value={form.requirementText} onChange={setField("requirementText")} rows={6}
-                            placeholder="Paste the requirement document text here (indent / DPR / note). The agent will use this to draft a contextually accurate RFP. If left blank, Saarthi drafts from the title and department." className="text-xs" />
-                        <p className="text-xs text-muted-foreground">Scanned PDFs are OCR'd automatically. Multi-file inputs are combined and sent to the agent in full.</p>
+
+                        {!hasFiles && (
+                            <Textarea value={form.requirementText} onChange={setField("requirementText")} rows={6}
+                                placeholder="Paste the requirement document text here (indent / DPR / note). The agent will use this to draft a contextually accurate RFP. If left blank, Saarthi drafts from the title and department."
+                                className="text-xs" />
+                        )}
+
+                        <p className="text-xs text-muted-foreground">PDF · DOCX · scanned documents · on-platform OCR · multiple files combined.</p>
                     </div>
                 </Section>
 
                 {error && <p className="text-sm text-red-400">{error}</p>}
 
-                <Button type="submit" disabled={submitting || form.category !== "IT/Software" || form.procurementMode !== PROC_MODES[0]} className="w-full bg-primary text-primary-foreground gap-2">
-                    {submitting ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating RFP — this takes ~30s…</>) : "Generate RFP →"}
+                <Button type="submit" disabled={submitting || form.category !== "IT/Software" || form.procurementMode !== PROC_MODES[0]}
+                    className="w-full bg-primary text-primary-foreground gap-2">
+                    {submitting ? <><Loader2 className="w-4 h-4 animate-spin" />Generating RFP…</> : "Generate RFP →"}
                 </Button>
             </form>
+
+            {previewFile && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewFile(null)}>
+                    <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+                            <span className="text-sm font-medium text-foreground truncate">{previewFile}</span>
+                            <button onClick={() => setPreviewFile(null)} className="text-muted-foreground hover:text-foreground ml-4 shrink-0">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <pre className="flex-1 overflow-auto p-4 text-xs text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed">
+                            {extractedTexts[previewFile] ?? "No text extracted."}
+                        </pre>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
