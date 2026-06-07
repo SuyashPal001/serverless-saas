@@ -5,13 +5,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft } from "lucide-react";
+import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText } from "lucide-react";
 import { PreBidPanel } from "../components/PreBidPanel";
 import { PQPanel } from "../components/PQPanel";
 import { TechnicalPanel } from "../components/TechnicalPanel";
 import { ShortfallPanel } from "../components/ShortfallPanel";
 import { FinancialPanel } from "../components/FinancialPanel";
 import { ActionModal } from "../components/ActionModal";
+import { ReportPanel } from "../components/ReportPanel";
 import { AuthoringPanel } from "./authoring/AuthoringPanel";
 
 interface TenderData {
@@ -33,6 +34,7 @@ const STAGES = [
     { id: "stage4", label: "4. Technical", icon: ClipboardList },
     { id: "stage5", label: "5. Shortfalls", icon: AlertCircle },
     { id: "stage6", label: "6. Financial", icon: BarChart3 },
+    { id: "stage7", label: "7. Report", icon: ScrollText },
 ];
 
 async function fetchTender(id: string): Promise<TenderData> {
@@ -117,6 +119,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage4" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
                 {activeStage === "stage5" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
                 {activeStage === "stage6" && <FinancialPanel bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
+                {activeStage === "stage7" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
             </div>
 
             <ActionModal open={modal.open} onOpenChange={v => setModal(m => ({ ...m, open: v }))}
