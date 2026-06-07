@@ -5,6 +5,7 @@ import * as crypto from 'crypto'
 import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
 import { pqStepOutputSchema, techStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
 import { tenderEvaluatorAgent } from '../agents/tenderEvaluatorAgent.js'
+import { writeTenderAuditLog } from './tenderAuditLog.js'
 
 function bidderFolderId(tenantId: string, tenderId: string, stem: string): string {
   const h = crypto.createHash('sha256').update(`${tenantId}:bidder:${tenderId}:${stem}`).digest('hex')
@@ -171,6 +172,14 @@ export const technicalEvaluateStep = createStep({
       techResults.push({
         bidderId, bidderName: bidder.name, displayLabel: bidder.displayLabel,
         clauses: savedClauses, compliedCount, deviationCount, notFoundCount,
+      })
+    }
+
+    for (const r of techResults) {
+      await writeTenderAuditLog({
+        tenantId, actorId: 'system',
+        action: 'technical_evaluated', resource: 'tender_bidder', resourceId: r.bidderId,
+        metadata: { tenderId, bidderName: r.bidderName, complied: r.compliedCount, deviations: r.deviationCount, notFound: r.notFoundCount },
       })
     }
 

@@ -2,6 +2,7 @@ import { createStep } from '@mastra/core/workflows'
 import { db, shortfalls, clarificationRequests, tenderOfficerActions } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
 import { techStepOutputSchema, shortfallStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
+import { writeTenderAuditLog } from './tenderAuditLog.js'
 
 const INFERENCE_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'gemini-2.5-flash'
@@ -138,6 +139,15 @@ export const shortfallDetectStep = createStep({
     }
 
     console.log(`[shortfallDetect] tenderId=${tenderId} shortfalls=${shortfallItems.length}`)
+
+    for (const sf of shortfallItems) {
+      await writeTenderAuditLog({
+        tenantId, actorId: 'system',
+        action: 'shortfall_issued', resource: 'tender_shortfall', resourceId: sf.shortfallId,
+        metadata: { tenderId, bidderId: sf.bidderId, bidderName: sf.bidderName, discrepancy: sf.discrepancy.slice(0, 200) },
+      })
+    }
+
     return { ...inputData, shortfalls: shortfallItems }
   },
 })

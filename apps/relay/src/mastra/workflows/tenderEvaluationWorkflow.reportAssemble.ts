@@ -1,6 +1,7 @@
 import { createStep } from '@mastra/core/workflows'
 import { db, evaluationReports } from '@serverless-saas/database'
 import { finStepOutputSchema, reportStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
+import { writeTenderAuditLog } from './tenderAuditLog.js'
 
 export const reportAssembleStep = createStep({
   id: 'tender-report-assemble',
@@ -51,6 +52,12 @@ export const reportAssembleStep = createStep({
       recommendation,
       l1BidderId: l1BidderId || null,
     }).returning({ id: evaluationReports.id })
+
+    await writeTenderAuditLog({
+      tenantId, actorId: 'system',
+      action: 'report_generated', resource: 'evaluation_report', resourceId: row.id,
+      metadata: { tenderId, l1BidderId: l1BidderId || null, recommendation: recommendation.slice(0, 300) },
+    })
 
     return { ...inputData, reportId: row.id, recommendation }
   },

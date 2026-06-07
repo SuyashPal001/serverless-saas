@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { db, tenders, bidders } from '@serverless-saas/database'
-import { eq } from 'drizzle-orm'
+import { db, tenders, bidders, tenderClauses } from '@serverless-saas/database'
+import { eq, and } from 'drizzle-orm'
 import { mastra } from '../mastra/index.js'
 import { ingestTenderDocs } from '../tender/tenderDocIngest.js'
 import { ingestBidFromBase64 } from '../tender/tenderBidIngest.js'
@@ -110,19 +110,40 @@ tenderRoutes.post('/internal/tender/technical/run', async (c) => {
   try {
     const { technicalEvaluateStep } = await import('../mastra/workflows/tenderEvaluationWorkflow.technicalEvaluate.js')
 
+    // Pre-check: clauses must exist before running
+    const clauseRows = await db.select({ id: tenderClauses.id }).from(tenderClauses)
+      .where(and(eq(tenderClauses.tenderId, tenderId!), eq(tenderClauses.tenantId, tenantId!)))
+    if (!clauseRows.length) {
+      return c.json({ error: 'No RFP clauses found. Run POST /internal/tender/ingest first to extract clauses from the RFP.' }, 422)
+    }
+
     // Build minimal input that the tech step needs
     const bidderRows = await db.select().from(bidders).where(eq(bidders.tenderId, tenderId))
-    const qualifiedBidderIds = bidderId
+    let qualifiedBidderIds = bidderId
       ? [bidderId]
       : bidderRows.filter(b => b.status === 'pq_qualified').map(b => b.id)
 
+    // If no qualified bidders (PQ not yet run), auto-run PQ first
+    if (!bidderId && qualifiedBidderIds.length === 0) {
+      console.log(`[tender/technical/run] no pq_qualified bidders — running PQ first`)
+      try {
+        const { pqEvaluateStep } = await import('../mastra/workflows/tenderEvaluationWorkflow.pqEvaluate.js')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pqResult = await (pqEvaluateStep as any).execute({ inputData: { tenderId, tenantId } })
+        qualifiedBidderIds = pqResult.qualifiedBidderIds ?? []
+        console.log(`[tender/technical/run] PQ auto-run complete — qualified: ${qualifiedBidderIds.length}`)
+      } catch (pqErr) {
+        console.error('[tender/technical/run] PQ auto-run failed:', (pqErr as Error).message)
+      }
+    }
+
+    if (qualifiedBidderIds.length === 0) {
+      return c.json({ error: 'No qualified bidders found after PQ. Ensure bid documents are embedded before running evaluation.' }, 422)
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const step = technicalEvaluateStep as any
-    const result = await step.execute({
-      inputData: {
-        tenderId, tenantId, qualifiedBidderIds,
-        bidders: [], pqResults: [],
-      },
+    const result = await (technicalEvaluateStep as any).execute({
+      inputData: { tenderId, tenantId, qualifiedBidderIds, bidders: [], pqResults: [] },
     })
 
     return c.json({ status: 'completed', techResults: result.techResults ?? [] })

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, FileText, Clock } from "lucide-react";
@@ -34,8 +35,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export function ShortfallPanel({ bidders, shortfalls, clarificationRequests }: ShortfallPanelProps) {
+    const [selectedBidderId, setSelectedBidderId] = useState(bidders[0]?.id ?? "");
     const bidderMap = new Map(bidders.map(b => [b.id, b]));
     const crByShortfall = new Map(clarificationRequests.map(cr => [cr.shortfallId, cr]));
+
+    const filtered = selectedBidderId
+        ? shortfalls.filter(sf => sf.bidderId === selectedBidderId)
+        : shortfalls;
 
     if (!shortfalls.length) {
         return (
@@ -52,7 +58,25 @@ export function ShortfallPanel({ bidders, shortfalls, clarificationRequests }: S
                 time-bound, no substance change, no price modification.
             </p>
 
-            {shortfalls.map(sf => {
+            {/* Bidder selector — only when multiple bidders */}
+            {bidders.length > 1 && (
+                <div className="flex gap-1 flex-wrap">
+                    {bidders.map(b => (
+                        <button key={b.id} onClick={() => setSelectedBidderId(b.id)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${b.id === selectedBidderId ? "bg-primary/20 text-primary border-primary/30" : "text-muted-foreground border-border hover:text-foreground hover:border-border/80"}`}>
+                            {b.displayLabel}: {b.name}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {filtered.length === 0 && shortfalls.length > 0 && (
+                <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                    No shortfalls for this bidder.
+                </div>
+            )}
+
+            {filtered.map(sf => {
                 const bidder = bidderMap.get(sf.bidderId);
                 const cr = crByShortfall.get(sf.id);
                 const sfStatus = STATUS_CONFIG[sf.status] ?? STATUS_CONFIG.open;
@@ -95,13 +119,12 @@ export function ShortfallPanel({ bidders, shortfalls, clarificationRequests }: S
                                     <blockquote className="border-l-2 border-amber-500/40 pl-3 text-sm text-foreground italic">
                                         {cr.draftedText}
                                     </blockquote>
-                                    {cr.responseText && (
+                                    {cr.responseText ? (
                                         <div className="pt-2 border-t border-border/40">
                                             <p className="text-xs font-medium text-green-400 mb-1">Bidder Response</p>
                                             <p className="text-sm text-foreground">{cr.responseText}</p>
                                         </div>
-                                    )}
-                                    {!cr.responseText && (
+                                    ) : (
                                         <p className="text-xs text-muted-foreground">Awaiting bidder response within {cr.deadlineDays} working days.</p>
                                     )}
                                 </div>

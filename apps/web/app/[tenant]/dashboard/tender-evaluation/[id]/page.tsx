@@ -217,7 +217,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage4" && <PQPanel bidders={data.bidders} pqFindings={data.pqFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "pq", findingId: id })} />}
                 {activeStage === "stage5" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
                 {activeStage === "stage6" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
-                {activeStage === "stage7" && <FinancialPanel bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
+                {activeStage === "stage7" && <FinancialPanel bidders={data.bidders} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
                 {activeStage === "stage8" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
             </div>
 

@@ -40,9 +40,12 @@ interface LiveResult {
 }
 
 export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction, onLiveRunComplete }: TechnicalPanelProps) {
+    const [selectedBidderId, setSelectedBidderId] = useState(bidders[0]?.id ?? "");
     const [liveRunning, setLiveRunning] = useState(false);
     const [liveResults, setLiveResults] = useState<LiveResult[] | null>(null);
     const [liveError, setLiveError] = useState("");
+
+    const selectedBidder = bidders.find(b => b.id === selectedBidderId) ?? bidders[0];
 
     async function runLiveEvaluation() {
         setLiveRunning(true);
@@ -51,7 +54,7 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
             const res = await fetch(`/api/proxy/api/v1/tender/evaluations/${tenderId}/technical/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({}),
+                body: JSON.stringify({ bidderId: selectedBidder?.id }),
             });
             if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
             const data = await res.json() as { techResults?: Array<{ clauses?: LiveResult[] }> };
@@ -65,9 +68,9 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
         }
     }
 
-    // Show seeded findings if we have them, else show live button
-    const liveBidder = bidders[0]; // InfraVision = first qualified bidder
-    const seededFindings = liveBidder ? technicalFindings.filter(f => f.bidderId === liveBidder.id) : [];
+    const seededFindings = selectedBidder
+        ? technicalFindings.filter(f => f.bidderId === selectedBidder.id)
+        : [];
     const displayClauses: LiveResult[] = liveResults ?? seededFindings.map(f => ({
         clauseNo: f.clauseNo, clauseTitle: f.clauseTitle, status: f.status,
         narration: f.narration, sourceDoc: f.sourceDoc, sourcePage: f.sourcePage,
@@ -81,7 +84,7 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                    Clause-wise compliance evaluation against RFP technical requirements. Stage 4 runs live via the inference gateway.
+                    Clause-wise compliance evaluation against RFP technical requirements.
                 </p>
                 <Button onClick={runLiveEvaluation} disabled={liveRunning} size="sm"
                     className="bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 gap-2">
@@ -89,11 +92,26 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
                 </Button>
             </div>
 
-            {liveError && <p className="text-xs text-red-400 p-2 rounded bg-red-500/10 border border-red-500/20">{liveError}</p>}
-            {liveResults && <p className="text-xs text-green-400 p-2 rounded bg-green-500/10 border border-green-500/20">✓ Live evaluation completed via inference gateway — {liveResults.length} clauses assessed</p>}
+            {/* Bidder selector — only when multiple qualified bidders */}
+            {bidders.length > 1 && (
+                <div className="flex gap-1 flex-wrap">
+                    {bidders.map(b => (
+                        <button key={b.id} onClick={() => { setSelectedBidderId(b.id); setLiveResults(null); }}
+                            className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${b.id === selectedBidderId ? "bg-primary/20 text-primary border-primary/30" : "text-muted-foreground border-border hover:text-foreground hover:border-border/80"}`}>
+                            {b.displayLabel}: {b.name}
+                        </button>
+                    ))}
+                </div>
+            )}
 
-            {/* Summary chips */}
-            <div className="flex gap-3">
+            {liveError && <p className="text-xs text-red-400 p-2 rounded bg-red-500/10 border border-red-500/20">{liveError}</p>}
+            {liveResults && (
+                <p className="text-xs text-green-400 p-2 rounded bg-green-500/10 border border-green-500/20">
+                    ✓ Live evaluation completed for {selectedBidder?.displayLabel} — {liveResults.length} clauses assessed
+                </p>
+            )}
+
+            <div className="flex gap-3 flex-wrap">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
                     <CheckCircle className="w-3.5 h-3.5 text-green-400" />
                     <span className="text-xs text-green-400 font-medium">{complied} Complied</span>
@@ -108,10 +126,9 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
                         <span className="text-xs text-red-400 font-medium">{notFound} Not Found</span>
                     </div>
                 )}
-                {liveBidder && <span className="text-xs text-muted-foreground self-center">— {liveBidder.displayLabel}: {liveBidder.name}</span>}
+                {selectedBidder && <span className="text-xs text-muted-foreground self-center">— {selectedBidder.displayLabel}: {selectedBidder.name}</span>}
             </div>
 
-            {/* Clause table */}
             <Card className="border-border bg-card">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold text-foreground">Clause-wise Compliance Sheet</CardTitle>

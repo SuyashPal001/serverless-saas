@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm'
 import { shortfallStepOutputSchema, finStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
 import { tenderDocumentReaderAgent } from '../agents/tenderDocumentReaderAgent.js'
 import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
+import { writeTenderAuditLog } from './tenderAuditLog.js'
 
 function bidderFolderId(tenantId: string, tenderId: string, stem: string): string {
   const h = crypto.createHash('sha256').update(`${tenantId}:bidder:${tenderId}:${stem}`).digest('hex')
@@ -189,7 +190,14 @@ export const financialEvaluateStep = createStep({
     const sorted = [...evaluatable].sort((a, b) => a.correctedTotal - b.correctedTotal)
     const l1 = sorted[0]
 
-    if (!l1) return { ...inputData, finResults: finResults as any, l1BidderId: '', l1Amount: 0 }
+    if (!l1) {
+      await writeTenderAuditLog({
+        tenantId, actorId: 'system',
+        action: 'financial_l1_determined', resource: 'tender', resourceId: tenderId,
+        metadata: { l1BidderId: null, l1BidderName: null, l1Amount: 0, note: 'no evaluatable bidder' },
+      })
+      return { ...inputData, finResults: finResults as any, l1BidderId: '', l1Amount: 0 }
+    }
 
     const withRank = finResults.map(r => ({
       ...r,
@@ -205,6 +213,12 @@ export const financialEvaluateStep = createStep({
     }
 
     await db.update(bidders).set({ status: 'awarded' }).where(eq(bidders.id, l1.bidderId))
+
+    await writeTenderAuditLog({
+      tenantId, actorId: 'system',
+      action: 'financial_l1_determined', resource: 'tender', resourceId: tenderId,
+      metadata: { l1BidderId: l1.bidderId, l1BidderName: l1.bidderName, l1Amount: l1.correctedTotal },
+    })
 
     return { ...inputData, finResults: withRank as any, l1BidderId: l1.bidderId, l1Amount: l1.correctedTotal }
   },

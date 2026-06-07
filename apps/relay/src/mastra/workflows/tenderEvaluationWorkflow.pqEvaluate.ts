@@ -6,6 +6,7 @@ import { evaluatePqRules, type PqRuleInput } from '../rules/tenderPqRules.js'
 import { tenderInputSchema, pqStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
 import { tenderDocumentReaderAgent } from '../agents/tenderDocumentReaderAgent.js'
 import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
+import { writeTenderAuditLog } from './tenderAuditLog.js'
 
 const INFERENCE_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'gemini-2.5-flash'
@@ -187,6 +188,16 @@ export const pqEvaluateStep = createStep({
       pqResults.push({ bidderId: bidder.bidderId, bidderName: bidder.bidderName, displayLabel: bidder.displayLabel,
         overallStatus: overallStatus as 'qualified' | 'not_qualified' | 'cannot_evaluate', findings })
     }
+
+    await writeTenderAuditLog({
+      tenantId, actorId: 'system',
+      action: 'pq_evaluated', resource: 'tender', resourceId: tenderId,
+      metadata: {
+        total: pqBidders.length,
+        qualified: qualifiedBidderIds.length,
+        disqualified: pqBidders.length - qualifiedBidderIds.length,
+      },
+    })
 
     return { ...inputData, bidders: pqBidders, pqResults, qualifiedBidderIds }
   },
