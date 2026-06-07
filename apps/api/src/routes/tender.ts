@@ -12,6 +12,17 @@ import type { AppEnv } from '../types';
 const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
 const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
 
+function deriveEvalProgress(pqCount: number, techCount: number, finCount: number, reportExists: boolean) {
+  const pq = pqCount > 0 ? 'done' : 'pending';
+  const technical = techCount > 0 ? 'done' : 'pending';
+  // shortfall step runs between technical and financial — done if financial has landed
+  const shortfall = finCount > 0 ? 'done' : 'pending';
+  const financial = finCount > 0 ? 'done' : 'pending';
+  const report = reportExists ? 'done' : 'pending';
+  const status = reportExists ? 'completed' : pqCount > 0 ? 'running' : 'pending';
+  return { status, stages: { pq, technical, shortfall, financial, report } };
+}
+
 function relayHeaders() {
   const key = internalKey();
   console.log(`[tender] keyPresent: ${key.length > 0}`);
@@ -62,6 +73,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     db.select().from(evaluationReports).where(eq(evaluationReports.tenderId, id)),
   ]);
 
+  const evalProgress = deriveEvalProgress(pqRows.length, techRows.length, finRows.length, !!reportRows[0]);
   return c.json({
     ...tender,
     bidders: bidderRows,
@@ -71,6 +83,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     clarificationRequests: crRows,
     financialFindings: finRows,
     report: reportRows[0] ?? null,
+    evalProgress,
   });
 });
 
