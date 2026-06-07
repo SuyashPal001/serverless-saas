@@ -32,11 +32,6 @@ function parseQueryText(raw: string): ParsedText {
   }
 }
 
-function sectionFromRef(ref: string): string {
-  const m = ref.match(/S(\d+)/i) ?? ref.match(/^(\d+)/)
-  return m ? `S${m[1]}` : ''
-}
-
 async function apiPost(path: string, body?: object) {
   const res = await fetch(`/api/proxy/api/v1${path}`, {
     method: "POST",
@@ -51,10 +46,12 @@ interface QueryCardProps {
   query: PrebidQuery;
   tenderId: string;
   onMutate: () => void;
-  onIssueCorrigendum: (queryId: string, sectionNo: string) => void;
+  hasAmendment: boolean;
+  isAmendmentLoading: boolean;
+  onToggleAmendment: () => void;
 }
 
-export function QueryCard({ query: q, tenderId, onMutate, onIssueCorrigendum }: QueryCardProps) {
+export function QueryCard({ query: q, tenderId, onMutate, hasAmendment, isAmendmentLoading, onToggleAmendment }: QueryCardProps) {
   const [editText, setEditText] = useState(q.draftedResponse ?? '');
   const [showEdit, setShowEdit] = useState(false);
 
@@ -109,6 +106,18 @@ export function QueryCard({ query: q, tenderId, onMutate, onIssueCorrigendum }: 
               <p className="text-xs text-muted-foreground">{q.finalResponse}</p>
             </div>
           )}
+          {clauseRef && (
+            <button
+              onClick={onToggleAmendment}
+              disabled={isAmendmentLoading}
+              className={`mt-2 flex items-center gap-1.5 text-xs transition-colors ${hasAmendment ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {isAmendmentLoading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <GitBranch className="w-3 h-3" />}
+              {isAmendmentLoading ? "Proposing amendment…" : hasAmendment ? "Amendment flagged ✓" : "Requires amendment"}
+            </button>
+          )}
         </div>
         <div className="flex flex-col gap-1 shrink-0">
           {!responded && (
@@ -119,11 +128,6 @@ export function QueryCard({ query: q, tenderId, onMutate, onIssueCorrigendum }: 
           {q.draftedResponse && !responded && (
             <Button size="sm" className="text-xs gap-1 h-7 bg-green-600 hover:bg-green-700" disabled={busy} onClick={() => acceptMut.mutate()}>
               {acceptMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}Accept
-            </Button>
-          )}
-          {clauseRef && (
-            <Button size="sm" variant="ghost" className="text-xs gap-1 h-7 text-amber-400 hover:text-amber-300" onClick={() => onIssueCorrigendum(q.id, sectionFromRef(clauseRef))}>
-              <GitBranch className="w-3 h-3" />Amend
             </Button>
           )}
         </div>

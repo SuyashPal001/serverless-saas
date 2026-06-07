@@ -164,6 +164,27 @@ tenderPrebidRoutes.post('/prebid/:tenderId/corrigendum', async (c) => {
   return c.json({ corrigendum: corr, rfpVersionBefore: versionBefore, rfpVersionAfter: versionAfter }, 201);
 });
 
+// POST /tender/prebid/:tenderId/queries/:queryId/propose-amendment — AI drafts amended clause text
+tenderPrebidRoutes.post('/prebid/:tenderId/queries/:queryId/propose-amendment', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const tenderId = c.req.param('tenderId');
+  const queryId = c.req.param('queryId');
+  const body = await c.req.json<{ clauseRef: string; currentText: string; suggestedChange: string; queryText: string }>().catch(() => ({} as any));
+  try {
+    const relayRes = await fetch(`${relayUrl()}/internal/tender/prebid/propose-amendment`, {
+      method: 'POST',
+      headers: relayHeaders(),
+      body: JSON.stringify({ tenderId, tenantId, queryId, ...body }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!relayRes.ok) return c.json({ error: `Relay error ${relayRes.status}` }, 502);
+    return c.json(await relayRes.json());
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
 // POST /tender/prebid/:tenderId/upload-queries — fire-and-forget: relay parses + writes to DB
 tenderPrebidRoutes.post('/prebid/:tenderId/upload-queries', async (c) => {
   const rc = c.get('requestContext') as any;

@@ -77,6 +77,40 @@ Return ONLY the response body text (no headers, no subject line).`
   }
 })
 
+// POST /internal/tender/prebid/propose-amendment — AI drafts the amended clause text for a query
+tenderPrebidRoutes.post('/internal/tender/prebid/propose-amendment', async (c) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!checkKey(c as any)) return c.json({ error: 'Unauthorized' }, 401)
+  const body = await c.req.json<{
+    clauseRef?: string; currentText?: string; suggestedChange?: string; queryText?: string
+  }>().catch(() => null)
+  if (!body) return c.json({ error: 'invalid JSON' }, 400)
+
+  const prompt = `You are a government procurement officer drafting an amendment to an RFP clause for a numbered corrigendum.
+
+Clause Reference: ${body.clauseRef || 'N/A'}
+Current Clause Text:
+${body.currentText || '(not provided)'}
+
+Pre-Bid Query: ${body.queryText || ''}
+Bidder Suggested Change: ${body.suggestedChange || '(none specified)'}
+
+CORRIGENDUM DRAFTING NORMS (CVC / GFR):
+- Amend ONLY the specific clause/criterion the query concerns — never change anything beyond the stated amendment.
+- The amended "After" text must be in exactly the same format as the original (prose / table row / SLA row) and remain GFR-compliant and vendor-neutral.
+- Cite the prompting query: begin with "Pursuant to pre-bid query — [query text summary],"
+- For date/deadline amendments, state the new date explicitly.
+- Keep the same formal government register throughout.
+
+Return ONLY the full amended clause text (including the "Pursuant to…" citation). No preamble, no section headings.`
+  try {
+    const result = await tenderAuthorAgent.generate(prompt)
+    return c.json({ proposedText: (result.text ?? '').trim() })
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500)
+  }
+})
+
 interface ParsedQuery {
   slNo: number
   rfpClauseRef: string
