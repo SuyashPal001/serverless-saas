@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Loader2, Upload, X } from "lucide-react";
+import { ArrowLeft, Loader2, Upload, X, CheckCircle2, AlertCircle } from "lucide-react";
+
+interface FileStatus { name: string; status: "extracting" | "done" | "failed"; error?: string }
 
 interface FormState {
     title: string; department: string; estimatedValue: string;
@@ -28,20 +30,34 @@ export default function CreateTenderPage() {
     });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
-    const [fileName, setFileName] = useState("");
+    const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
 
     function setField(k: keyof FormState) { return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value })); }
 
     async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setFileName(file.name);
-        // Extract text: plain text files read directly; PDF shown as name-only (pasted text preferred for PDF)
-        if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
-            const text = await file.text();
-            setForm(f => ({ ...f, requirementText: text }));
-        } else {
-            setForm(f => ({ ...f, requirementText: f.requirementText || `[Attached: ${file.name}]\n\nPaste the requirement text below or above this line, or the agent will draft based on the title and department.` }));
+        const files = Array.from(e.target.files ?? []);
+        if (!files.length) return;
+
+        setFileStatuses(files.map(f => ({ name: f.name, status: "extracting" })));
+        setForm(f => ({ ...f, requirementText: "" }));
+
+        const fd = new FormData();
+        files.forEach(f => fd.append("files", f));
+
+        try {
+            const res = await fetch("/api/proxy/api/v1/tender/authoring/extract-text", { method: "POST", body: fd });
+            const data = await res.json() as { results?: Array<{ filename: string; text: string; status: string; error?: string }> };
+            const results = data.results ?? [];
+
+            setFileStatuses(results.map(r => ({ name: r.filename, status: r.status as "done" | "failed", error: r.error })));
+
+            const combined = results
+                .filter(r => r.status === "done" && r.text)
+                .map(r => `--- ${r.filename} ---\n${r.text}`)
+                .join("\n\n");
+            if (combined) setForm(f => ({ ...f, requirementText: combined }));
+        } catch (err) {
+            setFileStatuses(files.map(f => ({ name: f.name, status: "failed", error: (err as Error).message })));
         }
     }
 
@@ -130,17 +146,34 @@ export default function CreateTenderPage() {
 
                 <Section label="Requirement Document">
                     <div className="space-y-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                             <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground border border-border rounded px-3 py-2 hover:border-foreground/40 transition-colors">
                                 <Upload className="w-3.5 h-3.5" />
-                                {fileName ? (<><span className="text-foreground">{fileName}</span><button type="button" onClick={() => { setFileName(""); setForm(f => ({ ...f, requirementText: "" })); }} className="ml-1"><X className="w-3 h-3" /></button></>) : "Attach indent / DPR / note"}
-                                <input type="file" accept=".txt,.md,.pdf,.doc,.docx" onChange={handleFileChange} className="hidden" />
+                                {fileStatuses.length ? `${fileStatuses.length} file${fileStatuses.length > 1 ? "s" : ""} attached` : "Attach indent / DPR / note"}
+                                {fileStatuses.length > 0 && (
+                                    <button type="button" onClick={() => { setFileStatuses([]); setForm(f => ({ ...f, requirementText: "" })); }} className="ml-1"><X className="w-3 h-3" /></button>
+                                )}
+                                <input type="file" accept=".txt,.md,.pdf,.docx" multiple onChange={handleFileChange} className="hidden" />
                             </label>
-                            <span className="text-xs text-muted-foreground">or paste text below</span>
+                            <span className="text-xs text-muted-foreground">PDF, DOCX, TXT, MD · up to 5 files · or paste text below</span>
                         </div>
+                        {fileStatuses.length > 0 && (
+                            <div className="space-y-1">
+                                {fileStatuses.map(f => (
+                                    <div key={f.name} className="flex items-center gap-2 text-xs">
+                                        {f.status === "extracting" && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                                        {f.status === "done" && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                                        {f.status === "failed" && <AlertCircle className="w-3 h-3 text-red-400" />}
+                                        <span className={f.status === "failed" ? "text-red-400" : "text-foreground"}>{f.name}</span>
+                                        {f.status === "extracting" && <span className="text-muted-foreground">extracting…</span>}
+                                        {f.status === "failed" && <span className="text-red-400">{f.error ?? "failed"}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <Textarea value={form.requirementText} onChange={setField("requirementText")} rows={6}
                             placeholder="Paste the requirement document text here (indent / DPR / note). The agent will use this to draft a contextually accurate RFP. If left blank, Saarthi drafts from the title and department." className="text-xs" />
-                        <p className="text-xs text-muted-foreground">PDF text extraction: paste the text from your PDF here, or attach a plain-text file. The agent reads up to 8,000 characters.</p>
+                        <p className="text-xs text-muted-foreground">Scanned PDFs are OCR'd via Gemini Vision. The agent reads up to 8,000 characters.</p>
                     </div>
                 </Section>
 
