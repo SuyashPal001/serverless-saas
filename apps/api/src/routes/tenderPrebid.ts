@@ -163,3 +163,52 @@ tenderPrebidRoutes.post('/prebid/:tenderId/corrigendum', async (c) => {
 
   return c.json({ corrigendum: corr, rfpVersionBefore: versionBefore, rfpVersionAfter: versionAfter }, 201);
 });
+
+// POST /tender/prebid/:tenderId/upload-queries — parse a query sheet via relay and bulk-insert
+tenderPrebidRoutes.post('/prebid/:tenderId/upload-queries', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const tenderId = c.req.param('tenderId');
+  let body: { texts?: Array<{ filename: string; text: string }> };
+  try { body = await c.req.json() } catch { return c.json({ error: 'invalid JSON' }, 400) }
+  if (!body.texts?.length) return c.json({ error: 'texts required' }, 400);
+
+  try {
+    const relayRes = await fetch(`${relayUrl()}/internal/tender/prebid/parse-queries`, {
+      method: 'POST',
+      headers: relayHeaders(),
+      body: JSON.stringify({ tenderId, tenantId, texts: body.texts }),
+      signal: AbortSignal.timeout(150_000),
+    });
+    if (!relayRes.ok) return c.json({ error: `Relay error ${relayRes.status}` }, 502);
+
+    const { queries } = await relayRes.json() as {
+      queries: Array<{ slNo: number; rfpClauseRef: string; queryText: string; suggestedChange: string; raisedBy: string; draftedResponse?: string }>;
+    };
+
+    const [existing] = await db.select({ n: count() }).from(prebidQueries)
+      .where(and(eq(prebidQueries.tenderId, tenderId), eq(prebidQueries.tenantId, tenantId)));
+    let seq = Number(existing?.n ?? 0);
+
+    const rows = [];
+    for (const q of queries) {
+      seq++;
+      const queryNo = `Q-${String(seq).padStart(3, '0')}`;
+      const storedText = q.rfpClauseRef
+        ? `[${q.rfpClauseRef}] ${q.queryText}${q.suggestedChange ? ' | Suggests: ' + q.suggestedChange : ''}`
+        : q.queryText;
+      const [row] = await db.insert(prebidQueries).values({
+        tenderId, tenantId, queryNo,
+        raisedBy: q.raisedBy || null,
+        queryText: storedText,
+        draftedResponse: q.draftedResponse || null,
+        status: q.draftedResponse ? 'draft_ready' : 'received',
+      }).returning();
+      rows.push(row);
+    }
+
+    return c.json({ inserted: rows.length, queries: rows });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
