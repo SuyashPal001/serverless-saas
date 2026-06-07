@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { createHash } from 'node:crypto';
 import { db } from '@serverless-saas/database';
 import {
   tenders, bidders, pqFindings, technicalFindings,
@@ -6,8 +7,14 @@ import {
   evaluationReports, tenderOfficerActions,
 } from '@serverless-saas/database/schema/tender';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, sql } from 'drizzle-orm';
 import type { AppEnv } from '../types';
+
+function bidderFolderId(tenantId: string, tenderId: string, displayLabel: string): string {
+  const stem = displayLabel.toLowerCase().replace(/\s+/g, '-');
+  const h = createHash('sha256').update(`${tenantId}:bidder:${tenderId}:${stem}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
 
 const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
 const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
@@ -212,4 +219,37 @@ tenderRoutes.post('/evaluations/:id/bidders', async (c) => {
   }).catch(err => console.error(`[bid-upload] relay: ${(err as Error).message}`));
 
   return c.json({ bidderId: bidder.id, displayLabel, status: 'received' }, 202);
+});
+
+// DELETE /tender/evaluations/:tenderId/bidders/:bidderId — remove bidder + docs + findings
+tenderRoutes.delete('/evaluations/:tenderId/bidders/:bidderId', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id as string;
+  const tenderId = c.req.param('tenderId');
+  const bidderId = c.req.param('bidderId');
+
+  const [bidder] = await db.select({ id: bidders.id, displayLabel: bidders.displayLabel })
+    .from(bidders)
+    .where(and(eq(bidders.id, bidderId), eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId)));
+  if (!bidder) return c.json({ error: 'not found' }, 404);
+
+  const folderId = bidderFolderId(tenantId, tenderId, bidder.displayLabel);
+
+  // Delete documents whose chunks live in this bidder's folder; chunks cascade automatically
+  await db.execute(sql`
+    DELETE FROM documents WHERE id IN (
+      SELECT DISTINCT document_id FROM document_chunks
+      WHERE person_folder_id = ${folderId}::uuid AND tenant_id = ${tenantId}::uuid
+    )
+  `);
+  await db.execute(sql`
+    DELETE FROM person_folders WHERE id = ${folderId}::uuid AND tenant_id = ${tenantId}::uuid
+  `);
+
+  // Deleting the bidder cascades to pq_findings, technical_findings, shortfalls,
+  // clarification_requests, financial_findings, bids
+  await db.delete(bidders)
+    .where(and(eq(bidders.id, bidderId), eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId)));
+
+  return c.json({ ok: true });
 });

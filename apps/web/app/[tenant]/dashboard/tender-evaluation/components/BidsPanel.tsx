@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Upload, CheckCircle2, AlertCircle, Users } from "lucide-react";
+import { Loader2, Upload, CheckCircle2, AlertCircle, Users, Trash2, X } from "lucide-react";
 
 interface Bidder { id: string; name: string; displayLabel: string; status: string }
 
@@ -21,6 +21,8 @@ export function BidsPanel({ tenderId, bidders, onBidderAdded }: Props) {
   const [encodedFiles, setEncodedFiles] = useState<Array<{ name: string; mimeType: string; dataBase64: string }>>([]);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -53,6 +55,20 @@ export function BidsPanel({ tenderId, bidders, onBidderAdded }: Props) {
     setUploading(false);
   }
 
+  async function handleDelete(bidderId: string) {
+    setDeletingId(bidderId); setConfirmId(null);
+    try {
+      const res = await fetch(`/api/proxy/api/v1/tender/evaluations/${tenderId}/bidders/${bidderId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      onBidderAdded(); // refreshes the bidder list
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setDeletingId(null);
+  }
+
   return (
     <div className="space-y-6">
       {/* Received bids */}
@@ -70,15 +86,40 @@ export function BidsPanel({ tenderId, bidders, onBidderAdded }: Props) {
               <span className="text-blue-300 font-medium">{b.displayLabel}</span>
               <span className="text-muted-foreground">— {b.name}</span>
               <span className="text-muted-foreground opacity-60">· {b.status}</span>
+
+              {confirmId === b.id ? (
+                <span className="flex items-center gap-1 ml-1">
+                  <span className="text-red-400">Remove?</span>
+                  <button
+                    onClick={() => handleDelete(b.id)}
+                    disabled={deletingId === b.id}
+                    className="text-red-400 hover:text-red-300 font-medium underline"
+                  >
+                    {deletingId === b.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Yes"}
+                  </button>
+                  <button onClick={() => setConfirmId(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setConfirmId(b.id)}
+                  disabled={!!deletingId}
+                  className="ml-1 text-muted-foreground hover:text-red-400 transition-colors"
+                  title={`Remove ${b.displayLabel}`}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ))}
         </div>
+        {err && <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{err}</p>}
       </div>
 
       {/* Upload form */}
       <div className="p-4 rounded-lg border border-border bg-card space-y-3">
         <h4 className="text-xs font-semibold text-foreground">Upload Bid Document(s)</h4>
-        {err && <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{err}</p>}
 
         <Input
           className="text-xs"
