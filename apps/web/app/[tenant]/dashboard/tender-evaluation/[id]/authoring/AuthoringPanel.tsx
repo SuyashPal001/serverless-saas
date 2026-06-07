@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Download } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Loader2, BookOpen, Download, Globe, Lock } from "lucide-react";
 import { RFPSection } from "./components/RFPSection";
 import { ClauseLibraryPanel } from "./components/ClauseLibraryPanel";
 
@@ -14,7 +15,7 @@ interface Section {
 }
 
 interface RFPData {
-    tender: { id: string; rfpNumber: string; title: string; authoringStatus: string | null };
+    tender: { id: string; rfpNumber: string; title: string; authoringStatus: string | null; status: string; publishedAt: string | null };
     sections: Section[];
 }
 
@@ -23,7 +24,7 @@ async function fetchAuthoring(tenderId: string): Promise<RFPData> {
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("application/json")) {
         // Gateway timeout / HTML error — treat as still generating so polling continues
-        return { tender: { id: tenderId, rfpNumber: "", title: "", authoringStatus: "generating" }, sections: [] };
+        return { tender: { id: tenderId, rfpNumber: "", title: "", authoringStatus: "generating", status: "authoring", publishedAt: null }, sections: [] };
     }
     if (!res.ok) throw new Error("Failed to load RFP");
     return res.json();
@@ -32,6 +33,7 @@ async function fetchAuthoring(tenderId: string): Promise<RFPData> {
 export function AuthoringPanel({ tenderId }: { tenderId: string }) {
     const qc = useQueryClient();
     const [showLibrary, setShowLibrary] = useState(false);
+    const [confirmPublish, setConfirmPublish] = useState(false);
 
     const { data, isLoading, error, refetch } = useQuery<RFPData>({
         queryKey: ["rfp-authoring", tenderId],
@@ -59,6 +61,18 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
             if (!res.ok) throw new Error((await res.json()).error ?? "Retry failed");
         },
         onSuccess: () => refetch(),
+    });
+
+    const publishMutation = useMutation({
+        mutationFn: async () => {
+            const res = await fetch(`/api/proxy/api/v1/tender/authoring/${tenderId}/publish`, { method: "POST" });
+            if (!res.ok) throw new Error((await res.json()).error ?? "Publish failed");
+        },
+        onSuccess: () => {
+            setConfirmPublish(false);
+            qc.invalidateQueries({ queryKey: ["rfp-authoring", tenderId] });
+            qc.invalidateQueries({ queryKey: ["tender-list"] });
+        },
     });
 
     if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" />Loading RFP…</div>;
@@ -95,6 +109,8 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
     }
 
     const acceptedCount = data.sections.filter(s => s.acceptedAt).length;
+    const isPublished = data.tender.status === "published";
+    const allAccepted = acceptedCount === data.sections.length && data.sections.length > 0;
 
     return (
         <div className="space-y-4">
@@ -104,6 +120,11 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
                         {acceptedCount}/{data.sections.length} sections accepted
                     </Badge>
                     <span className="text-xs text-muted-foreground">{data.tender.rfpNumber}</span>
+                    {isPublished && (
+                        <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 border text-xs gap-1">
+                            <Lock className="w-3 h-3" /> Published
+                        </Badge>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setShowLibrary(v => !v)} className="gap-1.5 border-border text-xs">
@@ -116,6 +137,14 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
                     <Button variant="outline" size="sm" onClick={() => exportMutation.mutate("html")} disabled={exportMutation.isPending} className="gap-1.5 border-border text-xs">
                         <Download className="w-3.5 h-3.5" /> Export HTML
                     </Button>
+                    {!isPublished && (
+                        <Button size="sm" onClick={() => setConfirmPublish(true)}
+                            disabled={!allAccepted || publishMutation.isPending}
+                            className="gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40">
+                            <Globe className="w-3.5 h-3.5" />
+                            {publishMutation.isPending ? "Publishing…" : "Publish RFP"}
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -126,6 +155,7 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
                             key={section.id}
                             section={section}
                             tenderId={tenderId}
+                            isPublished={isPublished}
                             onMutate={() => qc.invalidateQueries({ queryKey: ["rfp-authoring", tenderId] })}
                         />
                     ))}
@@ -136,6 +166,25 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
                     </div>
                 )}
             </div>
+
+            <AlertDialog open={confirmPublish} onOpenChange={setConfirmPublish}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Publish {data.tender.rfpNumber}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will lock all {data.sections.length} sections and advance the tender to <b>Published</b> stage.
+                            Further changes require a corrigendum during the Pre-Bid stage. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={publishMutation.isPending}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}
+                            className="bg-blue-600 hover:bg-blue-700 text-white">
+                            {publishMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Publishing…</> : "Publish RFP"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

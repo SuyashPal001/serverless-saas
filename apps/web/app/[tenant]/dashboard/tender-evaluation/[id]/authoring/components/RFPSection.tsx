@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Edit2, RefreshCw, AlertTriangle, X, Check } from "lucide-react";
+import { CheckCircle2, Edit2, RefreshCw, AlertTriangle, X, Check, Lock } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 interface Clause { clauseNo: string; title: string; text: string; source: "library" | "drafted"; libraryRef?: string | null; cvcFlag?: { code: string; message: string } | null }
@@ -33,7 +33,7 @@ async function regenerateSection(tenderId: string, sectionId: string, steer?: st
     if (!res.ok) throw new Error("Regenerate failed");
 }
 
-export function RFPSection({ section, tenderId, onMutate }: { section: Section; tenderId: string; onMutate: () => void }) {
+export function RFPSection({ section, tenderId, onMutate, isPublished = false }: { section: Section; tenderId: string; onMutate: () => void; isPublished?: boolean }) {
     const [editMode, setEditMode] = useState(false);
     const [steerInput, setSteerInput] = useState("");
     const [showSteer, setShowSteer] = useState(false);
@@ -72,13 +72,16 @@ export function RFPSection({ section, tenderId, onMutate }: { section: Section; 
                     <h3 className="text-sm font-semibold text-foreground">{section.title}</h3>
                     <Badge className="text-xs border border-border/50 bg-muted/30 text-muted-foreground">{section.blockType}</Badge>
                     {isAccepted && <Badge className="text-xs border border-green-500/30 bg-green-500/10 text-green-400 gap-1"><CheckCircle2 className="w-3 h-3" />Accepted</Badge>}
+                    {isPublished && <Badge className="text-xs border border-blue-500/30 bg-blue-500/10 text-blue-400 gap-1"><Lock className="w-3 h-3" />Published</Badge>}
                     <span className="text-xs text-muted-foreground/60">v{section.version}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                    {!isAccepted && <Button size="sm" variant="ghost" onClick={() => acceptMutation.mutate()} disabled={busy} className="h-7 px-2 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10"><Check className="w-3 h-3 mr-1" />Accept</Button>}
-                    <Button size="sm" variant="ghost" onClick={startEdit} disabled={busy} className="h-7 px-2 text-xs text-muted-foreground"><Edit2 className="w-3 h-3 mr-1" />Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowSteer(v => !v)} disabled={busy} className="h-7 px-2 text-xs text-muted-foreground"><RefreshCw className="w-3 h-3 mr-1" />Regen</Button>
-                </div>
+                {!isPublished && (
+                    <div className="flex items-center gap-1">
+                        {!isAccepted && <Button size="sm" variant="ghost" onClick={() => acceptMutation.mutate()} disabled={busy} className="h-7 px-2 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10"><Check className="w-3 h-3 mr-1" />Accept</Button>}
+                        <Button size="sm" variant="ghost" onClick={startEdit} disabled={busy} className="h-7 px-2 text-xs text-muted-foreground"><Edit2 className="w-3 h-3 mr-1" />Edit</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowSteer(v => !v)} disabled={busy} className="h-7 px-2 text-xs text-muted-foreground"><RefreshCw className="w-3 h-3 mr-1" />Regen</Button>
+                    </div>
+                )}
             </div>
 
             {/* CVC advisory flags */}

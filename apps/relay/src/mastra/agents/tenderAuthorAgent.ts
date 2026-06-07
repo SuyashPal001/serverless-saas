@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const SKILL_PATH = path.resolve(__dirname, '../../../../skills/tender-authoring/SKILL.md')
+const SKILL_PATH = path.resolve(__dirname, '../../../skills/tender-authoring/SKILL.md')
 const SKILL_MD = fs.existsSync(SKILL_PATH)
   ? fs.readFileSync(SKILL_PATH, 'utf-8')
   : '# Tender Authoring Skill (not found)'

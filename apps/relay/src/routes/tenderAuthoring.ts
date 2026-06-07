@@ -192,6 +192,8 @@ Contract Duration: ${templateFields.contractDuration ?? '36 months'}
 Derived Annual Turnover Threshold for S2: ${turnoverThresholdCr}
 Key Dates: ${JSON.stringify(templateFields.keyDates ?? {})}
 
+S3 SCOPE INSTRUCTION: In S3 (Scope of Work), enumerate ALL key functional modules listed in the requirement document (including any Annexure listing sub-modules such as Pension/GPF/NPS, payroll, HR modules, etc.) as distinct bullet-style clauses. Each module should be a named clause in the clauses[] array, not buried in the text field.
+
 Requirement Document:
 ${requirementText.slice(0, 200000) || '(Draft from title and department context.)'}
 
@@ -244,8 +246,11 @@ async function saveRfpSections(
 
 function singleSectionOutputFormat(sectionNo: string, blockType: string): string {
   const base = `{"sectionNo":"${sectionNo}","title":"...","blockType":"${blockType}","content":`
-  if (blockType === 'prose')
+  if (blockType === 'prose') {
+    if (sectionNo === 'S7') return base + `{"text":"...","clauses":[{"clauseNo":"7.1","title":"Bid Opening Sequence","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.2","title":"Technical Qualification","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.3","title":"Financial Evaluation","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.4","title":"Award","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.5","title":"QCBS (if applicable)","text":"...","source":"drafted","libraryRef":null}]}}`
+    if (sectionNo === 'S8') return base + `{"text":"...","clauses":[{"clauseNo":"8.1","title":"Payment Terms","text":"...","source":"library","libraryRef":"CL-013"},{"clauseNo":"8.2","title":"Performance Bank Guarantee","text":"...","source":"library","libraryRef":"CL-015"},{"clauseNo":"8.3","title":"Liquidated Damages","text":"...","source":"library","libraryRef":"CL-014"},{"clauseNo":"8.4","title":"Warranty / AMC","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.5","title":"Security & Compliance","text":"...","source":"library","libraryRef":"CL-016"},{"clauseNo":"8.6","title":"Confidentiality","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.7","title":"Intellectual Property","text":"...","source":"library","libraryRef":"CL-020"},{"clauseNo":"8.8","title":"Termination","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"}]}}`
     return base + `{"text":"...","clauses":[{"clauseNo":"${sectionNo}.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}}`
+  }
   if (blockType === 'criteria-table')
     return base + `{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}}`
   if (blockType === 'spec-table')
