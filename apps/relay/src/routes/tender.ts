@@ -3,6 +3,7 @@ import { db, tenders, bidders } from '@serverless-saas/database'
 import { eq } from 'drizzle-orm'
 import { mastra } from '../mastra/index.js'
 import { ingestTenderDocs } from '../tender/tenderDocIngest.js'
+import { ingestBidFromBase64 } from '../tender/tenderBidIngest.js'
 
 const INTERNAL_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
 
@@ -34,6 +35,29 @@ tenderRoutes.post('/internal/tender/ingest', async (c) => {
     console.error('[tender/ingest] error', message)
     return c.json({ error: message }, 500)
   }
+})
+
+// POST /internal/tender/bid-ingest — accept base64 bid docs, ingest + embed in background
+tenderRoutes.post('/internal/tender/bid-ingest', async (c) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!checkInternalKey(c as any)) return c.json({ error: 'Unauthorized' }, 401)
+
+  let body: { tenderId?: string; tenantId?: string; displayLabel?: string; files?: Array<{ name: string; mimeType: string; dataBase64: string }> }
+  try { body = await c.req.json() } catch { return c.json({ error: 'invalid JSON' }, 400) }
+  if (!body.tenderId || !body.tenantId || !body.displayLabel || !body.files?.length) {
+    return c.json({ error: 'tenderId, tenantId, displayLabel, files required' }, 400)
+  }
+
+  const { tenderId, tenantId, displayLabel, files } = body as Required<typeof body>
+  ;(async () => {
+    try {
+      await ingestBidFromBase64({ tenderId, tenantId, displayLabel, files })
+    } catch (err) {
+      console.error(`[bid-ingest] background error: ${(err as Error).message}`)
+    }
+  })()
+
+  return c.json({ status: 'ingesting' }, 202)
 })
 
 // POST /internal/tender/run — run full tender evaluation workflow

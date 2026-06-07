@@ -6,7 +6,7 @@ import {
   evaluationReports, tenderOfficerActions,
 } from '@serverless-saas/database/schema/tender';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
 const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
@@ -161,4 +161,42 @@ tenderRoutes.post('/findings/action', async (c) => {
   }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
   return c.json({ ok: true });
+});
+
+// POST /tender/evaluations/:id/bidders — upload bid docs for a new bidder (base64 JSON)
+tenderRoutes.post('/evaluations/:id/bidders', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const body = await c.req.json<{
+    name: string;
+    files: Array<{ name: string; mimeType: string; dataBase64: string }>;
+  }>().catch(() => null);
+  if (!body?.name?.trim() || !body.files?.length) {
+    return c.json({ error: 'name and files required' }, 400);
+  }
+
+  const [tender] = await db.select({ id: tenders.id }).from(tenders)
+    .where(and(eq(tenders.id, id), eq(tenders.tenantId, tenantId)));
+  if (!tender) return c.json({ error: 'not found' }, 404);
+
+  const LABELS = 'ABCDEFGHIJKLMNOP';
+  const [{ n }] = await db.select({ n: count() }).from(bidders)
+    .where(and(eq(bidders.tenderId, id), eq(bidders.tenantId, tenantId)));
+  const displayLabel = `Bidder ${LABELS[Number(n)] ?? String(Number(n) + 1)}`;
+
+  const [bidder] = await db.insert(bidders).values({
+    tenderId: id, tenantId, name: body.name.trim(), displayLabel, status: 'submitted',
+  }).returning();
+
+  // Fire-and-forget to relay — ingest runs in background PM2 process
+  fetch(`${relayUrl()}/internal/tender/bid-ingest`, {
+    method: 'POST',
+    headers: relayHeaders(),
+    body: JSON.stringify({ tenderId: id, tenantId, displayLabel, files: body.files }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(err => console.error(`[bid-upload] relay: ${(err as Error).message}`));
+
+  return c.json({ bidderId: bidder.id, displayLabel, status: 'received' }, 202);
 });

@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText } from "lucide-react";
+import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload } from "lucide-react";
 import { PreBidPanel } from "../components/PreBidPanel";
+import { BidsPanel } from "../components/BidsPanel";
 import { PQPanel } from "../components/PQPanel";
 import { TechnicalPanel } from "../components/TechnicalPanel";
 import { ShortfallPanel } from "../components/ShortfallPanel";
@@ -30,11 +31,12 @@ interface TenderData {
 const STAGES = [
     { id: "stage1", label: "1. Authoring", icon: FileText },
     { id: "stage2", label: "2. Pre-Bid", icon: Users },
-    { id: "stage3", label: "3. PQ", icon: ShieldCheck },
-    { id: "stage4", label: "4. Technical", icon: ClipboardList },
-    { id: "stage5", label: "5. Shortfalls", icon: AlertCircle },
-    { id: "stage6", label: "6. Financial", icon: BarChart3 },
-    { id: "stage7", label: "7. Report", icon: ScrollText },
+    { id: "stage3", label: "3. Bids", icon: Upload },
+    { id: "stage4", label: "4. PQ", icon: ShieldCheck },
+    { id: "stage5", label: "5. Technical", icon: ClipboardList },
+    { id: "stage6", label: "6. Shortfalls", icon: AlertCircle },
+    { id: "stage7", label: "7. Financial", icon: BarChart3 },
+    { id: "stage8", label: "8. Report", icon: ScrollText },
 ];
 
 async function safeJson(res: Response): Promise<Record<string, unknown>> {
@@ -115,7 +117,12 @@ export default function TenderWorkspacePage() {
                     <h1 className="text-2xl font-bold tracking-tight text-foreground">{data.title}</h1>
                     <p className="text-muted-foreground mt-1">{data.department} · Budget: ₹{data.budget ? (Number(data.budget) / 1e7).toFixed(1) : "—"} Cr</p>
                 </div>
-                <Button onClick={handleRunEvaluation} disabled={runningEval} size="sm" className="bg-primary text-primary-foreground gap-2">
+                <Button
+                    onClick={handleRunEvaluation}
+                    disabled={runningEval || (data?.bidders?.length ?? 0) === 0}
+                    title={(data?.bidders?.length ?? 0) === 0 ? "Upload at least one bid to run evaluation" : undefined}
+                    size="sm" className="bg-primary text-primary-foreground gap-2"
+                >
                     {runningEval ? <><Loader2 className="w-4 h-4 animate-spin" />Running…</> : <><Play className="w-4 h-4" />Run Evaluation</>}
                 </Button>
             </div>
@@ -143,11 +150,12 @@ export default function TenderWorkspacePage() {
             <div>
                 {activeStage === "stage1" && <AuthoringPanel tenderId={tender_id} />}
                 {activeStage === "stage2" && <PreBidPanel tenderId={tender_id} />}
-                {activeStage === "stage3" && <PQPanel bidders={data.bidders} pqFindings={data.pqFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "pq", findingId: id })} />}
-                {activeStage === "stage4" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
-                {activeStage === "stage5" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
-                {activeStage === "stage6" && <FinancialPanel bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
-                {activeStage === "stage7" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
+                {activeStage === "stage3" && <BidsPanel tenderId={tender_id} bidders={data.bidders} onBidderAdded={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
+                {activeStage === "stage4" && <PQPanel bidders={data.bidders} pqFindings={data.pqFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "pq", findingId: id })} />}
+                {activeStage === "stage5" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
+                {activeStage === "stage6" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
+                {activeStage === "stage7" && <FinancialPanel bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
+                {activeStage === "stage8" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
             </div>
 
             <ActionModal open={modal.open} onOpenChange={v => setModal(m => ({ ...m, open: v }))}
