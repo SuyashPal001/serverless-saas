@@ -1,10 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Clock, CheckCircle2, Loader2 } from "lucide-react";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel,
+    AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+    AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Plus, Clock, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 
 interface TenderRow {
     id: string; rfpNumber: string; title: string; department: string;
@@ -31,14 +37,29 @@ async function fetchTenderList(): Promise<TenderRow[]> {
 export default function TenderListPage() {
     const params = useParams();
     const router = useRouter();
+    const queryClient = useQueryClient();
     const tenant = params.tenant as string;
 
     const { data: allRows = [], isLoading } = useQuery({ queryKey: ["tender-list"], queryFn: fetchTenderList });
+    const [confirmRow, setConfirmRow] = useState<TenderRow | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const pendingWithYou = allRows.filter(r => r.status === "authoring" || r.status === "draft" || r.status === "evaluation");
 
     function openTender(id: string) {
         router.push(`/${tenant}/dashboard/tender-evaluation/${id}`);
+    }
+
+    async function confirmDelete() {
+        if (!confirmRow) return;
+        setIsDeleting(true);
+        try {
+            await fetch(`/api/proxy/api/v1/tender/evaluations/${confirmRow.id}`, { method: "DELETE" });
+            await queryClient.invalidateQueries({ queryKey: ["tender-list"] });
+        } finally {
+            setIsDeleting(false);
+            setConfirmRow(null);
+        }
     }
 
     return (
@@ -73,6 +94,7 @@ export default function TenderListPage() {
                             <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Value</th>
                             <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Stage</th>
                             <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Pending</th>
+                            <th className="w-10" />
                         </tr>
                     </thead>
                     <tbody>
@@ -82,7 +104,7 @@ export default function TenderListPage() {
                             return (
                                 <tr key={t.id}
                                     onClick={() => openTender(t.id)}
-                                    className="border-b border-border/50 transition-colors cursor-pointer hover:bg-muted/20">
+                                    className="group border-b border-border/50 transition-colors cursor-pointer hover:bg-muted/20">
                                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{t.rfpNumber}</td>
                                     <td className="px-4 py-3 font-medium text-foreground max-w-xs truncate">{t.title}</td>
                                     <td className="px-4 py-3 text-muted-foreground text-xs">{t.department}</td>
@@ -103,12 +125,20 @@ export default function TenderListPage() {
                                             </span>
                                         ) : null}
                                     </td>
+                                    <td className="px-2 py-3">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setConfirmRow(t); }}
+                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400"
+                                            title="Delete tender">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </td>
                                 </tr>
                             );
                         })}
                         {allRows.length === 0 && !isLoading && (
                             <tr>
-                                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                                     No tenders yet. Click <b>Create Tender</b> to draft your first RFP.
                                 </td>
                             </tr>
@@ -116,6 +146,26 @@ export default function TenderListPage() {
                     </tbody>
                 </table>
             </div>
+
+            <AlertDialog open={!!confirmRow} onOpenChange={(open) => { if (!open) setConfirmRow(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete tender {confirmRow?.rfpNumber}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This removes its RFP, findings, and bids permanently. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmDelete}
+                            disabled={isDeleting}
+                            className="bg-red-600 hover:bg-red-700 text-white">
+                            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

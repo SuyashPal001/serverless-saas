@@ -20,6 +20,20 @@ function relayHeaders() {
 
 export const tenderRoutes = new Hono<AppEnv>();
 
+// DELETE /tender/evaluations/:id — delete tender + all cascaded child rows
+tenderRoutes.delete('/evaluations/:id', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const [deleted] = await db.delete(tenders)
+    .where(and(eq(tenders.id, id), eq(tenders.tenantId, tenantId)))
+    .returning({ id: tenders.id });
+
+  if (!deleted) return c.json({ error: 'not found' }, 404);
+  return c.json({ ok: true });
+});
+
 // GET /tender/evaluations — list tenders for tenant
 tenderRoutes.get('/evaluations', async (c) => {
   const requestContext = c.get('requestContext') as any;
