@@ -139,7 +139,7 @@ export default function CreateTenderPage() {
                     <ArrowLeft className="w-3 h-3" /> All Tenders
                 </button>
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Create Tender</h1>
-                <p className="text-sm text-muted-foreground mt-1">Fill the template below. Saarthi will draft a complete 8-section RFP.</p>
+                <p className="text-sm text-muted-foreground mt-1">Fill the template below. The Tender Author agent will draft a complete 8-section RFP.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -226,7 +226,7 @@ export default function CreateTenderPage() {
 
                         {!hasFiles && (
                             <Textarea value={form.requirementText} onChange={setField("requirementText")} rows={6}
-                                placeholder="Paste the requirement document text here (indent / DPR / note). The agent will use this to draft a contextually accurate RFP. If left blank, Saarthi drafts from the title and department."
+                                placeholder="Paste the requirement document text here (indent / DPR / note). The Tender Author agent will use this to draft a contextually accurate RFP. If left blank, it drafts from the title and department."
                                 className="text-xs" />
                         )}
 

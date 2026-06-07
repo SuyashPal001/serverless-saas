@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,70 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Loader2, BookOpen, Download, Globe, Lock } from "lucide-react";
 import { RFPSection } from "./components/RFPSection";
 import { ClauseLibraryPanel } from "./components/ClauseLibraryPanel";
+
+const AGENT_STEPS = [
+    { label: "Reading requirement documents and procurement notes…", section: null },
+    { label: "Analysing scope, budget, and technical parameters…", section: null },
+    { label: "Drafting Notice Inviting Tender & Overview", section: "S1" },
+    { label: "Writing Scope of Work and deliverables", section: "S2" },
+    { label: "Composing Eligibility & Pre-Qualification criteria", section: "S3" },
+    { label: "Drafting Technical Specifications and compliance matrix", section: "S4" },
+    { label: "Writing General and Special Conditions of Contract", section: "S5–S6" },
+    { label: "Assembling BOQ and financial price schedule", section: "S7" },
+    { label: "Running CVC compliance review and finalising", section: "S8" },
+]
+
+function GeneratingState() {
+    const [stepIdx, setStepIdx] = useState(0)
+    const [visible, setVisible] = useState(true)
+
+    useEffect(() => {
+        const tick = setInterval(() => {
+            setVisible(false)
+            setTimeout(() => {
+                setStepIdx(i => (i + 1) % AGENT_STEPS.length)
+                setVisible(true)
+            }, 400)
+        }, 3200)
+        return () => clearInterval(tick)
+    }, [])
+
+    const step = AGENT_STEPS[stepIdx]
+
+    return (
+        <div className="flex flex-col items-center justify-center py-20 gap-6">
+            <div className="relative flex items-center justify-center w-14 h-14">
+                <div className="absolute inset-0 rounded-full border-2 border-primary/20 animate-ping" />
+                <div className="absolute inset-1 rounded-full border border-primary/30" />
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+                <p className="text-xs font-semibold text-primary uppercase tracking-widest">Tender Author · drafting RFP</p>
+                <div className="h-6 flex items-center justify-center">
+                    <p className={`text-sm text-foreground transition-opacity duration-400 ${visible ? "opacity-100" : "opacity-0"}`}>
+                        {step.label}
+                    </p>
+                </div>
+                {step.section && (
+                    <div className={`transition-opacity duration-400 ${visible ? "opacity-100" : "opacity-0"}`}>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-primary/10 text-primary border border-primary/20">
+                            {step.section}
+                        </span>
+                    </div>
+                )}
+            </div>
+
+            <div className="flex gap-1.5">
+                {AGENT_STEPS.map((_, i) => (
+                    <div key={i} className={`rounded-full transition-all duration-300 ${i === stepIdx ? "w-4 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-muted-foreground/30"}`} />
+                ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground">~30 seconds · page refreshes automatically</p>
+        </div>
+    )
+}
 
 interface Section {
     id: string; sectionNo: string; title: string; blockType: string;
@@ -79,15 +143,7 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
 
     const generating = data?.tender?.authoringStatus === "generating";
 
-    if (generating) {
-        return (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                <p className="text-sm">Generating RFP — Saarthi is drafting all 8 sections…</p>
-                <p className="text-xs">This takes ~30 seconds. Page auto-refreshes.</p>
-            </div>
-        );
-    }
+    if (generating) return <GeneratingState />;
 
     const failed = data?.tender?.authoringStatus === "failed";
 
