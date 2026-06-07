@@ -25,6 +25,8 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
         : undefined;
 
     const agent = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
+    const SLOW_PREFIXES = ['tender/prebid', 'tender/evaluations', 'tender/authoring/extract-text'];
+    const proxyTimeout = SLOW_PREFIXES.some(p => path.includes(p)) ? 120_000 : 15_000;
 
     try {
         console.log(JSON.stringify({ level: 'info', service: 'web-proxy', msg: 'upstream_request', method: req.method, url }));
@@ -34,7 +36,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
             body,
             dispatcher: agent,
             // @ts-ignore
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(proxyTimeout),
         });
 
         const data = await res.text();

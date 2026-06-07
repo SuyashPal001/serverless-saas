@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,9 @@ export function PreBidPanel({ tenderId }: { tenderId: string }) {
   const [err, setErr] = useState("");
   const [corrForm, setCorrForm] = useState<CorrForm | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preUploadCount = useRef(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["prebid", tenderId],
@@ -69,7 +72,7 @@ export function PreBidPanel({ tenderId }: { tenderId: string }) {
     const encoded = await Promise.all(files.map(async f => {
       const buf = await f.arrayBuffer();
       const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      return { filename: f.name, mimeType: f.type, data: b64 };
+      return { name: f.name, mimeType: f.type || "application/octet-stream", dataBase64: b64 };
     }));
     try {
       const res = await fetch('/api/proxy/api/v1/tender/authoring/extract-text', {
@@ -77,19 +80,22 @@ export function PreBidPanel({ tenderId }: { tenderId: string }) {
         body: JSON.stringify({ files: encoded }),
       });
       const json = await res.json();
-      const results: Array<{ filename: string; text: string; charCount: number; error?: string }> = json.results ?? [];
+      const results: Array<{ filename: string; text: string; status: string; error?: string }> = json.results ?? [];
+      const incoming = new Map(results.map(r => [r.filename, r]));
       setFileStatuses(prev => prev.map(fs => {
-        const r = results.find(x => x.filename === fs.name);
-        if (!r) return fs;
-        return r.error ? { ...fs, status: "failed", error: r.error } : { ...fs, status: "done", charCount: r.charCount };
+        const r = incoming.get(fs.name);
+        if (!r) return { ...fs, status: "failed" as const, error: "No response for file" };
+        return r.status === "done"
+          ? { ...fs, status: "done" as const, charCount: r.text?.length }
+          : { ...fs, status: "failed" as const, error: r.error ?? "Extraction failed" };
       }));
       setExtractedTexts(prev => {
         const next = { ...prev };
-        results.forEach(r => { if (!r.error) next[r.filename] = r.text; });
+        results.forEach(r => { if (r.status === "done" && r.text) next[r.filename] = r.text; });
         return next;
       });
     } catch (e) {
-      setFileStatuses(prev => prev.map(fs => files.some(f => f.name === fs.name) ? { ...fs, status: "failed", error: (e as Error).message } : fs));
+      setFileStatuses(prev => prev.map(fs => files.some(f => f.name === fs.name) ? { ...fs, status: "failed" as const, error: (e as Error).message } : fs));
     }
     e.target.value = '';
   }
@@ -99,14 +105,43 @@ export function PreBidPanel({ tenderId }: { tenderId: string }) {
     setExtractedTexts(prev => { const n = { ...prev }; delete n[name]; return n; });
   }
 
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  function startPollForQueries(prevCount: number) {
+    let elapsed = 0;
+    pollRef.current = setInterval(async () => {
+      elapsed += 2500;
+      if (elapsed > 90_000) {
+        clearInterval(pollRef.current!); pollRef.current = null;
+        setIsParsing(false);
+        setUploadErr("Parsing is taking longer than expected — refresh to check.");
+        return;
+      }
+      try {
+        const data = await fetch(`/api/proxy/api/v1/tender/prebid/${tenderId}`).then(r => r.json());
+        if ((data?.queries ?? []).length > prevCount) {
+          clearInterval(pollRef.current!); pollRef.current = null;
+          setIsParsing(false);
+          invalidate();
+        }
+      } catch { /* ignore transient poll errors */ }
+    }, 2500);
+  }
+
   async function handleUpload() {
     const doneFiles = fileStatuses.filter(f => f.status === "done");
     if (!doneFiles.length) return;
     setUploading(true); setUploadErr("");
     try {
       const texts = doneFiles.map(f => ({ filename: f.name, text: extractedTexts[f.name] }));
-      await apiPost(`/tender/prebid/${tenderId}/upload-queries`, { texts });
-      setFileStatuses([]); setExtractedTexts({}); invalidate();
+      const res = await fetch(`/api/proxy/api/v1/tender/prebid/${tenderId}/upload-queries`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texts }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      preUploadCount.current = queries.length;
+      setFileStatuses([]); setExtractedTexts({});
+      setIsParsing(true);
+      startPollForQueries(preUploadCount.current);
     } catch (e) { setUploadErr((e as Error).message); }
     setUploading(false);
   }
@@ -173,7 +208,12 @@ export function PreBidPanel({ tenderId }: { tenderId: string }) {
             ))}
           </div>
         )}
-        {fileStatuses.some(f => f.status === "done") && (
+        {isParsing && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin text-blue-400" />Parsing queries with AI…
+          </div>
+        )}
+        {!isParsing && fileStatuses.some(f => f.status === "done") && (
           <Button size="sm" className="text-xs gap-1" disabled={uploading} onClick={handleUpload}>
             {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}Upload & Parse Queries
           </Button>

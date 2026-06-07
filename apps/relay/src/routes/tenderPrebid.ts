@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { db, tenders, rfpSections, clauseLibrary } from '@serverless-saas/database'
-import { eq, and, asc } from 'drizzle-orm'
+import { db, tenders, rfpSections, clauseLibrary, prebidQueries } from '@serverless-saas/database'
+import { eq, and, asc, count } from 'drizzle-orm'
 import { tenderAuthorAgent } from '../mastra/agents/tenderAuthorAgent.js'
 
 const INTERNAL_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
@@ -125,7 +125,7 @@ Under 120 words. Cite the specific clause. Formal government register. If amendm
   } catch { return q }
 }
 
-// POST /internal/tender/prebid/parse-queries
+// POST /internal/tender/prebid/parse-queries — returns 202 immediately, writes queries to DB in background
 tenderPrebidRoutes.post('/internal/tender/prebid/parse-queries', async (c) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!checkKey(c as any)) return c.json({ error: 'Unauthorized' }, 401)
@@ -138,24 +138,48 @@ tenderPrebidRoutes.post('/internal/tender/prebid/parse-queries', async (c) => {
   const [tender] = await db.select().from(tenders).where(eq(tenders.id, tenderId))
   if (!tender) return c.json({ error: 'tender not found' }, 404)
 
-  const sections = await db.select().from(rfpSections)
-    .where(and(eq(rfpSections.tenderId, tenderId), eq(rfpSections.tenantId, tenantId)))
-    .orderBy(asc(rfpSections.sectionNo))
+  // Fire background work; relay is a long-running PM2 process so detached promises complete
+  ;(async () => {
+    try {
+      const sections = await db.select().from(rfpSections)
+        .where(and(eq(rfpSections.tenderId, tenderId), eq(rfpSections.tenantId, tenantId)))
+        .orderBy(asc(rfpSections.sectionNo))
+      const rfpCtx = sections.map(s => {
+        const content = (s.content ?? {}) as Record<string, unknown>
+        const contentText = s.blockType === 'prose'
+          ? (content.text as string ?? '') : JSON.stringify(content).slice(0, 300)
+        return `${s.sectionNo}. ${s.title}:\n${contentText}`
+      }).join('\n\n').slice(0, 5000)
 
-  const rfpCtx = sections.map(s => {
-    const content = (s.content ?? {}) as Record<string, unknown>
-    const contentText = s.blockType === 'prose'
-      ? (content.text as string ?? '')
-      : JSON.stringify(content).slice(0, 300)
-    return `${s.sectionNo}. ${s.title}:\n${contentText}`
-  }).join('\n\n').slice(0, 5000)
+      const allQueries: ParsedQuery[] = []
+      for (const t of texts!) {
+        const parsed = await parseQueriesFromText(t.text, t.filename)
+        allQueries.push(...parsed)
+      }
+      const withDrafts = await Promise.all(allQueries.map(q => autoDraft(q, tender, rfpCtx, sections)))
 
-  const allQueries: ParsedQuery[] = []
-  for (const t of texts) {
-    const parsed = await parseQueriesFromText(t.text, t.filename)
-    allQueries.push(...parsed)
-  }
+      const [existing] = await db.select({ n: count() }).from(prebidQueries)
+        .where(and(eq(prebidQueries.tenderId, tenderId), eq(prebidQueries.tenantId, tenantId)))
+      let seq = Number(existing?.n ?? 0)
+      for (const q of withDrafts) {
+        seq++
+        const queryNo = `Q-${String(seq).padStart(3, '0')}`
+        const storedText = q.rfpClauseRef
+          ? `[${q.rfpClauseRef}] ${q.queryText}${q.suggestedChange ? ' | Suggests: ' + q.suggestedChange : ''}`
+          : q.queryText
+        await db.insert(prebidQueries).values({
+          tenderId, tenantId, queryNo,
+          raisedBy: q.raisedBy || null,
+          queryText: storedText,
+          draftedResponse: q.draftedResponse || null,
+          status: q.draftedResponse ? 'draft_ready' : 'received',
+        })
+      }
+      console.log(`[parse-queries] inserted ${withDrafts.length} queries for tender ${tenderId}`)
+    } catch (err) {
+      console.error(`[parse-queries] background error tender ${tenderId}:`, (err as Error).message)
+    }
+  })()
 
-  const withDrafts = await Promise.all(allQueries.map(q => autoDraft(q, tender, rfpCtx, sections)))
-  return c.json({ queries: withDrafts })
+  return c.json({ status: 'parsing' }, 202)
 })

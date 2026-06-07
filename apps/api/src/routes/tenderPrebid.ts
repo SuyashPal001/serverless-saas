@@ -164,7 +164,7 @@ tenderPrebidRoutes.post('/prebid/:tenderId/corrigendum', async (c) => {
   return c.json({ corrigendum: corr, rfpVersionBefore: versionBefore, rfpVersionAfter: versionAfter }, 201);
 });
 
-// POST /tender/prebid/:tenderId/upload-queries — parse a query sheet via relay and bulk-insert
+// POST /tender/prebid/:tenderId/upload-queries — fire-and-forget: relay parses + writes to DB
 tenderPrebidRoutes.post('/prebid/:tenderId/upload-queries', async (c) => {
   const rc = c.get('requestContext') as any;
   const tenantId = rc?.tenant?.id as string;
@@ -178,36 +178,10 @@ tenderPrebidRoutes.post('/prebid/:tenderId/upload-queries', async (c) => {
       method: 'POST',
       headers: relayHeaders(),
       body: JSON.stringify({ tenderId, tenantId, texts: body.texts }),
-      signal: AbortSignal.timeout(150_000),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!relayRes.ok) return c.json({ error: `Relay error ${relayRes.status}` }, 502);
-
-    const { queries } = await relayRes.json() as {
-      queries: Array<{ slNo: number; rfpClauseRef: string; queryText: string; suggestedChange: string; raisedBy: string; draftedResponse?: string }>;
-    };
-
-    const [existing] = await db.select({ n: count() }).from(prebidQueries)
-      .where(and(eq(prebidQueries.tenderId, tenderId), eq(prebidQueries.tenantId, tenantId)));
-    let seq = Number(existing?.n ?? 0);
-
-    const rows = [];
-    for (const q of queries) {
-      seq++;
-      const queryNo = `Q-${String(seq).padStart(3, '0')}`;
-      const storedText = q.rfpClauseRef
-        ? `[${q.rfpClauseRef}] ${q.queryText}${q.suggestedChange ? ' | Suggests: ' + q.suggestedChange : ''}`
-        : q.queryText;
-      const [row] = await db.insert(prebidQueries).values({
-        tenderId, tenantId, queryNo,
-        raisedBy: q.raisedBy || null,
-        queryText: storedText,
-        draftedResponse: q.draftedResponse || null,
-        status: q.draftedResponse ? 'draft_ready' : 'received',
-      }).returning();
-      rows.push(row);
-    }
-
-    return c.json({ inserted: rows.length, queries: rows });
+    return c.json({ status: 'parsing' }, 202);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }
