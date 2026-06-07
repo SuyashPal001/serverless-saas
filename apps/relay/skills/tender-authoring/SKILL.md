@@ -44,20 +44,20 @@ review, edit, and approval.
 Draft these sections, in order. Each has a fixed block-type so the UI can render it and
 the downstream evaluation engine can read it as structured data.
 
-| # | Section | Block-type | Must contain | Feeds downstream stage |
-|---|---------|-----------|--------------|------------------------|
-| 1 | Objective / Overview | prose | What is procured, why, estimated value, mode, contract duration | (orientation) |
-| 2 | Scope of Work | prose | What the vendor shall deliver — derived from the requirement doc | — |
-| 3 | Eligibility / PQ Criteria | criteria-table | Per-criterion: criterion, threshold, verification document | **PQ Evaluation** |
-| 4 | Technical Specifications | criteria-table | Clause-wise mandatory/desirable requirements with measurable acceptance | **Technical Evaluation** |
-| 5 | SLA / KPI | spec-table | Service levels with metric, target, measurement, penalty | Technical / contract |
-| 6 | BOQ / Commercial Format | line-item-table | Priced line items (item, unit, quantity); price left blank for bidders | **Financial Evaluation (L1)** |
-| 7 | Evaluation Methodology | prose | Two-bid process, technical qualifying basis, L1 (or QCBS weightage) | Governs all eval stages |
-| 8 | Timeline & Key Dates | spec-table | Milestones, bid validity, submission deadline, contract duration | Pre-bid / schedule |
+| ID | Section | Block-type | Must contain | Feeds downstream stage |
+|----|---------|-----------|--------------|------------------------|
+| S1 | Notice Inviting Tender & Overview | prose | What is procured, why, estimated value, mode, contract duration, key dates | (orientation) |
+| S2 | Eligibility / Pre-Qualification Criteria | criteria-table | Per-criterion: criterion, threshold, verification document | **PQ Evaluation** → `tenders.pqCriteria` |
+| S3 | Scope of Work | prose | What the vendor shall deliver — derived from the requirement doc | — |
+| S4 | Technical Specifications | criteria-table | Clause-wise mandatory requirements with measurable acceptance criteria | **Technical Evaluation** → `tenderClauses` |
+| S5 | Service Levels (SLA / KPI) | spec-table | Service levels: metric, target, measurement | Technical / contract |
+| S6 | Bill of Quantities | line-item-table | Priced line items (item, unit, quantity); price left blank for bidders | **Financial Evaluation (L1)** |
+| S7 | Evaluation Methodology | prose | Two-bid process, technical qualifying basis, L1 (or QCBS weightage) | Governs all eval stages |
+| S8 | Contract Terms, Compliance & Security | prose | Payment, LD, PBG, data residency, VAPT, governing law | Contract |
 
-Sections 3, 4, 6, 7 are the **yardstick**: the exact criteria/clauses/BOQ/method you draft
-here are what the evaluation engine later measures every bid against. Draft them precisely
-and measurably.
+**S4 and S5 are separate — do not merge them.** S4 feeds `tenderClauses` (the exact yardstick the
+evaluator measures every bid against). SLA rows belong in S5; never put them in S4.
+Sections S2, S4, S6, S7 are the yardstick — draft them precisely and measurably.
 
 ## Eligibility / PQ Criteria — drafting norms (load-bearing section)
 
@@ -132,36 +132,34 @@ The published RFP is the final approved version.
 
 ## Output contract (structured — the UI renders this, the engine reads it)
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON matching this exact shape — no markdown, no wrapper object:
 
 ```json
-{
-  "document": { "title": "...", "department": "...", "estimatedValue": "...", "mode": "two-bid/L1" },
-  "sections": [
-    {
-      "id": "eligibility-pq",
-      "title": "Eligibility / Pre-Qualification Criteria",
-      "type": "criteria-table",
-      "clauses": [
-        {
-          "ref": "PQ-1",
-          "content": "Average annual turnover ≥ ₹X Cr over last 3 FYs",
-          "fields": { "criterion": "...", "operator": ">=", "threshold": "...", "unit": "...", "verification_document": "...", "justification": "..." },
-          "source": "library",
-          "libraryRef": "CL-EL-014"
-        }
-      ],
-      "cvcFlags": [ { "clause_ref": "PQ-1", "concern": "...", "suggestion": "..." } ]
-    }
-  ],
-  "version": 1
-}
+{"sections":[
+  {"sectionNo":"S1","title":"Notice Inviting Tender & Overview","blockType":"prose",
+   "content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}},
+  {"sectionNo":"S2","title":"Eligibility / Pre-Qualification Criteria","blockType":"criteria-table",
+   "content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},
+  {"sectionNo":"S3","title":"Scope of Work","blockType":"prose",
+   "content":{"text":"...","clauses":[]}},
+  {"sectionNo":"S4","title":"Technical Specifications","blockType":"criteria-table",
+   "content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},
+  {"sectionNo":"S5","title":"Service Levels (SLA / KPI)","blockType":"spec-table",
+   "content":{"rows":[{"metric":"...","target":"...","measurement":"..."}],"clauses":[]}},
+  {"sectionNo":"S6","title":"Bill of Quantities","blockType":"line-item-table",
+   "content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},
+  {"sectionNo":"S7","title":"Evaluation Methodology","blockType":"prose",
+   "content":{"text":"...","clauses":[]}},
+  {"sectionNo":"S8","title":"Contract Terms, Compliance & Security","blockType":"prose",
+   "content":{"text":"...","clauses":[{"clauseNo":"8.1","title":"...","text":"...","source":"library","libraryRef":"CL-013"}]}}
+]}
 ```
 
 Rules:
-- Every section present per the canonical structure; omit none.
-- Structured `fields` populated for criteria/spec/line-item rows so downstream stages parse them.
+- All 8 sections present in S1–S8 order; omit none.
+- `criteria-table` rows use `{criterion, threshold, verification}` fields.
+- `spec-table` rows use `{metric, target, measurement}` fields.
+- `line-item-table` rows use `{slNo, item, unit, qty, remarks}` fields.
+- `prose` sections use `{text, clauses[]}`.
 - `source` + `libraryRef` on every clause (provenance).
-- Never output a value not grounded in the inputs. If the requirement document lacks
-  something needed (e.g. no estimated value), state the gap in that section rather than
-  inventing a figure.
+- Never output a value not grounded in the inputs.

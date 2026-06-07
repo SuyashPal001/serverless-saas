@@ -164,7 +164,7 @@ ${rfpSnippet}`
   }
 
   await db.delete(tenderClauses).where(
-    and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId))
+    and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId), eq(tenderClauses.source, 'ingested'))
   )
 
   await db.insert(tenderClauses).values(
@@ -175,6 +175,7 @@ ${rfpSnippet}`
       title:      c.title ?? c.clauseNo ?? '?',
       content:    c.content ?? '',
       category:   c.category ?? 'technical',
+      source:     'ingested' as const,
       sourcePage: typeof c.sourcePage === 'number' ? c.sourcePage : null,
     }))
   )

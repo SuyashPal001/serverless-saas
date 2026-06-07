@@ -160,7 +160,7 @@ Clause library (set source:"library" + libraryRef to the clause code when reusin
 ${libraryText || '(None)'}
 
 OUTPUT FORMAT — return ONLY this JSON, no markdown:
-{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null,"cvcFlag":null}]}},{"sectionNo":"S2","title":"Eligibility and Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications and SLAs","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S5","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S7","title":"Contract Terms","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"7.1","title":"...","text":"...","source":"library","libraryRef":"CL-013","cvcFlag":null}]}},{"sectionNo":"S8","title":"Compliance and Security","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}}]}`
+{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender & Overview","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}},{"sectionNo":"S2","title":"Eligibility / Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S5","title":"Service Levels (SLA / KPI)","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S7","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S8","title":"Contract Terms, Compliance & Security","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"8.1","title":"...","text":"...","source":"library","libraryRef":"CL-013"}]}}]}`
 }
 
 interface LibraryRow { id: string; code: string; category: string; title: string; content: string; tags: unknown; version: number; isActive: boolean; tenantId: string; createdAt: Date; updatedAt: Date }
@@ -181,20 +181,23 @@ async function saveRfpSections(
   }
 
   const s2 = (sections as Array<{ sectionNo: string; content: { rows?: unknown[] } }>).find(s => s.sectionNo === 'S2')
-  const s4 = (sections as Array<{ sectionNo: string; content: { rows?: Array<{ metric: string; target: string; measurement: string }> } }>).find(s => s.sectionNo === 'S4')
+  const s4 = (sections as Array<{ sectionNo: string; content: { rows?: Array<{ criterion: string; threshold: string; verification: string }> } }>).find(s => s.sectionNo === 'S4')
 
   if (s2?.content?.rows) {
     await db.update(tenders).set({ pqCriteria: { criteria: s2.content.rows } }).where(eq(tenders.id, tenderId))
   }
 
   if (s4?.content?.rows) {
-    await db.delete(tenderClauses).where(and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId)))
+    await db.delete(tenderClauses).where(
+      and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId), eq(tenderClauses.source, 'authored'))
+    )
     const rows = s4.content.rows.map((r, i) => ({
       tenderId, tenantId,
       clauseNo: `4.${i + 1}`,
-      title: r.metric,
-      content: `Target: ${r.target}; Measurement: ${r.measurement}`,
+      title: r.criterion,
+      content: `Threshold: ${r.threshold}; Verification: ${r.verification}`,
       category: 'technical',
+      source: 'authored' as const,
     }))
     if (rows.length) await db.insert(tenderClauses).values(rows)
   }

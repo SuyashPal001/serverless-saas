@@ -60,6 +60,7 @@ export const tenderClauses = pgTable('tender_clauses', {
   title:     text('title').notNull(),
   content:   text('content').notNull(),
   category:   text('category').notNull().default('technical'),
+  source:     text('source').notNull().default('ingested'), // 'authored' | 'ingested'
   sourcePage: integer('source_page'),                   // page in RFP where clause appears
   version:    integer('version').notNull().default(1),
   createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
