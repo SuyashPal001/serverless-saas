@@ -207,31 +207,46 @@ export async function ingestTenderDocs(
   }
 
   const rfpFile = allFiles.find(f => f.toLowerCase() === 'rfp.pdf')
-  if (!rfpFile) {
+  const bidderFiles = allFiles.filter(f => /^bidder-/i.test(f))
+
+  if (!bidderFiles.length) {
     throw new Error(
-      `rfp.pdf not found in ${inputDir}.\n` +
-      `The RFP document must be named exactly rfp.pdf.`
+      `No bidder PDF files found in ${inputDir}.\n` +
+      `Add bidder-1.pdf, bidder-2.pdf, … (one per bidder).`
     )
   }
 
-  const bidderFiles = allFiles.filter(f => /^bidder-/i.test(f))
-  const rfpPath = path.join(inputDir, rfpFile)
-  const rfpFolderId = tenderId  // RFP chunks scoped to tenderId
+  let rfpIngested = false
+  let clauseCount = 0
   const rfpFileIdVal = fileId(`${tenantId}:rfp:${tenderId}`)
 
-  // Ingest RFP
-  try {
-    await runIngest({ filePath: rfpPath, tenantId, personFolderId: rfpFolderId, label: 'rfp', identifier: `tender:${tenderId}:rfp` })
-  } catch (err) {
-    throw new Error(`RFP ingestion failed: ${(err as Error).message}`)
-  }
-
-  // Extract clauses from RFP with page provenance
-  let clauseCount = 0
-  try {
-    clauseCount = await extractAndSaveClauses(tenderId, tenantId, rfpPath)
-  } catch (err) {
-    throw new Error(`Clause extraction failed: ${(err as Error).message}`)
+  if (rfpFile) {
+    // RFP present — ingest + extract clauses (source='ingested')
+    const rfpPath = path.join(inputDir, rfpFile)
+    const rfpFolderId = tenderId
+    try {
+      await runIngest({ filePath: rfpPath, tenantId, personFolderId: rfpFolderId, label: 'rfp', identifier: `tender:${tenderId}:rfp` })
+    } catch (err) {
+      throw new Error(`RFP ingestion failed: ${(err as Error).message}`)
+    }
+    try {
+      clauseCount = await extractAndSaveClauses(tenderId, tenantId, rfpPath)
+    } catch (err) {
+      throw new Error(`Clause extraction failed: ${(err as Error).message}`)
+    }
+    rfpIngested = true
+  } else {
+    // RFP absent — check for authored clauses as yardstick
+    const authoredClauses = await db.select({ id: tenderClauses.id }).from(tenderClauses).where(
+      and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId), eq(tenderClauses.source, 'authored'))
+    )
+    if (!authoredClauses.length) {
+      throw new Error(
+        'No RFP yardstick: provide rfp.pdf, or author the tender first (Create → generate RFP).'
+      )
+    }
+    clauseCount = authoredClauses.length
+    console.log(`[tenderIngest] rfp.pdf absent — using ${clauseCount} authored clauses as yardstick`)
   }
 
   // Ingest bidder documents — use filename stem as display label
@@ -256,7 +271,7 @@ export async function ingestTenderDocs(
   }
 
   return {
-    rfpIngested: true,
+    rfpIngested,
     rfpFileId: rfpFileIdVal,
     bidderMap,
     clauseCount,
