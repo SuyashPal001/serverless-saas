@@ -4,27 +4,6 @@ import { eq, and } from 'drizzle-orm'
 import { tenderAuthorAgent } from '../mastra/agents/tenderAuthorAgent.js'
 
 const INTERNAL_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
-const GATEWAY_URL = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001') + '/v1/chat/completions'
-const CLOUD_MODEL = process.env.MASTRA_CLOUD_MODEL ?? 'gemini-2.5-flash'
-
-// Used only for single-section regeneration (different task from full authoring)
-async function generateJsonFromGateway(systemInstruction: string, userPrompt: string): Promise<string> {
-  const res = await fetch(GATEWAY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer placeholder' },
-    body: JSON.stringify({
-      model: CLOUD_MODEL,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`Gateway error ${res.status}: ${await res.text()}`)
-  const data = await res.json() as { choices: Array<{ message: { content: string } }> }
-  return data.choices?.[0]?.message?.content ?? ''
-}
 
 function checkKey(c: { req: { header: (k: string) => string | undefined } }): boolean {
   const key = c.req.header('x-internal-service-key') ?? ''
@@ -108,17 +87,36 @@ tenderAuthoringRoutes.post('/internal/tender/section/regenerate', async (c) => {
     .where(and(eq(clauseLibrary.tenantId, tenantId), eq(clauseLibrary.isActive, true)))
   const libraryText = libraryRows.map(cl => `${cl.code} [${cl.category}] "${cl.title}": ${cl.content}`).join('\n')
   const templateFields = (tender.templateFields ?? {}) as Record<string, unknown>
+  const requirementText = tender.requirementText ?? ''
 
-  const systemInstruction = `You are a government procurement specialist. Return ONLY valid JSON for a single RFP section object matching exactly: {"sectionNo":"...","title":"...","blockType":"...","content":{...}}`
-  const userPrompt = `Redraft this RFP section.
-Tender: ${tender.title} | Dept: ${tender.department} | Category: ${templateFields.category ?? 'IT/Software'}
-Section: ${section.sectionNo} - ${section.title} (blockType: ${section.blockType})
-${steer ? `Officer steer: ${steer}` : ''}
-Clause library:\n${libraryText}`
+  const sectionFormat = singleSectionOutputFormat(section.sectionNo, section.blockType)
+  const prompt = `Redraft ONLY section ${section.sectionNo} of this RFP. Return a single JSON section object.
+
+Title: ${tender.title}
+Department: ${tender.department}
+Estimated Value: Rs.${tender.budget ?? 'TBD'}
+Category: ${templateFields.category ?? 'IT/Software'}
+Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
+Contract Duration: ${templateFields.contractDuration ?? '36 months'}
+
+Requirement Document:
+${requirementText.slice(0, 6000) || '(Draft from title and department context.)'}
+
+Clause library (set source:"library" + libraryRef to the clause code when reusing):
+${libraryText || '(None)'}
+${steer ? `\nOfficer steer: ${steer}` : ''}
+
+OUTPUT FORMAT — return ONLY this JSON object, no markdown, no array:
+${sectionFormat}`
 
   try {
-    const raw = await generateJsonFromGateway(systemInstruction, userPrompt)
-    const parsed = JSON.parse(raw)
+    const agentResult = await tenderAuthorAgent.generate(prompt)
+    const agentText = (agentResult.text ?? '').trim()
+    const jsonStart = agentText.indexOf('{')
+    const jsonEnd = agentText.lastIndexOf('}')
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('Agent returned no JSON object')
+    const parsed = JSON.parse(agentText.slice(jsonStart, jsonEnd + 1))
+    if (!parsed.content) throw new Error('Regenerated section missing content field')
     const newVersion = section.version + 1
     await db.insert(rfpSectionVersions).values({
       sectionId, tenderId, tenantId, version: section.version,
@@ -201,4 +199,17 @@ async function saveRfpSections(
     }))
     if (rows.length) await db.insert(tenderClauses).values(rows)
   }
+}
+
+function singleSectionOutputFormat(sectionNo: string, blockType: string): string {
+  const base = `{"sectionNo":"${sectionNo}","title":"...","blockType":"${blockType}","content":`
+  if (blockType === 'prose')
+    return base + `{"text":"...","clauses":[{"clauseNo":"${sectionNo}.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}}`
+  if (blockType === 'criteria-table')
+    return base + `{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}}`
+  if (blockType === 'spec-table')
+    return base + `{"rows":[{"metric":"...","target":"...","measurement":"..."}],"clauses":[]}}`
+  if (blockType === 'line-item-table')
+    return base + `{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}}`
+  return base + `{}}`
 }
