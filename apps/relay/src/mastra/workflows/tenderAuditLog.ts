@@ -1,6 +1,5 @@
 import { createHash } from 'crypto'
-import { db } from '@serverless-saas/database'
-import { auditLog } from '@serverless-saas/database/schema/audit'
+import { db, auditLog } from '@serverless-saas/database'
 import { eq, desc } from 'drizzle-orm'
 
 interface TenderAuditLogInput {
