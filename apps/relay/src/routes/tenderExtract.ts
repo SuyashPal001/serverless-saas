@@ -68,26 +68,23 @@ async function extractText(filename: string, mimeType: string, buf: Buffer): Pro
 }
 
 // POST /internal/tender/extract-text
-// Accepts multipart/form-data with one or more files under field "files"
-// Returns [{filename, text, status, error?}]
+// Accepts { files: [{ name, mimeType, dataBase64 }] }
+// Returns { results: [{filename, text, status, error?}] }
 tenderExtractRoutes.post('/internal/tender/extract-text', async (c) => {
-  let formData: FormData
-  try {
-    formData = await c.req.formData()
-  } catch {
-    return c.json({ error: 'Expected multipart/form-data' }, 400)
-  }
+  let body: { files?: Array<{ name?: string; mimeType?: string; dataBase64?: string }> }
+  try { body = await c.req.json() } catch { return c.json({ error: 'Expected JSON body' }, 400) }
 
-  const entries = formData.getAll('files') as File[]
+  const entries = body.files ?? []
   if (!entries.length) return c.json({ error: 'No files provided' }, 400)
   if (entries.length > 5) return c.json({ error: 'Maximum 5 files per request' }, 400)
 
-  const results = await Promise.all(entries.map(async (file) => {
-    const filename = file.name ?? 'unnamed'
+  const results = await Promise.all(entries.map(async (entry) => {
+    const filename = entry.name ?? 'unnamed'
     try {
-      const buf = Buffer.from(await file.arrayBuffer())
+      if (!entry.dataBase64) throw new Error('Missing dataBase64')
+      const buf = Buffer.from(entry.dataBase64, 'base64')
       if (buf.length > 20 * 1024 * 1024) throw new Error('File too large (max 20 MB)')
-      const text = await extractText(filename, file.type ?? '', buf)
+      const text = await extractText(filename, entry.mimeType ?? '', buf)
       if (!text) throw new Error('No text could be extracted from this file')
       console.log(`[tenderExtract] ${filename} → ${text.length} chars`)
       return { filename, text, status: 'done' as const }

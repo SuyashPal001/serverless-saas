@@ -41,11 +41,19 @@ export default function CreateTenderPage() {
         setFileStatuses(files.map(f => ({ name: f.name, status: "extracting" })));
         setForm(f => ({ ...f, requirementText: "" }));
 
-        const fd = new FormData();
-        files.forEach(f => fd.append("files", f));
+        // Base64-encode each file and send as JSON — avoids API Gateway multipart corruption
+        const encoded = await Promise.all(files.map(async (f) => {
+            const buf = await f.arrayBuffer();
+            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+            return { name: f.name, mimeType: f.type || "application/octet-stream", dataBase64: b64 };
+        }));
 
         try {
-            const res = await fetch("/api/proxy/api/v1/tender/authoring/extract-text", { method: "POST", body: fd });
+            const res = await fetch("/api/proxy/api/v1/tender/authoring/extract-text", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ files: encoded }),
+            });
             const data = await res.json() as { results?: Array<{ filename: string; text: string; status: string; error?: string }> };
             const results = data.results ?? [];
 

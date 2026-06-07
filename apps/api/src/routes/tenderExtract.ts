@@ -6,20 +6,19 @@ const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
 
 export const tenderExtractRoutes = new Hono<AppEnv>();
 
-// POST /tender/authoring/extract-text — forward multipart to relay, return [{filename, text, status}]
+// POST /tender/authoring/extract-text — forward base64 JSON to relay
 tenderExtractRoutes.post('/authoring/extract-text', async (c) => {
-  const body = await c.req.raw.arrayBuffer();
-  const contentType = c.req.header('content-type') ?? '';
+  const body = await c.req.json();
 
   try {
     const key = internalKey();
     const res = await fetch(`${relayUrl()}/internal/tender/extract-text`, {
       method: 'POST',
       headers: {
-        'content-type': contentType,
+        'content-type': 'application/json',
         ...(key ? { 'x-internal-service-key': key } : {}),
       },
-      body,
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(120_000),
     });
     const data = await res.json();
