@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { eq, and, lt, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskSteps, taskComments, taskEvents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskSteps, taskComments, taskEvents, agents } from '@serverless-saas/database/schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
@@ -39,7 +39,9 @@ export async function handleStartStep(c: Context<AppEnv>) {
     if (!step) return c.json({ error: 'Step not found' }, 404);
 
     const { tenantId } = step;
-    const task = (await db.select({ agentId: agentTasks.agentId }).from(agentTasks)
+    const task = (await db.select({ agentId: agentTasks.agentId, agentName: agents.name })
+        .from(agentTasks)
+        .leftJoin(agents, eq(agents.id, agentTasks.agentId))
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId))).limit(1))[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
 
@@ -51,7 +53,7 @@ export async function handleStartStep(c: Context<AppEnv>) {
     await db.update(taskSteps).set({ status: 'running', startedAt: new Date(), updatedAt: new Date() }).where(eq(taskSteps.id, stepId));
     await db.update(agentTasks).set({ status: 'in_progress', updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'status_changed', payload: { stepId, stepStatus: 'running' } });
-    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_started', resource: 'task_step', resourceId: stepId, metadata: { taskId, stepNumber: step.stepNumber }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_started', resource: 'task_step', resourceId: stepId, metadata: { taskId, stepNumber: step.stepNumber, agentName: task.agentName ?? null }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'running' });
     getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
 
@@ -116,7 +118,9 @@ export async function handleCompleteStep(c: Context<AppEnv>) {
     if (!step) return c.json({ error: 'Step not found' }, 404);
 
     const { tenantId } = step;
-    const task = (await db.select({ agentId: agentTasks.agentId }).from(agentTasks).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId))).limit(1))[0];
+    const task = (await db.select({ agentId: agentTasks.agentId, agentName: agents.name })
+        .from(agentTasks).leftJoin(agents, eq(agents.id, agentTasks.agentId))
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId))).limit(1))[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
 
     const { agentOutput, summary, toolResult, reasoning } = parsed.data;
@@ -130,7 +134,7 @@ export async function handleCompleteStep(c: Context<AppEnv>) {
     }
 
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'step_completed', payload: { stepId } });
-    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_completed', resource: 'task_step', resourceId: stepId, metadata: { taskId, summary: summary ?? null }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_completed', resource: 'task_step', resourceId: stepId, metadata: { taskId, summary: summary ?? null, agentName: task.agentName ?? null }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'done', agentOutput, summary });
     getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
 
@@ -152,7 +156,9 @@ export async function handleFailStep(c: Context<AppEnv>) {
     if (!step) return c.json({ error: 'Step not found' }, 404);
 
     const { tenantId } = step;
-    const task = (await db.select({ agentId: agentTasks.agentId }).from(agentTasks).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId))).limit(1))[0];
+    const task = (await db.select({ agentId: agentTasks.agentId, agentName: agents.name })
+        .from(agentTasks).leftJoin(agents, eq(agents.id, agentTasks.agentId))
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId))).limit(1))[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
 
     const failError = parsed.data.error;
@@ -167,7 +173,7 @@ export async function handleFailStep(c: Context<AppEnv>) {
 
     await db.update(agentTasks).set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'step_failed', payload: { stepId, error: failError } });
-    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_failed', resource: 'task_step', resourceId: stepId, metadata: { taskId, error: failError }, traceId: traceId }).catch((err: unknown) => console.error('Audit log write failed:', err));
+    db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_failed', resource: 'task_step', resourceId: stepId, metadata: { taskId, error: failError, agentName: task.agentName ?? null }, traceId: traceId }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'failed' });
     await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'blocked', blockedReason: failError });
     getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
