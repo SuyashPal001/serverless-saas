@@ -36,6 +36,15 @@ async function pdfText(filePath: string): Promise<string> {
   return result.text ?? ''
 }
 
+// Returns text with [PAGE N] markers so the model can report sourcePage per clause.
+async function pdfTextByPage(filePath: string): Promise<string> {
+  const buf = fs.readFileSync(filePath)
+  const { PDFParse } = await import('pdf-parse')
+  const parser = new PDFParse({ data: new Uint8Array(buf) })
+  const result = await parser.getText({ pageJoiner: '[PAGE page_number]' }) as { text?: string }
+  return result.text ?? ''
+}
+
 function fileId(seed: string): string {
   const h = crypto.createHash('sha256').update(seed).digest('hex')
   return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20,32)}`
@@ -92,22 +101,33 @@ async function runIngest(params: {
 }
 
 async function extractAndSaveClauses(
-  tenderId: string, tenantId: string, rfpText: string
+  tenderId: string, tenantId: string, rfpPath: string
 ): Promise<number> {
   const model = (process.env.TENDER_MODEL ?? '').trim()
   if (!model) throw new Error('TENDER_MODEL env var is not set — cannot extract clauses')
 
+  // Per-page text with [PAGE N] markers so the model can report sourcePage.
+  const pageAnnotated = await pdfTextByPage(rfpPath)
+  // Cap at ~12 000 chars to stay within model context; cover early pages where clauses live.
+  const rfpSnippet = pageAnnotated.slice(0, 12000)
+
   const systemPrompt = `You are parsing a government RFP document to extract technical requirement clauses.
+The text contains [PAGE N] markers indicating page boundaries.
 Return ONLY valid JSON — no markdown, no explanation.
 Format:
-{"clauses":[{"clauseNo":"3.2","title":"Short title","content":"Full requirement text","category":"technical"}]}`
+{"clauses":[{"clauseNo":"3.2","title":"Short title","content":"Full requirement text","category":"technical","sourcePage":5}]}
 
-  const userPrompt = `Extract all technical requirement clauses from the following RFP text.
-Include only clauses that state a specific technical, operational, or compliance requirement.
-Exclude administrative/legal boilerplate.
+RULES:
+- Only extract clauses explicitly present in the text — never invent or infer.
+- sourcePage must be the integer page number (from the nearest preceding [PAGE N] marker) where the clause appears; null if not determinable.
+- If no recognizable requirement clauses are found, return {"clauses":[],"noClausesReason":"<short reason>"}.`
 
-RFP TEXT (first 6000 chars):
-${rfpText.slice(0, 6000)}`
+  const userPrompt = `Extract all technical requirement clauses from this RFP text.
+Include clauses stating specific technical, operational, or compliance requirements.
+Exclude pure administrative/legal boilerplate.
+
+RFP TEXT:
+${rfpSnippet}`
 
   const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
     method: 'POST',
@@ -130,17 +150,19 @@ ${rfpText.slice(0, 6000)}`
   const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
   const raw = (data.choices?.[0]?.message?.content ?? '').trim()
   if (!raw) throw new Error('Model returned empty content for clause extraction')
-  // Strip markdown fences if present (Vertex doesn't enforce response_format)
   const content = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim()
 
-  const parsed = JSON.parse(content) as { clauses?: Array<{
-    clauseNo: string; title: string; content: string; category?: string
-  }> }
+  const parsed = JSON.parse(content) as {
+    clauses?: Array<{ clauseNo: string; title: string; content: string; category?: string; sourcePage?: number | null }>
+    noClausesReason?: string
+  }
 
   const items = parsed.clauses ?? []
-  if (items.length === 0) throw new Error('Model extracted 0 clauses — check RFP text and model')
+  if (items.length === 0) {
+    const reason = parsed.noClausesReason ?? 'model extracted 0 clauses'
+    throw new Error(`No clauses extracted — ${reason}`)
+  }
 
-  // Delete stale clauses for this tender before re-inserting
   await db.delete(tenderClauses).where(
     and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId))
   )
@@ -149,10 +171,11 @@ ${rfpText.slice(0, 6000)}`
     items.map(c => ({
       tenderId,
       tenantId,
-      clauseNo: c.clauseNo ?? '?',
-      title: c.title ?? c.clauseNo ?? '?',
-      content: c.content ?? '',
-      category: c.category ?? 'technical',
+      clauseNo:   c.clauseNo ?? '?',
+      title:      c.title ?? c.clauseNo ?? '?',
+      content:    c.content ?? '',
+      category:   c.category ?? 'technical',
+      sourcePage: typeof c.sourcePage === 'number' ? c.sourcePage : null,
     }))
   )
 
@@ -202,11 +225,10 @@ export async function ingestTenderDocs(
     throw new Error(`RFP ingestion failed: ${(err as Error).message}`)
   }
 
-  // Extract clauses from RFP text
+  // Extract clauses from RFP with page provenance
   let clauseCount = 0
   try {
-    const rfpText = await pdfText(rfpPath)
-    clauseCount = await extractAndSaveClauses(tenderId, tenantId, rfpText)
+    clauseCount = await extractAndSaveClauses(tenderId, tenantId, rfpPath)
   } catch (err) {
     throw new Error(`Clause extraction failed: ${(err as Error).message}`)
   }

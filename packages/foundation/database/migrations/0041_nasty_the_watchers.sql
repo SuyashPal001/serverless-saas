@@ -1,0 +1,1 @@
+ALTER TABLE "tender_clauses" ADD COLUMN "source_page" integer;

@@ -59,9 +59,10 @@ export const tenderClauses = pgTable('tender_clauses', {
   clauseNo:  text('clause_no').notNull(),               // "3.8"
   title:     text('title').notNull(),
   content:   text('content').notNull(),
-  category:  text('category').notNull().default('technical'),
-  version:   integer('version').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  category:   text('category').notNull().default('technical'),
+  sourcePage: integer('source_page'),                   // page in RFP where clause appears
+  version:    integer('version').notNull().default(1),
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Stage 2 flashback — corrigenda
