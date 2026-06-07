@@ -181,7 +181,7 @@ export default function CreateTenderPage() {
                         )}
                         <Textarea value={form.requirementText} onChange={setField("requirementText")} rows={6}
                             placeholder="Paste the requirement document text here (indent / DPR / note). The agent will use this to draft a contextually accurate RFP. If left blank, Saarthi drafts from the title and department." className="text-xs" />
-                        <p className="text-xs text-muted-foreground">Scanned PDFs are OCR'd via Gemini Vision. The agent reads up to 8,000 characters.</p>
+                        <p className="text-xs text-muted-foreground">Scanned PDFs are OCR'd automatically. Multi-file inputs are combined and sent to the agent in full.</p>
                     </div>
                 </Section>
 
