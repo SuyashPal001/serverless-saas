@@ -114,6 +114,11 @@ export default function CreateTenderPage() {
                             <select value={form.procurementMode} onChange={setField("procurementMode")} className={inputCls}>
                                 {PROC_MODES.map(m => <option key={m}>{m}</option>)}
                             </select>
+                            {form.procurementMode !== PROC_MODES[0] && (
+                                <p className="mt-1.5 text-xs text-amber-400 leading-relaxed">
+                                    This demo runs the Two-Bid (Technical + Financial) evaluation flow. The production platform supports all procurement methods; this mode is not enabled in the demo.
+                                </p>
+                            )}
                         </Field>
                         <Field label="Contract Duration (months)"><input value={form.contractDuration} onChange={setField("contractDuration")} type="number" min="1" max="120" className={inputCls} /></Field>
                     </div>
@@ -141,7 +146,7 @@ export default function CreateTenderPage() {
 
                 {error && <p className="text-sm text-red-400">{error}</p>}
 
-                <Button type="submit" disabled={submitting || form.category !== "IT/Software"} className="w-full bg-primary text-primary-foreground gap-2">
+                <Button type="submit" disabled={submitting || form.category !== "IT/Software" || form.procurementMode !== PROC_MODES[0]} className="w-full bg-primary text-primary-foreground gap-2">
                     {submitting ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating RFP — this takes ~30s…</>) : "Generate RFP →"}
                 </Button>
             </form>
