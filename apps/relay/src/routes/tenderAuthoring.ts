@@ -45,6 +45,7 @@ async function generateRfpBackground(
   const requirementText = tender.requirementText ?? ''
 
   try {
+    console.log(`[tender/author] requirementText length: ${requirementText.length} chars`)
     const agentResult = await tenderAuthorAgent.generate(
       buildUserPrompt({ tender, templateFields, requirementText, libraryText })
     )
@@ -107,7 +108,7 @@ Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
 Contract Duration: ${templateFields.contractDuration ?? '36 months'}
 
 Requirement Document:
-${requirementText.slice(0, 6000) || '(Draft from title and department context.)'}
+${requirementText.slice(0, 200000) || '(Draft from title and department context.)'}
 
 Clause library (set source:"library" + libraryRef to the clause code when reusing):
 ${libraryText || '(None)'}
@@ -192,7 +193,7 @@ Derived Annual Turnover Threshold for S2: ${turnoverThresholdCr}
 Key Dates: ${JSON.stringify(templateFields.keyDates ?? {})}
 
 Requirement Document:
-${requirementText.slice(0, 6000) || '(Draft from title and department context.)'}
+${requirementText.slice(0, 200000) || '(Draft from title and department context.)'}
 
 Clause library (set source:"library" + libraryRef to the clause code when reusing):
 ${libraryText || '(None)'}
