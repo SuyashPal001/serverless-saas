@@ -178,8 +178,7 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={publishMutation.isPending}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}
-                            className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <AlertDialogAction onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}>
                             {publishMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Publishing…</> : "Publish RFP"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
