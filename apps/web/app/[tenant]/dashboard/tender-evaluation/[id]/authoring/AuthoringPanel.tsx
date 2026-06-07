@@ -20,6 +20,11 @@ interface RFPData {
 
 async function fetchAuthoring(tenderId: string): Promise<RFPData> {
     const res = await fetch(`/api/proxy/api/v1/tender/authoring/${tenderId}`);
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+        // Gateway timeout / HTML error — treat as still generating so polling continues
+        return { tender: { id: tenderId, rfpNumber: "", title: "", authoringStatus: "generating" }, sections: [] };
+    }
     if (!res.ok) throw new Error("Failed to load RFP");
     return res.json();
 }

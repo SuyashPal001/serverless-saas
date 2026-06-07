@@ -89,11 +89,11 @@ tenderRoutes.post('/evaluations/:id/run', async (c) => {
       method: 'POST',
       headers: relayHeaders(),
       body: JSON.stringify({ tenderId: id, tenantId }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return c.json({ error: `Relay error ${res.status}` }, 502);
     const data = await res.json();
-    return c.json(data);
+    return c.json(data, 202);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }

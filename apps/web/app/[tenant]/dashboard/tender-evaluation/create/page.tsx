@@ -116,7 +116,11 @@ export default function CreateTenderPage() {
                     requirementText: (fileText || form.requirementText).trim() || undefined,
                 }),
             });
-            if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? "Failed to create tender"); }
+            if (!res.ok) {
+                const ct = res.headers.get("content-type") ?? "";
+                const e = ct.includes("application/json") ? await res.json() : {};
+                throw new Error(e.error ?? `Server error ${res.status} — please retry`);
+            }
             const data = await res.json();
             router.push(`/${tenant}/dashboard/tender-evaluation/${data.tenderId}`);
         } catch (err) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +37,16 @@ const STAGES = [
     { id: "stage7", label: "7. Report", icon: ScrollText },
 ];
 
+async function safeJson(res: Response): Promise<Record<string, unknown>> {
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return {};
+    return res.json();
+}
+
 async function fetchTender(id: string): Promise<TenderData> {
     const res = await fetch(`/api/proxy/api/v1/tender/evaluations/${id}`);
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) throw new Error("Failed to load tender");
     if (!res.ok) throw new Error("Failed to load tender");
     return res.json();
 }
@@ -47,7 +55,10 @@ async function runEvaluation(id: string): Promise<void> {
     const res = await fetch(`/api/proxy/api/v1/tender/evaluations/${id}/run`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
     });
-    if (!res.ok) throw new Error((await res.json()).error ?? "Evaluation failed");
+    if (!res.ok) {
+        const d = await safeJson(res);
+        throw new Error(String(d.error ?? `Server error ${res.status}`));
+    }
 }
 
 export default function TenderWorkspacePage() {
@@ -59,20 +70,31 @@ export default function TenderWorkspacePage() {
 
     const [activeStage, setActiveStage] = useState("stage1");
     const [runningEval, setRunningEval] = useState(false);
+    const [evalRunning, setEvalRunning] = useState(false);
     const [evalError, setEvalError] = useState("");
     const [modal, setModal] = useState<{ open: boolean; type: "accept" | "override" | "escalate"; findingId?: string; findingType: "pq" | "technical" | "financial" }>({ open: false, type: "accept", findingType: "pq" });
 
     const { data, isLoading } = useQuery({
         queryKey: ["tender", tender_id],
         queryFn: () => fetchTender(tender_id),
-        refetchInterval: 30000,
+        refetchInterval: evalRunning ? 4000 : 30000,
     });
+
+    // Auto-clear evalRunning once findings arrive
+    const hasFindings = (data?.pqFindings?.length ?? 0) > 0 || (data?.technicalFindings?.length ?? 0) > 0;
+    useEffect(() => { if (evalRunning && hasFindings) setEvalRunning(false); }, [evalRunning, hasFindings]);
 
     async function handleRunEvaluation() {
         setRunningEval(true); setEvalError("");
-        try { await runEvaluation(tender_id); qc.invalidateQueries({ queryKey: ["tender", tender_id] }); }
-        catch (e) { setEvalError(e instanceof Error ? e.message : "Failed"); }
-        finally { setRunningEval(false); }
+        try {
+            await runEvaluation(tender_id);
+            setEvalRunning(true);
+            qc.invalidateQueries({ queryKey: ["tender", tender_id] });
+        } catch (e) {
+            setEvalError(e instanceof Error ? e.message : "Failed");
+        } finally {
+            setRunningEval(false);
+        }
     }
 
     if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>;
@@ -99,6 +121,12 @@ export default function TenderWorkspacePage() {
             </div>
 
             {evalError && <p className="text-xs text-red-400">{evalError}</p>}
+            {evalRunning && !evalError && (
+                <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                    Evaluation running — results will appear in the tabs below when ready.
+                </div>
+            )}
 
             <div className="flex gap-1 border-b border-border overflow-x-auto">
                 {STAGES.map(s => {
