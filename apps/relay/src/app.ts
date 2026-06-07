@@ -16,6 +16,7 @@ import { ingestRoute } from './routes/ingest.js'
 import { pensionRoutes } from './routes/pension.js'
 import { tenderRoutes } from './routes/tender.js'
 import { tenderAuthoringRoutes } from './routes/tenderAuthoring.js'
+import { tenderPrebidRoutes } from './routes/tenderPrebid.js'
 import {
   API_BASE_URL, sessions,
 } from './types.js'
@@ -42,6 +43,7 @@ app.route('', ingestRoute)
 app.route('', pensionRoutes)
 app.route('', tenderRoutes)
 app.route('', tenderAuthoringRoutes)
+app.route('', tenderPrebidRoutes)
 
 await initStudio(app)
 

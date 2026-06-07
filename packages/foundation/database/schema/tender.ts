@@ -68,25 +68,29 @@ export const tenderClauses = pgTable('tender_clauses', {
 
 // Stage 2 flashback — corrigenda
 export const corrigenda = pgTable('corrigenda', {
-  id:          uuid('id').primaryKey().defaultRandom(),
-  tenderId:    uuid('tender_id').notNull().references(() => tenders.id, { onDelete: 'cascade' }),
-  tenantId:    uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-  corrigendumNo: text('corrigendum_no').notNull(),      // "Corrigendum No. 1"
-  changesSummary: text('changes_summary').notNull(),
-  changedClauses: jsonb('changed_clauses').notNull().default('[]'), // [{clauseNo, from, to}]
-  issuedAt:    timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  id:              uuid('id').primaryKey().defaultRandom(),
+  tenderId:        uuid('tender_id').notNull().references(() => tenders.id, { onDelete: 'cascade' }),
+  tenantId:        uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  corrigendumNo:   text('corrigendum_no').notNull(),        // "Corrigendum No. 1"
+  changesSummary:  text('changes_summary').notNull(),
+  changedClauses:  jsonb('changed_clauses').notNull().default('[]'), // [{sectionNo, clauseNo, from, to}]
+  rfpVersionBefore: integer('rfp_version_before'),
+  rfpVersionAfter:  integer('rfp_version_after'),
+  queryId:         uuid('query_id').references(() => prebidQueries.id),
+  issuedAt:        timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Stage 2 flashback — pre-bid queries
+// Stage 2 — pre-bid queries
 export const prebidQueries = pgTable('prebid_queries', {
   id:               uuid('id').primaryKey().defaultRandom(),
   tenderId:         uuid('tender_id').notNull().references(() => tenders.id, { onDelete: 'cascade' }),
   tenantId:         uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   queryNo:          text('query_no').notNull(),
+  raisedBy:         text('raised_by'),                      // company/name of bidder
   queryText:        text('query_text').notNull(),
   draftedResponse:  text('drafted_response'),
   finalResponse:    text('final_response'),
-  status:           text('status').notNull().default('responded'), // received | responded
+  status:           text('status').notNull().default('received'), // received|draft_ready|responded
   createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
