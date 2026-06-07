@@ -1,103 +1,76 @@
-import {
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  HeadingLevel, WidthType, BorderStyle, AlignmentType,
-} from 'docx';
+// Generates Word-compatible HTML (.doc) — no external deps, opens natively in MS Word.
+// Word recognises the mso namespace declarations and renders tables/headings correctly.
 
 type TenderRow = { rfpNumber: string; title: string; department: string; budget: string | null };
 type SectionRow = { sectionNo: string; title: string; blockType: string; content: unknown };
 
-function cell(text: string, bold = false) {
-  return new TableCell({
-    children: [new Paragraph({ children: [new TextRun({ text, bold, size: 20 })] })],
-    borders: {
-      top: { style: BorderStyle.SINGLE, size: 4 }, bottom: { style: BorderStyle.SINGLE, size: 4 },
-      left: { style: BorderStyle.SINGLE, size: 4 }, right: { style: BorderStyle.SINGLE, size: 4 },
-    },
-  });
+function esc(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function headerRow(cols: string[]) {
-  return new TableRow({ children: cols.map(c => cell(c, true)), tableHeader: true });
+function tableRow(cells: string[], header = false): string {
+  const tag = header ? 'th' : 'td';
+  return `<tr>${cells.map(c => `<${tag}>${esc(c)}</${tag}>`).join('')}</tr>`;
 }
 
-function sectionToElements(s: SectionRow): (Paragraph | Table)[] {
+function sectionBody(s: SectionRow): string {
   const content = (s.content ?? {}) as Record<string, unknown>;
-  const heading = new Paragraph({
-    text: `${s.sectionNo}. ${s.title}`,
-    heading: HeadingLevel.HEADING_2,
-    spacing: { before: 300, after: 100 },
-  });
 
   if (s.blockType === 'prose') {
     const text = (content.text as string) ?? '';
-    const paras = text.split('\n').filter(l => l.trim()).map(l =>
-      new Paragraph({ children: [new TextRun({ text: l, size: 22 })], spacing: { after: 80 } })
-    );
-    return [heading, ...paras];
+    return text.split('\n').filter(l => l.trim()).map(l => `<p>${esc(l)}</p>`).join('');
   }
 
   if (s.blockType === 'criteria-table') {
     const rows = (content.rows as Array<{ criterion: string; threshold: string; verification: string }>) ?? [];
-    return [heading, new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        headerRow(['Criterion', 'Threshold', 'Verification']),
-        ...rows.map(r => new TableRow({ children: [cell(r.criterion), cell(r.threshold), cell(r.verification)] })),
-      ],
-    })];
+    return `<table>${tableRow(['Criterion', 'Threshold', 'Verification'], true)}${rows.map(r => tableRow([r.criterion, r.threshold, r.verification])).join('')}</table>`;
   }
 
   if (s.blockType === 'spec-table') {
     const rows = (content.rows as Array<{ metric: string; target: string; measurement: string }>) ?? [];
-    return [heading, new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        headerRow(['Metric', 'Target', 'Measurement']),
-        ...rows.map(r => new TableRow({ children: [cell(r.metric), cell(r.target), cell(r.measurement)] })),
-      ],
-    })];
+    return `<table>${tableRow(['Metric', 'Target', 'Measurement'], true)}${rows.map(r => tableRow([r.metric, r.target, r.measurement])).join('')}</table>`;
   }
 
   if (s.blockType === 'line-item-table') {
     const rows = (content.rows as Array<{ slNo: number; item: string; unit: string; qty: number; remarks?: string }>) ?? [];
-    return [heading, new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        headerRow(['S.No', 'Item', 'Unit', 'Qty', 'Remarks']),
-        ...rows.map(r => new TableRow({ children: [cell(String(r.slNo)), cell(r.item), cell(r.unit), cell(String(r.qty)), cell(r.remarks ?? '')] })),
-      ],
-    })];
+    return `<table>${tableRow(['S.No', 'Item', 'Unit', 'Qty', 'Remarks'], true)}${rows.map(r => tableRow([String(r.slNo), r.item, r.unit, String(r.qty), r.remarks ?? ''])).join('')}</table>`;
   }
 
-  return [heading];
+  return '';
 }
 
-export async function buildDocx(tender: TenderRow, sections: SectionRow[]): Promise<Buffer> {
-  const children = [
-    new Paragraph({
-      text: tender.rfpNumber,
-      heading: HeadingLevel.TITLE,
-      alignment: AlignmentType.CENTER,
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: tender.title, bold: true, size: 28 })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 100 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: tender.department, size: 22 })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 400 },
-    }),
-    ...sections.flatMap(sectionToElements),
-  ];
+export function buildWordDoc(tender: TenderRow, sections: SectionRow[]): string {
+  const body = sections.map(s =>
+    `<h2>${esc(s.sectionNo)}. ${esc(s.title)}</h2>${sectionBody(s)}<br/>`
+  ).join('');
 
-  const doc = new Document({
-    sections: [{ properties: {}, children }],
-    creator: 'Saarthi AI',
-    title: tender.rfpNumber,
-    description: tender.title,
-  });
-
-  return Buffer.from(await Packer.toBuffer(doc));
+  return `<html xmlns:o='urn:schemas-microsoft-com:office:office'
+  xmlns:w='urn:schemas-microsoft-com:office:word'
+  xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset="utf-8"/>
+<title>${esc(tender.rfpNumber)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>90</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; margin: 72pt; }
+  h1   { text-align: center; font-size: 16pt; }
+  h2   { font-size: 13pt; margin-top: 18pt; border-bottom: 1pt solid #333; }
+  table{ border-collapse: collapse; width: 100%; margin: 8pt 0; }
+  th, td { border: 1pt solid #666; padding: 4pt 6pt; font-size: 10pt; }
+  th   { background: #e8e8e8; font-weight: bold; }
+  p    { margin: 4pt 0; }
+</style>
+</head>
+<body>
+<h1>${esc(tender.rfpNumber)}</h1>
+<h1>${esc(tender.title)}</h1>
+<p style="text-align:center">${esc(tender.department)}</p>
+<hr/>
+${body}
+</body>
+</html>`;
 }

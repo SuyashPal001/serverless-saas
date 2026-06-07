@@ -4,7 +4,7 @@ import { tenders } from '@serverless-saas/database/schema/tender';
 import { clauseLibrary, rfpSections, rfpSectionVersions } from '@serverless-saas/database/schema/tender-authoring';
 import { eq, and, asc } from 'drizzle-orm';
 import type { AppEnv } from '../types';
-import { buildDocx } from './tenderExport';
+import { buildWordDoc } from './tenderExport';
 
 const RELAY_URL = (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
 const INTERNAL_KEY = (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
@@ -197,10 +197,10 @@ tenderAuthoringRoutes.get('/authoring/:id/export', async (c) => {
 
   const filename = tender.rfpNumber.replace(/\//g, '-');
   if (fmt === 'word') {
-    const docxBuf = await buildDocx(tender as any, sections as any);
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    c.header('Content-Disposition', `attachment; filename="${filename}.docx"`);
-    return c.body(docxBuf as unknown as string);
+    const html = buildWordDoc(tender as any, sections as any);
+    c.header('Content-Type', 'application/msword');
+    c.header('Content-Disposition', `attachment; filename="${filename}.doc"`);
+    return c.body(html);
   }
   const html = buildExportHtml(tender, sections);
   c.header('Content-Type', 'text/html');
