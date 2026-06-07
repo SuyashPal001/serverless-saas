@@ -69,8 +69,11 @@ export const shortfallStepOutputSchema = techStepOutputSchema.extend({
 
 // Financial step
 export const boqLineSchema = z.object({
-  item: z.string(), rfpQty: z.number(), unit: z.string(),
-  quotedRate: z.number(), amount: z.number(),
+  item: z.string(),
+  rfpQty: z.number().nullable(),
+  unit: z.string().nullable(),
+  quotedRate: z.number().nullable(),
+  amount: z.number(),
 })
 
 export const finBidderResultSchema = z.object({

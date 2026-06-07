@@ -135,6 +135,9 @@ export const pqEvaluateStep = createStep({
     const pqResults = []
     const qualifiedBidderIds: string[] = []
 
+    // Wipe all prior PQ findings for this tender up-front (idempotent re-run)
+    await db.delete(pqFindings).where(eq(pqFindings.tenderId, tenderId))
+
     for (const bidder of pqBidders) {
       const stem = bidder.displayLabel.toLowerCase().replace(/\s+/g, '-')
       const folderId = bidderFolderId(tenantId, tenderId, stem)
@@ -149,14 +152,14 @@ export const pqEvaluateStep = createStep({
         const num = parseFloat(f.value)
         if (!isNaN(num)) { input[f.key] = num; provenance[f.key] = f }
       }
+      // Blacklisting is an affirmative-exception criterion: absence of evidence = not blacklisted.
+      // Never leave it as cannot_evaluate — that would disqualify a valid bidder non-deterministically.
+      if (typeof input.is_blacklisted !== 'number') input.is_blacklisted = 0
 
       const ruleResults = evaluatePqRules(input, thresholds)
       const overallStatus = ruleResults.some(r => r.status === 'not_qualified')
         ? 'not_qualified' : ruleResults.some(r => r.status === 'cannot_evaluate')
           ? 'cannot_evaluate' : 'qualified'
-
-      // Delete stale pqFindings for this bidder before re-inserting
-      await db.delete(pqFindings).where(and(eq(pqFindings.tenderId, tenderId), eq(pqFindings.bidderId, bidder.bidderId)))
 
       const findings = await Promise.all(ruleResults.map(async (r) => {
         const narration = await narrate(r.message, r.provision)

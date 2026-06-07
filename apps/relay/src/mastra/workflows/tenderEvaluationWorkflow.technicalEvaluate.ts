@@ -1,5 +1,5 @@
 import { createStep } from '@mastra/core/workflows'
-import { db, bidders, technicalFindings, tenderClauses } from '@serverless-saas/database'
+import { db, bidders, technicalFindings, tenderClauses, shortfalls, clarificationRequests } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
 import * as crypto from 'crypto'
 import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
@@ -80,6 +80,12 @@ export const technicalEvaluateStep = createStep({
         `Run POST /internal/tender/ingest first to ingest rfp.pdf and extract clauses.`
       )
     }
+
+    // Wipe all prior technical findings for this tender up-front (idempotent re-run).
+    // shortfalls.tech_finding_id → technicalFindings.id has no cascade, so clear dependents first.
+    await db.delete(clarificationRequests).where(eq(clarificationRequests.tenderId, tenderId))
+    await db.delete(shortfalls).where(and(eq(shortfalls.tenderId, tenderId), eq(shortfalls.tenantId, tenantId)))
+    await db.delete(technicalFindings).where(eq(technicalFindings.tenderId, tenderId))
 
     const techResults = []
 

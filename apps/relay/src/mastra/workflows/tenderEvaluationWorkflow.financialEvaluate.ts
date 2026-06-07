@@ -13,7 +13,7 @@ function bidderFolderId(tenantId: string, tenderId: string, stem: string): strin
 
 interface RfpBoqItem { slNo: number; item: string; unit: string; qty: number }
 interface ExtractedBoqRow { slNo: number; item: string; unit: string; qty: number; unitRate: number; amount: number; sourcePage: number | null }
-interface ExtractedBoq { rows: ExtractedBoqRow[]; sourceDoc: string | null; sourcePage: number | null; cannotEvaluate: boolean }
+interface ExtractedBoq { rows: ExtractedBoqRow[]; statedGrandTotal: number | null; sourceDoc: string | null; sourcePage: number | null; cannotEvaluate: boolean }
 
 async function getRfpBoq(tenderId: string, tenantId: string): Promise<RfpBoqItem[]> {
   const [section] = await db.select().from(rfpSections).where(
@@ -44,25 +44,26 @@ async function extractPricedBoq(
 
   const rfpItemList = rfpBoq.map(r => `  Sl.${r.slNo}: "${r.item}" — ${r.qty} ${r.unit}`).join('\n')
 
-  const prompt = `Extract priced BOQ from the financial bid documents of bidder "${bidderName}".
+  const prompt = `Extract the complete priced BOQ from the financial bid documents of bidder "${bidderName}".
 
-RFP BOQ template (match these items):
-${rfpItemList || '  (No RFP BOQ template available — extract all BOQ line items found)'}
+RFP BOQ template (use for item naming hints only — do NOT use as a filter):
+${rfpItemList || '  (No RFP BOQ template — extract all BOQ line items found)'}
 
 Return ONLY valid JSON, no markdown:
 {
-  "schema": "boq_line_items",
   "rows": [
-    {"slNo": 1, "item": "<item name>", "unit": "<unit>", "qty": <qty as number>, "unitRate": <rate as number>, "amount": <amount as number>, "sourcePage": <page or null>}
+    {"slNo": 1, "item": "<item name>", "unit": "<unit>", "qty": <qty>, "unitRate": <unit rate>, "amount": <line total>, "sourcePage": <page or null>}
   ],
-  "missingFields": ["<item names not found>"]
+  "statedGrandTotal": <bidder's stated Grand Total as a number, null if not found>
 }
 
 RULES:
-- unitRate and amount must be plain numbers (no currency symbols, no commas)
-- If item appears in RFP BOQ but not in bidder's doc, omit from rows
-- Never fabricate rates — only include values explicitly stated in the document text
-- sourcePage: actual page number from document, null if not determinable
+- Include EVERY line item the bidder submitted — do not omit lines just because they are absent from the RFP template.
+- For recurring/AMC lines that show both a per-period rate and a multi-period total (e.g. "AMC @ ₹0.59 Cr/yr … Total 1.70 Cr"), use the TOTAL column value as amount and derive unitRate = amount / qty.
+- unitRate and amount must be plain numbers (no ₹, no commas, no text).
+- statedGrandTotal: the single "Grand Total" or "Total Bid Value" figure from the document; null if absent.
+- Never fabricate values — only include figures explicitly stated in the text.
+- sourcePage: page number from the document header/footer, null if not determinable.
 
 DOCUMENT TEXT:
 ${allChunks.join('\n\n').slice(0, 9000)}`
@@ -72,35 +73,44 @@ ${allChunks.join('\n\n').slice(0, 9000)}`
     const raw = (result.text ?? '').trim()
     const jsonStart = raw.indexOf('{')
     const jsonEnd = raw.lastIndexOf('}')
-    if (jsonStart === -1 || jsonEnd === -1) return { rows: [], sourceDoc: null, sourcePage: null, cannotEvaluate: true }
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1)) as { rows?: ExtractedBoqRow[] }
-    const rows = Array.isArray(parsed.rows) ? parsed.rows.filter(r => typeof r.unitRate === 'number' && r.unitRate > 0) : []
-    if (!rows.length) return { rows: [], sourceDoc: null, sourcePage: null, cannotEvaluate: true }
+    if (jsonStart === -1 || jsonEnd === -1) return { rows: [], statedGrandTotal: null, sourceDoc: null, sourcePage: null, cannotEvaluate: true }
+    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1)) as { rows?: ExtractedBoqRow[]; statedGrandTotal?: number | null }
+    const rows = Array.isArray(parsed.rows) ? parsed.rows.filter(r => typeof r.amount === 'number' && r.amount > 0) : []
+    if (!rows.length) return { rows: [], statedGrandTotal: null, sourceDoc: null, sourcePage: null, cannotEvaluate: true }
     const sourcePage = rows.find(r => r.sourcePage != null)?.sourcePage ?? null
-    return { rows, sourceDoc: 'Financial Bid — BOQ Schedule', sourcePage, cannotEvaluate: false }
+    const statedGrandTotal = typeof parsed.statedGrandTotal === 'number' && parsed.statedGrandTotal > 0 ? parsed.statedGrandTotal : null
+    return { rows, statedGrandTotal, sourceDoc: 'Financial Bid — BOQ Schedule', sourcePage, cannotEvaluate: false }
   } catch {
-    return { rows: [], sourceDoc: null, sourcePage: null, cannotEvaluate: true }
+    return { rows: [], statedGrandTotal: null, sourceDoc: null, sourcePage: null, cannotEvaluate: true }
   }
 }
 
-function applyArithmeticCorrection(rows: ExtractedBoqRow[]): { boqLines: object[]; totalAmount: number; correction: number; correctedTotal: number } {
-  let statedTotal = 0
-  let correctedTotal = 0
+function applyArithmeticCorrection(
+  rows: ExtractedBoqRow[], statedGrandTotal: number | null
+): { boqLines: object[]; totalAmount: number; correction: number; correctedTotal: number } {
+  let lineSum = 0
+  let recomputedSum = 0
   const boqLines = rows.map(r => {
-    const recomputed = Math.round(r.qty * r.unitRate * 100) / 100
+    const qty = r.qty ?? null
+    const unitRate = r.unitRate ?? null
+    const recomputed = (qty != null && unitRate != null)
+      ? Math.round(qty * unitRate * 100) / 100
+      : r.amount
     const stated = r.amount
-    const delta = recomputed - stated
-    statedTotal += stated
-    correctedTotal += recomputed
+    lineSum += stated
+    recomputedSum += recomputed
     return {
-      item: r.item, rfpQty: r.qty, unit: r.unit,
-      quotedRate: r.unitRate, amount: stated,
-      correctedAmount: recomputed, arithmeticDelta: Math.round(delta * 100) / 100,
+      item: r.item, rfpQty: qty, unit: r.unit ?? null,
+      quotedRate: unitRate, amount: stated,
+      correctedAmount: recomputed, arithmeticDelta: Math.round((recomputed - stated) * 100) / 100,
       sourcePage: r.sourcePage ?? null,
     }
   })
-  const correction = Math.round((correctedTotal - statedTotal) * 100) / 100
-  return { boqLines, totalAmount: Math.round(statedTotal * 100) / 100, correction, correctedTotal: Math.round(correctedTotal * 100) / 100 }
+  // Use bidder's stated Grand Total as authoritative when present; surface delta as arithmetic correction
+  const totalAmount = statedGrandTotal ?? Math.round(lineSum * 100) / 100
+  const correctedTotal = Math.round(recomputedSum * 100) / 100
+  const correction = Math.round((correctedTotal - totalAmount) * 100) / 100
+  return { boqLines, totalAmount, correction, correctedTotal }
 }
 
 export const financialEvaluateStep = createStep({
@@ -113,6 +123,9 @@ export const financialEvaluateStep = createStep({
     const rfpBoq = await getRfpBoq(tenderId, tenantId)
     const finResults = []
 
+    // Wipe all prior financial findings for this tender up-front (idempotent re-run)
+    await db.delete(financialFindings).where(eq(financialFindings.tenderId, tenderId))
+
     for (const bidderId of qualifiedBidderIds) {
       const [bidder] = await db.select().from(bidders).where(
         and(eq(bidders.id, bidderId), eq(bidders.tenantId, tenantId))
@@ -122,10 +135,14 @@ export const financialEvaluateStep = createStep({
       const stem = bidder.displayLabel.toLowerCase().replace(/\s+/g, '-')
       const folderId = bidderFolderId(tenantId, tenderId, stem)
 
-      console.log(`[financialEvaluate] extracting BOQ for ${bidder.bidderName ?? bidder.name} folder=${folderId}`)
-      const extracted = await extractPricedBoq(tenantId, folderId, bidder.name, rfpBoq)
-
-      await db.delete(financialFindings).where(and(eq(financialFindings.tenderId, tenderId), eq(financialFindings.bidderId, bidderId)))
+      console.log(`[financialEvaluate] extracting BOQ for ${bidder.name} folder=${folderId}`)
+      let extracted: ExtractedBoq
+      try {
+        extracted = await extractPricedBoq(tenantId, folderId, bidder.name, rfpBoq)
+      } catch (extractErr) {
+        console.error(`[financialEvaluate] extraction error for ${bidder.name}:`, (extractErr as Error).message)
+        extracted = { rows: [], statedGrandTotal: null, sourceDoc: null, sourcePage: null, cannotEvaluate: true }
+      }
 
       if (extracted.cannotEvaluate || !extracted.rows.length) {
         const [row] = await db.insert(financialFindings).values({
@@ -144,7 +161,7 @@ export const financialEvaluateStep = createStep({
         continue
       }
 
-      const { boqLines, totalAmount, correction, correctedTotal } = applyArithmeticCorrection(extracted.rows)
+      const { boqLines, totalAmount, correction, correctedTotal } = applyArithmeticCorrection(extracted.rows, extracted.statedGrandTotal)
 
       const [row] = await db.insert(financialFindings).values({
         tenantId, tenderId, bidderId,
