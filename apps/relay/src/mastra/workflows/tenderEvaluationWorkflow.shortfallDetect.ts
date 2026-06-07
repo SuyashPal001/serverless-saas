@@ -1,11 +1,12 @@
 import { createStep } from '@mastra/core/workflows'
-import { db, shortfalls, clarificationRequests } from '@serverless-saas/database'
+import { db, shortfalls, clarificationRequests, tenderOfficerActions } from '@serverless-saas/database'
+import { eq, and } from 'drizzle-orm'
 import { techStepOutputSchema, shortfallStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
 
 const INFERENCE_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'gemini-2.5-flash'
 
-async function draftClarification(discrepancy: string, clauseNo: string, clauseTitle: string): Promise<string> {
+async function draftClarification(discrepancy: string, clauseRef: string, clauseTitle: string): Promise<string> {
   try {
     const res = await fetch(`${INFERENCE_URL}/v1/chat/completions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -15,17 +16,17 @@ async function draftClarification(discrepancy: string, clauseNo: string, clauseT
           {
             role: 'system',
             content: `You are a government procurement officer drafting a clarification request.
-Rules (CVC guidelines):
-- Must be time-bound (specify deadline in working days)
-- Must NOT ask the bidder to change their quoted price or technical specs
-- Must NOT seek new information not present in the RFP
-- Must be factual and non-leading
-- Keep it under 80 words
-Return ONLY the clarification letter body, no headers.`,
+CVC rules (non-negotiable):
+- Time-bound: specify a deadline (use 7 working days)
+- Must NOT ask the bidder to change their quoted price or technical specifications
+- Must NOT introduce any new requirement not in the RFP
+- Factual and non-leading; state only what was observed
+- Under 80 words
+Return ONLY the letter body text, no headers or subject line.`,
           },
           {
             role: 'user',
-            content: `Clause: ${clauseNo} — ${clauseTitle}\nShortfall: ${discrepancy}\nDraft the clarification request.`,
+            content: `Clause reference: ${clauseRef} — ${clauseTitle}\nObservation: ${discrepancy}\nDraft the clarification request.`,
           },
         ],
         stream: false,
@@ -33,14 +34,14 @@ Return ONLY the clarification letter body, no headers.`,
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
-    return data.choices?.[0]?.message?.content?.trim() || buildFallbackClarification(discrepancy, clauseNo)
+    return data.choices?.[0]?.message?.content?.trim() || fallbackClarification(discrepancy, clauseRef)
   } catch {
-    return buildFallbackClarification(discrepancy, clauseNo)
+    return fallbackClarification(discrepancy, clauseRef)
   }
 }
 
-function buildFallbackClarification(discrepancy: string, clauseNo: string): string {
-  return `With reference to your technical bid submitted against this RFP, it is observed that Clause ${clauseNo} requires clarification regarding: ${discrepancy}. You are requested to provide the requisite clarification/confirmation within 7 working days of receipt of this communication. Please note that no change in quoted price or technical specifications shall be permitted.`
+function fallbackClarification(discrepancy: string, clauseRef: string): string {
+  return `With reference to your technical bid, it is observed that ${clauseRef} requires clarification regarding: ${discrepancy}. You are requested to provide the requisite clarification within 7 working days. No change in quoted price or technical specifications shall be permitted.`
 }
 
 export const shortfallDetectStep = createStep({
@@ -48,39 +49,29 @@ export const shortfallDetectStep = createStep({
   inputSchema: techStepOutputSchema,
   outputSchema: shortfallStepOutputSchema,
   execute: async ({ inputData }) => {
-    const { tenderId, tenantId, techResults } = inputData
+    const { tenderId, tenantId, techResults, pqResults } = inputData
     const shortfallItems = []
 
+    // Idempotency: wipe prior shortfall run for this tender
+    const existingSfs = await db.select({ id: shortfalls.id }).from(shortfalls)
+      .where(and(eq(shortfalls.tenderId, tenderId), eq(shortfalls.tenantId, tenantId)))
+    if (existingSfs.length) {
+      await db.delete(clarificationRequests)
+        .where(and(eq(clarificationRequests.tenderId, tenderId), eq(clarificationRequests.tenantId, tenantId)))
+      await db.delete(shortfalls)
+        .where(and(eq(shortfalls.tenderId, tenderId), eq(shortfalls.tenantId, tenantId)))
+    }
+
+    // ── Technical findings: deviation + not_found ─────────────────────────────
     for (const bidder of techResults) {
-      // Detect shortfalls: deviations + not_found clauses
-      const flaggedClauses = bidder.clauses.filter(
+      const flagged = bidder.clauses.filter(
         c => c.status === 'deviation' || c.status === 'not_found'
       )
 
-      for (const clause of flaggedClauses) {
-        // Only create clarification for deviations (not_found is disqualifying)
-        if (clause.status !== 'deviation') {
-          const [sf] = await db.insert(shortfalls).values({
-            tenantId, tenderId, bidderId: bidder.bidderId,
-            techFindingId: (clause as { findingId?: string }).findingId ?? null,
-            discrepancy: `Clause ${clause.clauseNo} (${clause.clauseTitle}): Requirement not addressed in bid.`,
-            sourceDoc: clause.sourceDoc ?? null,
-            sourcePage: clause.sourcePage ?? null,
-            status: 'open',
-          }).returning({ id: shortfalls.id })
-
-          shortfallItems.push({
-            shortfallId: sf.id, bidderId: bidder.bidderId, bidderName: bidder.bidderName,
-            discrepancy: `Clause ${clause.clauseNo}: Not addressed.`,
-            sourceDoc: clause.sourceDoc ?? null, sourcePage: clause.sourcePage ?? null,
-            draftedText: '', status: 'open',
-          })
-          continue
-        }
-
-        // Deviation — draft a CVC-clean clarification
-        const discrepancy = clause.narration
-        const draftedText = await draftClarification(discrepancy, clause.clauseNo, clause.clauseTitle)
+      for (const clause of flagged) {
+        const discrepancy = clause.status === 'deviation'
+          ? clause.narration
+          : `Clause ${clause.clauseNo} (${clause.clauseTitle}): requirement not addressed in bid.`
 
         const [sf] = await db.insert(shortfalls).values({
           tenantId, tenderId, bidderId: bidder.bidderId,
@@ -89,10 +80,19 @@ export const shortfallDetectStep = createStep({
           sourcePage: clause.sourcePage ?? null, status: 'open',
         }).returning({ id: shortfalls.id })
 
+        const draftedText = await draftClarification(discrepancy, clause.clauseNo, clause.clauseTitle)
+
         const [cr] = await db.insert(clarificationRequests).values({
           tenantId, tenderId, shortfallId: sf.id, bidderId: bidder.bidderId,
           draftedText, deadlineDays: 7,
         }).returning({ id: clarificationRequests.id })
+
+        await db.insert(tenderOfficerActions).values({
+          tenantId, tenderId, findingType: 'technical',
+          findingId: (clause as { findingId?: string }).findingId ?? null,
+          action: 'accept', actorRole: 'system',
+          rationale: `Auto-flagged: ${clause.status} on clause ${clause.clauseNo}`,
+        })
 
         shortfallItems.push({
           shortfallId: sf.id, bidderId: bidder.bidderId, bidderName: bidder.bidderName,
@@ -102,6 +102,42 @@ export const shortfallDetectStep = createStep({
       }
     }
 
+    // ── PQ findings: cannot_evaluate rules (missing / unverifiable docs) ──────
+    for (const pqBidder of pqResults) {
+      const cannotEvalRules = pqBidder.findings.filter(f => f.status === 'cannot_evaluate')
+      for (const rule of cannotEvalRules) {
+        const discrepancy = rule.narration || `PQ criterion "${rule.ruleName}" could not be evaluated — document missing or unreadable.`
+
+        const [sf] = await db.insert(shortfalls).values({
+          tenantId, tenderId, bidderId: pqBidder.bidderId,
+          techFindingId: null,
+          discrepancy, sourceDoc: rule.sourceDoc ?? null,
+          sourcePage: rule.sourcePage ?? null, status: 'open',
+        }).returning({ id: shortfalls.id })
+
+        const draftedText = await draftClarification(discrepancy, rule.ruleId, rule.ruleName)
+
+        const [cr] = await db.insert(clarificationRequests).values({
+          tenantId, tenderId, shortfallId: sf.id, bidderId: pqBidder.bidderId,
+          draftedText, deadlineDays: 7,
+        }).returning({ id: clarificationRequests.id })
+
+        await db.insert(tenderOfficerActions).values({
+          tenantId, tenderId, findingType: 'pq',
+          findingId: (rule as { findingId?: string }).findingId ?? null,
+          action: 'accept', actorRole: 'system',
+          rationale: `Auto-flagged: cannot_evaluate on PQ rule ${rule.ruleId}`,
+        })
+
+        shortfallItems.push({
+          shortfallId: sf.id, bidderId: pqBidder.bidderId, bidderName: pqBidder.bidderName,
+          discrepancy, sourceDoc: rule.sourceDoc ?? null, sourcePage: rule.sourcePage ?? null,
+          clarificationId: cr.id, draftedText, status: 'open',
+        })
+      }
+    }
+
+    console.log(`[shortfallDetect] tenderId=${tenderId} shortfalls=${shortfallItems.length}`)
     return { ...inputData, shortfalls: shortfallItems }
   },
 })
