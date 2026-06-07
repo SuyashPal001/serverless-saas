@@ -179,6 +179,10 @@ function buildUserPrompt({ tender, templateFields, requirementText, libraryText 
   const turnoverThresholdCr = annualValue > 0
     ? `Rs. ${(annualValue / 1e7).toFixed(2)} Crore (= Estimated Value ÷ ${(durationMonths / 12).toFixed(1)} years; MUST use this figure — do not substitute a fixed library amount)`
     : '(derive from estimated value)'
+  // Pre-compute similar-work threshold per CL-002 (50% of estimated value)
+  const similarWorkThresholdCr = estimatedValue > 0
+    ? `Rs. ${(estimatedValue * 0.5 / 1e7).toFixed(2)} Crore (= 50% of Estimated Value per CL-002; MUST use this exact figure, written with the numeric crore value first in the threshold cell — do not substitute a library or arbitrary amount)`
+    : '(derive from estimated value)'
 
   return `Draft a complete 8-section government RFP with the following details.
 
@@ -190,6 +194,7 @@ Category: ${templateFields.category ?? 'IT/Software'}
 Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
 Contract Duration: ${templateFields.contractDuration ?? '36 months'}
 Derived Annual Turnover Threshold for S2: ${turnoverThresholdCr}
+Derived Similar-Work Experience Threshold for S2: ${similarWorkThresholdCr}
 Key Dates: ${JSON.stringify(templateFields.keyDates ?? {})}
 
 S3 SCOPE INSTRUCTION: In S3 (Scope of Work), enumerate ALL key functional modules listed in the requirement document (including any Annexure listing sub-modules such as Pension/GPF/NPS, payroll, HR modules, etc.) as distinct bullet-style clauses. Each module should be a named clause in the clauses[] array, not buried in the text field.
