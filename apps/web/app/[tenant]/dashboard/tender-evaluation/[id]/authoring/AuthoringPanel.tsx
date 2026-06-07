@@ -64,11 +64,23 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
 
     const failed = data?.tender?.authoringStatus === "failed";
 
+    const retryMutation = useMutation({
+        mutationFn: async () => {
+            const res = await fetch(`/api/proxy/api/v1/tender/authoring/${tenderId}/retry`, { method: "POST" });
+            if (!res.ok) throw new Error((await res.json()).error ?? "Retry failed");
+        },
+        onSuccess: () => refetch(),
+    });
+
     if (failed || error) {
         return (
-            <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-sm text-red-400">
-                RFP generation failed. Check relay logs.
-                <Button variant="ghost" size="sm" onClick={() => refetch()} className="ml-2">Retry</Button>
+            <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-sm text-red-400 flex items-center gap-2">
+                RFP generation failed.
+                <Button variant="ghost" size="sm" disabled={retryMutation.isPending}
+                    onClick={() => retryMutation.mutate()} className="ml-2">
+                    {retryMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Retrying…</> : "Retry"}
+                </Button>
+                {retryMutation.error && <span className="text-xs ml-1">{(retryMutation.error as Error).message}</span>}
             </div>
         );
     }

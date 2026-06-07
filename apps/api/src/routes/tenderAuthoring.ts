@@ -98,6 +98,36 @@ tenderAuthoringRoutes.get('/authoring/:id', async (c) => {
   return c.json({ tender, sections });
 });
 
+// ── Retry generation ──────────────────────────────────────────────────────────
+
+tenderAuthoringRoutes.post('/authoring/:id/retry', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const [tender] = await db.select().from(tenders).where(and(eq(tenders.id, id), eq(tenders.tenantId, tenantId)));
+  if (!tender) return c.json({ error: 'not found' }, 404);
+
+  await db.update(tenders).set({ authoringStatus: 'generating' }).where(eq(tenders.id, id));
+
+  try {
+    const res = await fetch(`${relayUrl()}/internal/tender/author`, {
+      method: 'POST', headers: relayHeaders(),
+      body: JSON.stringify({ tenderId: id, tenantId }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) {
+      await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, id));
+      return c.json({ error: `Relay error ${res.status}` }, 502);
+    }
+  } catch (err) {
+    await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, id));
+    return c.json({ error: (err as Error).message }, 500);
+  }
+
+  return c.json({ ok: true });
+});
+
 // ── Section accept ────────────────────────────────────────────────────────────
 
 tenderAuthoringRoutes.post('/authoring/:id/sections/:sectionId/accept', async (c) => {
