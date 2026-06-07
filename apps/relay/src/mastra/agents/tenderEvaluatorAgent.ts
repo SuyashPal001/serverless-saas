@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { tenantContextSchema } from '../context.js'
 
 // Clause-level compliance evaluator for tender technical evaluation.
@@ -44,6 +44,6 @@ ABSOLUTE RULES:
 - Never fabricate a bidderResponse — if not in the supplied text, set bidderResponse to null
 - narration must be exactly one sentence`,
 
-  model: saarthiModel,
+  model: saarthiCloudModel,
   requestContextSchema: tenantContextSchema,
 })

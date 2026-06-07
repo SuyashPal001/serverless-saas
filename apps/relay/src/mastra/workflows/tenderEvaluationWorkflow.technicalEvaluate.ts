@@ -1,11 +1,10 @@
 import { createStep } from '@mastra/core/workflows'
-import { db, bidders, tenders, technicalFindings, tenderClauses } from '@serverless-saas/database'
+import { db, bidders, technicalFindings, tenderClauses } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
 import * as crypto from 'crypto'
 import { retrieveTenderChunks } from '../../tender/tenderRetrieve.js'
 import { pqStepOutputSchema, techStepOutputSchema } from './tenderEvaluationWorkflow.schemas.js'
-
-const GATEWAY_URL = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001').trim()
+import { tenderEvaluatorAgent } from '../agents/tenderEvaluatorAgent.js'
 
 function bidderFolderId(tenantId: string, tenderId: string, stem: string): string {
   const h = crypto.createHash('sha256').update(`${tenantId}:bidder:${tenderId}:${stem}`).digest('hex')
@@ -26,53 +25,23 @@ interface EvalResult {
   sourcePage?: number | null
 }
 
-async function evaluateClause(
-  model: string,
+async function callEvaluatorAgent(
   clause: ClauseRow,
   retrievedText: string,
   bidderName: string,
 ): Promise<EvalResult> {
-  const systemPrompt = `You are a government procurement Technical Evaluation Committee (TEC) member under GFR 2017.
-Evaluate ONE RFP clause against the extracted bid text provided. Base your finding ONLY on the bid text below — never guess or infer.
-
-Status values:
-- "complied": bid explicitly meets the requirement
-- "deviation": bid partially meets or proposes an alternative
-- "not_found": requirement is not addressed in the extracted bid text
-- "cannot_evaluate": bid text is insufficient to assess
-
-Return ONLY valid JSON, no markdown:
-{"status":"complied|deviation|not_found|cannot_evaluate","narration":"one factual sentence citing the bid text","bidderResponse":"verbatim or paraphrase from bid","sourceDoc":"document name","sourcePage":12}`
-
-  const userPrompt = `Bidder: ${bidderName}
+  const prompt = `Bidder: ${bidderName}
 Clause ${clause.clauseNo} — ${clause.title}
 RFP Requirement: ${clause.content}
 
 Extracted bid text:
 ${retrievedText || '(no relevant text found in indexed bid documents)'}`
 
-  const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      stream: false,
-    }),
-  })
+  const result = await tenderEvaluatorAgent.generate(prompt)
 
-  if (!res.ok) {
-    throw new Error(`Inference gateway ${res.status} for clause ${clause.clauseNo}`)
-  }
-
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
-  const rawContent = (data.choices?.[0]?.message?.content ?? '').trim()
-  if (!rawContent) throw new Error(`Empty model response for clause ${clause.clauseNo}`)
-  // Strip markdown fences — Vertex doesn't enforce response_format: json_object
-  const raw = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  const rawText = (result.text ?? '').trim()
+  if (!rawText) throw new Error(`Empty agent response for clause ${clause.clauseNo}`)
+  const raw = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
 
   const parsed = JSON.parse(raw) as Partial<EvalResult>
   const validStatuses = ['complied', 'deviation', 'not_found', 'cannot_evaluate']
@@ -96,13 +65,6 @@ export const technicalEvaluateStep = createStep({
   execute: async ({ inputData }) => {
     const { tenderId, tenantId, qualifiedBidderIds } = inputData
 
-    const model = (process.env.TENDER_MODEL ?? '').trim()
-    if (!model) {
-      throw new Error(
-        'TENDER_MODEL env var is not set. Set it to an on-prem model ID (e.g. ollama/qwen3:8b) in apps/relay/.env and restart.'
-      )
-    }
-
     const clauses = await db.select().from(tenderClauses).where(
       and(eq(tenderClauses.tenderId, tenderId), eq(tenderClauses.tenantId, tenantId))
     )
@@ -113,7 +75,6 @@ export const technicalEvaluateStep = createStep({
       )
     }
 
-    const [tender] = await db.select().from(tenders).where(eq(tenders.id, tenderId))
     const techResults = []
 
     for (const bidderId of qualifiedBidderIds) {
@@ -148,7 +109,7 @@ export const technicalEvaluateStep = createStep({
 
         let result: EvalResult
         try {
-          result = await evaluateClause(model, clause, retrievedText, bidder.name)
+          result = await callEvaluatorAgent(clause, retrievedText, bidder.name)
         } catch (err) {
           const msg = (err as Error).message
           console.error(`[technicalEvaluate] model error clause ${clause.clauseNo}:`, msg)
