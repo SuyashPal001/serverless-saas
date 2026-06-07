@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Clock, CheckCircle2, Loader2 } from "lucide-react";
 
 interface TenderRow {
     id: string; rfpNumber: string; title: string; department: string;
@@ -22,13 +22,6 @@ const STAGE_BADGE: Record<string, { label: string; color: string }> = {
     cancelled:   { label: "Cancelled",   color: "bg-red-500/20 text-red-300 border-red-500/30" },
 };
 
-// Static demo rows shown alongside real DB rows
-const DEMO_ROWS: Omit<TenderRow, "createdAt">[] = [
-    { id: "__demo1", rfpNumber: "DIT/ERP/2024-25/028", title: "Enterprise Resource Planning (ERP) System", department: "Dept. of IT & Electronics", budget: "45000000", status: "evaluation", authoringStatus: "completed", evalMethod: "L1" },
-    { id: "__demo2", rfpNumber: "PWD/Roads/2024-25/041", title: "State Highway Maintenance Management System", department: "Public Works Dept.", budget: "18000000", status: "pre_bid", authoringStatus: "completed", evalMethod: "L1" },
-    { id: "__demo3", rfpNumber: "HEALTH/HIS/2024-25/007", title: "Hospital Information System (HIS) Upgrade", department: "Dept. of Health & Family Welfare", budget: "32000000", status: "draft", authoringStatus: "completed", evalMethod: "QCBS" },
-];
-
 async function fetchTenderList(): Promise<TenderRow[]> {
     const res = await fetch("/api/proxy/api/v1/tender/list");
     if (!res.ok) return [];
@@ -40,14 +33,11 @@ export default function TenderListPage() {
     const router = useRouter();
     const tenant = params.tenant as string;
 
-    const { data: real = [], isLoading } = useQuery({ queryKey: ["tender-list"], queryFn: fetchTenderList });
-
-    const allRows = [...real, ...DEMO_ROWS.map(r => ({ ...r, createdAt: "" }))];
+    const { data: allRows = [], isLoading } = useQuery({ queryKey: ["tender-list"], queryFn: fetchTenderList });
 
     const pendingWithYou = allRows.filter(r => r.status === "authoring" || r.status === "draft" || r.status === "evaluation");
 
     function openTender(id: string) {
-        if (id.startsWith("__demo")) return; // static rows — no workspace yet
         router.push(`/${tenant}/dashboard/tender-evaluation/${id}`);
     }
 
@@ -89,11 +79,10 @@ export default function TenderListPage() {
                         {allRows.map((t) => {
                             const badge = STAGE_BADGE[t.status] ?? { label: t.status, color: "bg-muted/20 text-muted-foreground border-border" };
                             const isPending = t.status === "authoring" || t.status === "draft" || t.status === "evaluation";
-                            const isClickable = !t.id.startsWith("__demo");
                             return (
                                 <tr key={t.id}
                                     onClick={() => openTender(t.id)}
-                                    className={`border-b border-border/50 transition-colors ${isClickable ? "cursor-pointer hover:bg-muted/20" : "opacity-60"}`}>
+                                    className="border-b border-border/50 transition-colors cursor-pointer hover:bg-muted/20">
                                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{t.rfpNumber}</td>
                                     <td className="px-4 py-3 font-medium text-foreground max-w-xs truncate">{t.title}</td>
                                     <td className="px-4 py-3 text-muted-foreground text-xs">{t.department}</td>
