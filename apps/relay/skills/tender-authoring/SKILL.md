@@ -38,6 +38,11 @@ review, edit, and approval.
   completeness over exhaustive length — every required section present, none padded.
 - **Human owns the verdict.** You draft; the officer reviews/edits/approves. Never present
   output as final, approved, or published.
+- **Madhya Pradesh jurisdiction (default).** The procuring authority is the Government of
+  Madhya Pradesh (the State). Never write "Government of India" or default to the Union.
+  Use the `Department` field; if only a short name is given, treat the issuing authority as
+  that department under the Government of Madhya Pradesh. A `Jurisdiction:` field in the
+  prompt overrides this default.
 
 ## Canonical RFP section structure
 
@@ -52,8 +57,8 @@ the downstream evaluation engine can read it as structured data.
 | S4 | Technical Specifications | criteria-table | Clause-wise mandatory requirements with measurable acceptance criteria | **Technical Evaluation** → `tenderClauses` |
 | S5 | Service Levels (SLA / KPI) | spec-table | Service levels: metric, target, measurement | Technical / contract |
 | S6 | Bill of Quantities | line-item-table | Priced line items (item, unit, quantity); price left blank for bidders | **Financial Evaluation (L1)** |
-| S7 | Evaluation Methodology | prose | Two-bid process, technical qualifying basis, L1 (or QCBS weightage) | Governs all eval stages |
-| S8 | Contract Terms, Compliance & Security | prose | Payment, LD, PBG, data residency, VAPT, governing law | Contract |
+| S7 | Evaluation Methodology | prose | ≥5 substantive clauses — bid opening sequence, technical qualification, financial evaluation, award sign-off, QCBS formula (see S7 norms) | Governs all eval stages |
+| S8 | Contract Terms, Compliance & Security | prose | ≥9 substantive clauses — payment milestones, PBG, LD, warranty, security/compliance, confidentiality, IP ownership, termination, governing law (see S8 norms) | Contract |
 
 **S4 and S5 are separate — do not merge them.** S4 feeds `tenderClauses` (the exact yardstick the
 evaluator measures every bid against). SLA rows belong in S5; never put them in S4.
@@ -67,8 +72,10 @@ verification_document, justification }`. Make every criterion **objectively veri
 
 Typical PQ criteria for an IT/services tender (adapt thresholds to the estimated value;
 do NOT copy figures blindly):
-- **Average annual turnover** over last 3 financial years ≥ a multiple of the estimated
-  annual value — verified by audited financial statements / CA certificate.
+- **Average annual turnover** over last 3 financial years ≥ 1× the estimated annual
+  contract value (= Estimated Value ÷ Contract Duration in years). Verified by audited
+  financial statements / CA certificate. **Never emit a fixed rupee figure independent of
+  the estimated value** — always derive from the estimate and state the formula explicitly.
 - **Similar-work experience** — completed N comparable projects, each ≥ X% of the estimate
   — verified by work orders + completion certificates.
 - **Certifications** — e.g. ISO 27001, CMMI Level, as relevant to scope — verified by
@@ -92,13 +99,54 @@ Line items the bidder will price: `{ sl_no, item_description, unit, quantity }`.
 unit price and amount blank (bidders fill these in the financial envelope). Structure so
 financial evaluation can parse and compare BOQs line-by-line for L1.
 
-## Evaluation methodology
+## S7 — Evaluation Methodology — required clause depth
 
-Default: **two-bid** — technical envelope opened first; only technically qualified bidders'
-financial envelopes are opened; **L1** (lowest evaluated price) among qualified bidders wins.
-If the officer/scope calls for quality weighting, support **QCBS** with a stated
-Technical:Financial weightage (e.g. 70:30) and a configurable technical scoring matrix.
-State the method explicitly and unambiguously — it governs every later stage.
+S7 MUST contain **at least five** substantive numbered clauses (not a one-line summary).
+Use the `clauses[]` array with distinct `clauseNo` values. Required clauses:
+
+1. **Bid opening sequence**: Technical envelope opened first in the presence of authorised
+   bidder representatives. Financial envelopes remain sealed; no financial data shared until
+   technical evaluation is concluded.
+2. **Technical qualification**: Compliance with ALL mandatory clauses in S4 is pass/fail.
+   A bidder failing any mandatory clause is technically disqualified; their financial bid is
+   returned unopened. State the minimum technical score if a scoring matrix is used.
+3. **Financial evaluation**: Arithmetic correction applied per GFR Rule 175. L1 = lowest
+   evaluated corrected price among technically responsive bids. Tied L1 resolved by
+   re-negotiation or draw of lots.
+4. **Award**: Subject to approving authority sign-off per Delegation of Financial Powers.
+   Letter of Award issued within the bid-validity period. Contract executed within 21 days
+   of LOA.
+5. **QCBS (if applicable)**: State Technical:Financial weightage (e.g. 70:30). Combined
+   score = (T_score × T_wt/100) + (L1_price/Bid_price × F_wt). Highest combined score wins.
+
+## S8 — Contract Terms, Compliance & Security — required clause depth
+
+S8 MUST contain **at least nine** substantive numbered clauses:
+
+1. **Payment terms**: Milestone-linked (e.g. 30% on delivery & installation; 40% on UAT
+   sign-off; 30% on go-live + training). Payment released within 30 days of verified
+   milestone. TDS deducted at source per applicable rates.
+2. **Performance Bank Guarantee (PBG)**: 10% of contract value; unconditional from a
+   scheduled commercial bank; valid until 60 days beyond warranty end; forfeitable on
+   contractor default.
+3. **Liquidated Damages**: 0.5% of contract value per week of delay, cap 10% of contract
+   value; auto-deductible from pending invoices. LD does not limit other legal remedies.
+4. **Warranty / AMC**: Minimum 1-year comprehensive warranty post go-live; defects rectified
+   at no charge. AMC terms (rates, SLAs) apply if contract duration extends beyond warranty.
+5. **Security & Compliance**: ISO 27001 mandatory; CERT-In empanelled third-party VAPT
+   before go-live and annually thereafter; all data hosted within India on MeitY-empanelled
+   infrastructure; DPDP Act 2023 compliant; audit logs retained 7 years.
+6. **Confidentiality**: Vendor shall not disclose government data to any third party; bind
+   sub-contractors to equivalent confidentiality; obligations survive contract expiry.
+7. **Intellectual Property**: All deliverables, source code, documentation, and derivatives
+   vest absolutely with the Government of Madhya Pradesh; vendor retains no proprietary
+   rights over any deliverable funded under this contract.
+8. **Termination**: For convenience — 30-day written notice, payment for accepted work
+   done. For cause — material breach or insolvency; government may terminate immediately;
+   vendor must return/destroy all government data within 15 days.
+9. **Governing law & dispute resolution**: Governed by laws of India; exclusive jurisdiction
+   of courts in Madhya Pradesh; arbitration under the Arbitration and Conciliation Act 1996;
+   seat in Bhopal.
 
 ## Clause library — categories & usage
 
@@ -117,13 +165,15 @@ graded "clause library utilization" capability.
 After drafting, scan and raise advisory flags (the officer decides — you never remove a
 clause yourself). Flag:
 - Brand / OEM / proprietary product names, or specs that only one vendor can meet.
-- Eligibility thresholds disproportionate to the estimate (turnover/experience set so high
-  they restrict competition).
+- Eligibility thresholds disproportionate to the estimate — e.g. turnover > ~2× estimated
+  annual value, or experience exceeding the project scope.
 - Specifications copied verbatim from one vendor's datasheet.
 - Single-source or restrictive conditions without justification.
 
-Each flag: `{ section, clause_ref, concern, suggestion }`. Advisory only — reinforces
-fair, competitive, audit-clean procurement.
+**Flags MUST appear in the output JSON as `cvcFlags` array** — not just noted in text.
+Each flag: `{ "section": "S2", "clauseRef": "2.1", "concern": "...", "suggestion": "..." }`.
+Emit `"cvcFlags": []` when no flags. Advisory only — reinforces fair, competitive
+procurement and allows the officer to make an informed decision.
 
 ## Document version control
 
@@ -149,17 +199,37 @@ Return ONLY valid JSON matching this exact shape — no markdown, no wrapper obj
   {"sectionNo":"S6","title":"Bill of Quantities","blockType":"line-item-table",
    "content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},
   {"sectionNo":"S7","title":"Evaluation Methodology","blockType":"prose",
-   "content":{"text":"...","clauses":[]}},
+   "content":{"text":"...","clauses":[
+     {"clauseNo":"7.1","title":"Bid Opening Sequence","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"7.2","title":"Technical Qualification","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"7.3","title":"Financial Evaluation","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"7.4","title":"Award","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"7.5","title":"QCBS (if applicable)","text":"...","source":"drafted","libraryRef":null}
+   ]}},
   {"sectionNo":"S8","title":"Contract Terms, Compliance & Security","blockType":"prose",
-   "content":{"text":"...","clauses":[{"clauseNo":"8.1","title":"...","text":"...","source":"library","libraryRef":"CL-013"}]}}
-]}
+   "content":{"text":"...","clauses":[
+     {"clauseNo":"8.1","title":"Payment Terms","text":"...","source":"library","libraryRef":"CL-013"},
+     {"clauseNo":"8.2","title":"Performance Bank Guarantee","text":"...","source":"library","libraryRef":"CL-015"},
+     {"clauseNo":"8.3","title":"Liquidated Damages","text":"...","source":"library","libraryRef":"CL-014"},
+     {"clauseNo":"8.4","title":"Warranty / AMC","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"8.5","title":"Security & Compliance","text":"...","source":"library","libraryRef":"CL-016"},
+     {"clauseNo":"8.6","title":"Confidentiality","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"8.7","title":"Intellectual Property","text":"...","source":"library","libraryRef":"CL-020"},
+     {"clauseNo":"8.8","title":"Termination","text":"...","source":"drafted","libraryRef":null},
+     {"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"}
+   ]}}
+],
+"cvcFlags":[{"section":"S2","clauseRef":"2.1","concern":"...","suggestion":"..."}]}
 ```
 
 Rules:
 - All 8 sections present in S1–S8 order; omit none.
+- S7 `clauses[]` MUST have at least 5 entries (7.1–7.5 minimum).
+- S8 `clauses[]` MUST have at least 9 entries (8.1–8.9 minimum).
 - `criteria-table` rows use `{criterion, threshold, verification}` fields.
 - `spec-table` rows use `{metric, target, measurement}` fields.
 - `line-item-table` rows use `{slNo, item, unit, qty, remarks}` fields.
 - `prose` sections use `{text, clauses[]}`.
 - `source` + `libraryRef` on every clause (provenance).
+- `cvcFlags` MUST be present (empty `[]` if no flags). Each flag: `{section, clauseRef, concern, suggestion}`.
 - Never output a value not grounded in the inputs.

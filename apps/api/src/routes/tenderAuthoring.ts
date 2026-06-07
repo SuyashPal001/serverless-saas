@@ -61,13 +61,13 @@ tenderAuthoringRoutes.post('/authoring', async (c) => {
     requirementText: body.requirementText ?? null,
   }).returning();
 
-  // Fire and await relay — synchronous for demo (120s timeout)
+  // Relay returns 202 immediately; generation runs in background PM2 process
   try {
     const res = await fetch(`${relayUrl()}/internal/tender/author`, {
       method: 'POST',
       headers: relayHeaders(),
       body: JSON.stringify({ tenderId: tender.id, tenantId }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, tender.id));
@@ -114,7 +114,7 @@ tenderAuthoringRoutes.post('/authoring/:id/retry', async (c) => {
     const res = await fetch(`${relayUrl()}/internal/tender/author`, {
       method: 'POST', headers: relayHeaders(),
       body: JSON.stringify({ tenderId: id, tenantId }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, id));

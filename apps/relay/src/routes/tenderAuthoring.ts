@@ -28,10 +28,19 @@ tenderAuthoringRoutes.post('/internal/tender/author', async (c) => {
   const libraryRows = await db.select().from(clauseLibrary)
     .where(and(eq(clauseLibrary.tenantId, tenantId), eq(clauseLibrary.isActive, true)))
 
+  // Return 202 immediately — relay stays alive via PM2, generation runs in background
+  generateRfpBackground(tenderId, tenantId, tender, libraryRows)
+  return c.json({ status: 'generating', tenderId }, 202)
+})
+
+async function generateRfpBackground(
+  tenderId: string, tenantId: string,
+  tender: { title: string; department: string; budget: string | null; templateFields: unknown; requirementText: string | null },
+  libraryRows: Array<{ id: string; code: string; category: string; title: string; content: string; tags: unknown; version: number; isActive: boolean; tenantId: string; createdAt: Date; updatedAt: Date }>
+): Promise<void> {
   const libraryText = libraryRows.map(cl =>
     `${cl.code} [${cl.category}] "${cl.title}": ${cl.content}`
   ).join('\n')
-
   const templateFields = (tender.templateFields ?? {}) as Record<string, unknown>
   const requirementText = tender.requirementText ?? ''
 
@@ -42,26 +51,28 @@ tenderAuthoringRoutes.post('/internal/tender/author', async (c) => {
     const agentText = (agentResult.text ?? '').trim()
     console.log('[tender/author] agent response length:', agentText.length, 'preview:', agentText.slice(0, 120))
     const rawParsed = JSON.parse(extractJsonObject(agentText))
-    const parsed: { sections: unknown[] } = Array.isArray(rawParsed)
-      ? { sections: rawParsed }
+    const sections: unknown[] = Array.isArray(rawParsed)
+      ? rawParsed
       : Array.isArray(rawParsed?.sections)
-        ? rawParsed as { sections: unknown[] }
+        ? rawParsed.sections
         : Array.isArray(rawParsed?.rfp?.sections)
-          ? { sections: rawParsed.rfp.sections }
-          : { sections: [] }
-    if (!parsed.sections.length) throw new Error(`Model returned 0 sections. Preview: ${agentText.slice(0, 200)}`)
+          ? rawParsed.rfp.sections
+          : []
+    if (!sections.length) throw new Error(`Model returned 0 sections. Preview: ${agentText.slice(0, 200)}`)
 
-    await saveRfpSections(tenderId, tenantId, parsed.sections, libraryRows)
-    await db.update(tenders).set({ authoringStatus: 'completed' }).where(eq(tenders.id, tenderId))
-
-    return c.json({ status: 'completed', tenderId, sectionCount: parsed.sections.length })
+    const cvcFlags: unknown[] = Array.isArray(rawParsed?.cvcFlags) ? rawParsed.cvcFlags : []
+    await saveRfpSections(tenderId, tenantId, sections, libraryRows)
+    const currentTf = (tender.templateFields ?? {}) as Record<string, unknown>
+    await db.update(tenders)
+      .set({ authoringStatus: 'completed', templateFields: { ...currentTf, cvcFlags } })
+      .where(eq(tenders.id, tenderId))
+    console.log(`[tender/author] completed tenderId=${tenderId} sections=${sections.length} cvcFlags=${cvcFlags.length}`)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown'
     console.error('[tender/author] error', message)
     await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, tenderId))
-    return c.json({ error: message }, 500)
   }
-})
+}
 
 // POST /internal/tender/section/regenerate — redraft one section with optional steer
 tenderAuthoringRoutes.post('/internal/tender/section/regenerate', async (c) => {
@@ -158,14 +169,26 @@ interface AuthorPromptArgs {
 }
 
 function buildUserPrompt({ tender, templateFields, requirementText, libraryText }: AuthorPromptArgs): string {
+  const jurisdiction = String(templateFields.jurisdiction ?? 'Government of Madhya Pradesh')
+
+  // Pre-compute turnover threshold so model cannot use a fixed library figure
+  const estimatedValue = tender.budget ? Number(tender.budget) : 0
+  const durationMonths = parseInt(String(templateFields.contractDuration ?? '36'), 10) || 36
+  const annualValue = estimatedValue > 0 ? estimatedValue / (durationMonths / 12) : 0
+  const turnoverThresholdCr = annualValue > 0
+    ? `Rs. ${(annualValue / 1e7).toFixed(2)} Crore (= Estimated Value ÷ ${(durationMonths / 12).toFixed(1)} years; MUST use this figure — do not substitute a fixed library amount)`
+    : '(derive from estimated value)'
+
   return `Draft a complete 8-section government RFP with the following details.
 
 Title: ${tender.title}
 Department: ${tender.department}
+Issuing Authority: ${jurisdiction}
 Estimated Value: Rs.${tender.budget ?? 'TBD'}
 Category: ${templateFields.category ?? 'IT/Software'}
 Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
 Contract Duration: ${templateFields.contractDuration ?? '36 months'}
+Derived Annual Turnover Threshold for S2: ${turnoverThresholdCr}
 Key Dates: ${JSON.stringify(templateFields.keyDates ?? {})}
 
 Requirement Document:
@@ -174,8 +197,8 @@ ${requirementText.slice(0, 6000) || '(Draft from title and department context.)'
 Clause library (set source:"library" + libraryRef to the clause code when reusing):
 ${libraryText || '(None)'}
 
-OUTPUT FORMAT — return ONLY this JSON, no markdown:
-{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender & Overview","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}},{"sectionNo":"S2","title":"Eligibility / Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S5","title":"Service Levels (SLA / KPI)","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S7","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S8","title":"Contract Terms, Compliance & Security","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"8.1","title":"...","text":"...","source":"library","libraryRef":"CL-013"}]}}]}`
+OUTPUT FORMAT — return ONLY this JSON, no markdown. S7 clauses[] must have ≥5 entries (7.1–7.5). S8 clauses[] must have ≥9 entries (8.1–8.9). Include cvcFlags array ([] if none).
+{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender & Overview","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null}]}},{"sectionNo":"S2","title":"Eligibility / Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null}],"clauses":[]}},{"sectionNo":"S5","title":"Service Levels (SLA / KPI)","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S7","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"7.1","title":"Bid Opening Sequence","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.2","title":"Technical Qualification","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.3","title":"Financial Evaluation","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.4","title":"Award","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"7.5","title":"QCBS (if applicable)","text":"...","source":"drafted","libraryRef":null}]}},{"sectionNo":"S8","title":"Contract Terms, Compliance & Security","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"8.1","title":"Payment Terms","text":"...","source":"library","libraryRef":"CL-013"},{"clauseNo":"8.2","title":"Performance Bank Guarantee","text":"...","source":"library","libraryRef":"CL-015"},{"clauseNo":"8.3","title":"Liquidated Damages","text":"...","source":"library","libraryRef":"CL-014"},{"clauseNo":"8.4","title":"Warranty / AMC","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.5","title":"Security & Compliance","text":"...","source":"library","libraryRef":"CL-016"},{"clauseNo":"8.6","title":"Confidentiality","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.7","title":"Intellectual Property","text":"...","source":"library","libraryRef":"CL-020"},{"clauseNo":"8.8","title":"Termination","text":"...","source":"drafted","libraryRef":null},{"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"}]}}],"cvcFlags":[{"section":"S2","clauseRef":"2.1","concern":"...","suggestion":"..."}]}`
 }
 
 interface LibraryRow { id: string; code: string; category: string; title: string; content: string; tags: unknown; version: number; isActive: boolean; tenantId: string; createdAt: Date; updatedAt: Date }

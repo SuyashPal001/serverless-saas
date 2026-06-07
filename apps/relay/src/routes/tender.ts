@@ -50,18 +50,22 @@ tenderRoutes.post('/internal/tender/run', async (c) => {
   const [tender] = await db.select().from(tenders).where(eq(tenders.id, tenderId))
   if (!tender) return c.json({ error: 'tender not found' }, 404)
 
+  // Return 202 immediately — evaluation workflow runs in background via PM2-managed relay
+  runEvaluationBackground(tenderId, tenantId)
+  return c.json({ status: 'running', tenderId }, 202)
+})
+
+async function runEvaluationBackground(tenderId: string, tenantId: string): Promise<void> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const run = await (mastra.getWorkflow('tender-evaluation') as any).createRun()
-    const result = await run.start({ inputData: { tenderId, tenantId } })
+    await run.start({ inputData: { tenderId, tenantId } })
     console.log(`[tender/run] workflow completed for tenderId=${tenderId}`)
-    return c.json({ status: 'completed', tenderId, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown'
     console.error('[tender/run] workflow error', message)
-    return c.json({ error: message }, 500)
   }
-})
+}
 
 // POST /internal/tender/technical/run — run ONLY the technical evaluation step (live demo)
 // Returns clause-wise compliance sheet with page-level citations.
