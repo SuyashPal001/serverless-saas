@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
-import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js'
+import { saarthiCloudModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -281,6 +281,6 @@ export const platformAgent = new Agent({
     const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
     if (sensitivity === 'restricted') return saarthiPrivateModel
     const budget = requestContext?.get('thinkingBudget') as number | undefined
-    return budget === 0 ? saarthiLiteModel : saarthiModel
+    return budget === 0 ? saarthiLiteModel : saarthiCloudModel
   },
 })

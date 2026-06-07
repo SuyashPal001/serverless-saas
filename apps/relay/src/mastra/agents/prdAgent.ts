@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt'
 
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { prdWorkspace } from '../workspace/prdWorkspace.js'
 import { prdWorkflow } from '../workflows/prdWorkflow.js'
 import { prdCompletenessScorer } from '../scorers/prdCompleteness.js'
@@ -40,12 +40,12 @@ Rules:
 - Always call save-prd after writing — never leave a PRD unsaved
 - When editing, preserve all unchanged sections exactly as they are`,
   tools: { fetchAgentContext, fetchPRD, savePRD },
-  model: saarthiModel,
+  model: saarthiCloudModel,
   workspace: prdWorkspace,
   workflows: { prd: prdWorkflow },
   scorers: {
     relevancy: {
-      scorer: createAnswerRelevancyScorer({ model: saarthiModel }),
+      scorer: createAnswerRelevancyScorer({ model: saarthiCloudModel }),
       sampling: { type: 'ratio', rate: 1 },
     },
     prdCompleteness: {

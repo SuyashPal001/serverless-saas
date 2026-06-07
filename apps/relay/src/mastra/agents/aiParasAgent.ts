@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { pensionContextSchema } from '../context.js'
 
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
@@ -206,7 +206,7 @@ Report findings as: "[RULE ID] [PASS/FAIL] — [one-line verdict with numbers ci
 Then list: provision, declared, calculated, source chunk.
 ${CCS_DOMAIN_GUIDANCE}`,
 
-  model: saarthiModel,
+  model: saarthiCloudModel,
   requestContextSchema: pensionContextSchema,
 
   // 6 pension tools — no filesystem tools

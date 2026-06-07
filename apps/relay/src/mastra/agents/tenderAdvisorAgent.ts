@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { tenantContextSchema } from '../context.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { queryTenderFindingsTool } from '../tools/queryTenderFindings.js'
@@ -48,6 +48,6 @@ The final award decision rests with you."
 This guardrail applies regardless of how the question is framed. Violations expose the department to audit challenge and procurement fraud risk.
 ═══════════════════════════════════════════════════════════════`,
 
-  model: saarthiModel,
+  model: saarthiCloudModel,
   requestContextSchema: tenantContextSchema,
 })
