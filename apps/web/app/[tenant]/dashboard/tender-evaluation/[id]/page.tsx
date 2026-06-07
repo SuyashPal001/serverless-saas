@@ -24,7 +24,7 @@ interface EvalProgress {
 interface TenderData {
     id: string; rfpNumber: string; title: string; department: string;
     budget: string; evalMethod: string; status: string;
-    bidders: Array<{ id: string; name: string; displayLabel: string; status: string }>;
+    bidders: Array<{ id: string; name: string; displayLabel: string; status: string; embeddingReady: boolean }>;
     pqFindings: Array<{ id: string; ruleId: string; ruleName: string; status: "qualified" | "not_qualified" | "cannot_evaluate"; provision: string; narration: string; declaredValue: string | null; thresholdValue: string | null; sourceDoc: string | null; sourcePage: number | null; bidderId: string }>;
     technicalFindings: Array<{ id: string; clauseNo: string; clauseTitle: string; status: "complied" | "deviation" | "not_found" | "cannot_evaluate"; narration: string; sourceDoc: string | null; sourcePage: number | null; rfpRequirement: string | null; bidderResponse: string | null; bidderId: string }>;
     shortfalls: Array<{ id: string; discrepancy: string; sourceDoc: string | null; sourcePage: number | null; status: string; bidderId: string }>;
@@ -95,8 +95,15 @@ export default function TenderWorkspacePage() {
     const { data, isLoading } = useQuery({
         queryKey: ["tender", tender_id],
         queryFn: () => fetchTender(tender_id),
-        refetchInterval: evalRunning ? 3000 : 30000,
+        refetchInterval: (query) => {
+            if (evalRunning) return 3000;
+            const d = query.state.data;
+            if ((d?.bidders?.length ?? 0) > 0 && d?.bidders?.some(b => !b.embeddingReady)) return 5000;
+            return 30000;
+        },
     });
+
+    const anyProcessing = (data?.bidders?.length ?? 0) > 0 && (data?.bidders?.some(b => !b.embeddingReady) ?? false);
 
     // Auto-clear evalRunning once all stages complete
     const allDone = data?.evalProgress?.status === 'completed';
@@ -151,8 +158,8 @@ export default function TenderWorkspacePage() {
                 </div>
                 <Button
                     onClick={handleRunEvaluation}
-                    disabled={runningEval || (data?.bidders?.length ?? 0) === 0}
-                    title={(data?.bidders?.length ?? 0) === 0 ? "Upload at least one bid to run evaluation" : undefined}
+                    disabled={runningEval || (data?.bidders?.length ?? 0) === 0 || anyProcessing}
+                    title={anyProcessing ? "Wait for all bids to finish processing" : (data?.bidders?.length ?? 0) === 0 ? "Upload at least one bid to run evaluation" : undefined}
                     size="sm" className="bg-primary text-primary-foreground gap-2"
                 >
                     {runningEval ? <><Loader2 className="w-4 h-4 animate-spin" />Running…</> : <><Play className="w-4 h-4" />Run Evaluation</>}

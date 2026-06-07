@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Upload, CheckCircle2, AlertCircle, Users, Trash2, X } from "lucide-react";
 
-interface Bidder { id: string; name: string; displayLabel: string; status: string }
+interface Bidder { id: string; name: string; displayLabel: string; status: string; embeddingReady: boolean }
 
 interface FileStatus { name: string; status: "extracting" | "done" | "failed"; error?: string }
 
@@ -82,10 +82,14 @@ export function BidsPanel({ tenderId, bidders, onBidderAdded }: Props) {
         <div className="flex flex-wrap gap-2">
           {bidders.map(b => (
             <div key={b.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-xs">
-              <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+              {b.embeddingReady
+                ? <CheckCircle2 className="w-3 h-3 text-blue-400 shrink-0" />
+                : <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />}
               <span className="text-blue-300 font-medium">{b.displayLabel}</span>
               <span className="text-muted-foreground">— {b.name}</span>
-              <span className="text-muted-foreground opacity-60">· {b.status}</span>
+              <span className={`text-xs font-medium ${b.embeddingReady ? 'text-green-400' : 'text-amber-400'}`}>
+                {b.embeddingReady ? 'ready' : 'processing…'}
+              </span>
 
               {confirmId === b.id ? (
                 <span className="flex items-center gap-1 ml-1">

@@ -80,10 +80,26 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     db.select().from(evaluationReports).where(eq(evaluationReports.tenderId, id)),
   ]);
 
+  // Derive per-bidder embedding readiness from document_chunks (person_folder_id column is raw SQL only)
+  let embeddedFolderIds = new Set<string>();
+  if (bidderRows.length > 0) {
+    const { rows } = await db.execute(sql`
+      SELECT DISTINCT person_folder_id::text AS fid
+      FROM document_chunks
+      WHERE tenant_id = ${tenantId}::uuid AND person_folder_id IS NOT NULL
+    `);
+    embeddedFolderIds = new Set(rows.map(r => (r as { fid: string }).fid));
+  }
+
+  const biddersWithStatus = bidderRows.map(b => ({
+    ...b,
+    embeddingReady: embeddedFolderIds.has(bidderFolderId(tenantId, id, b.displayLabel)),
+  }));
+
   const evalProgress = deriveEvalProgress(pqRows.length, techRows.length, finRows.length, !!reportRows[0]);
   return c.json({
     ...tender,
-    bidders: bidderRows,
+    bidders: biddersWithStatus,
     pqFindings: pqRows,
     technicalFindings: techRows,
     shortfalls: sfRows,
