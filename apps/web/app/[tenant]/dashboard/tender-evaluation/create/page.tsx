@@ -99,6 +99,11 @@ export default function CreateTenderPage() {
                             <select value={form.category} onChange={setField("category")} className={inputCls}>
                                 {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                             </select>
+                            {form.category !== "IT/Software" && (
+                                <p className="mt-1.5 text-xs text-amber-400 leading-relaxed">
+                                    This demo supports IT/Software procurement. The production platform handles all procurement categories; this category is not enabled in the demo.
+                                </p>
+                            )}
                         </Field>
                     </div>
                 </Section>
@@ -136,7 +141,7 @@ export default function CreateTenderPage() {
 
                 {error && <p className="text-sm text-red-400">{error}</p>}
 
-                <Button type="submit" disabled={submitting} className="w-full bg-primary text-primary-foreground gap-2">
+                <Button type="submit" disabled={submitting || form.category !== "IT/Software"} className="w-full bg-primary text-primary-foreground gap-2">
                     {submitting ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating RFP — this takes ~30s…</>) : "Generate RFP →"}
                 </Button>
             </form>
