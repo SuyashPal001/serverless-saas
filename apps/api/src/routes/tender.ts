@@ -83,12 +83,14 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
   // Derive per-bidder embedding readiness from document_chunks (person_folder_id column is raw SQL only)
   let embeddedFolderIds = new Set<string>();
   if (bidderRows.length > 0) {
-    const { rows } = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT DISTINCT person_folder_id::text AS fid
       FROM document_chunks
       WHERE tenant_id = ${tenantId}::uuid AND person_folder_id IS NOT NULL
     `);
-    embeddedFolderIds = new Set(rows.map(r => (r as { fid: string }).fid));
+    // db.execute() returns rows directly (array) with postgres-js, or { rows } with node-postgres
+    const chunkRows: Array<{ fid: string }> = (Array.isArray(result) ? result : (result.rows ?? [])) as Array<{ fid: string }>;
+    embeddedFolderIds = new Set(chunkRows.map(r => r.fid));
   }
 
   const biddersWithStatus = bidderRows.map(b => ({
