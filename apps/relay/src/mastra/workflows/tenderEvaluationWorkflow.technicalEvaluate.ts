@@ -49,12 +49,18 @@ ${retrievedText || '(no relevant text found in indexed bid documents)'}`
     ? parsed.status as EvalResult['status']
     : 'cannot_evaluate'
 
+  const rawPage = parsed.sourcePage
+  const sourcePage = typeof rawPage === 'number' && Number.isFinite(rawPage)
+    ? Math.trunc(rawPage)
+    : typeof rawPage === 'string' ? (parseInt(rawPage, 10) || null)
+    : null
+
   return {
     status,
     narration: parsed.narration ?? '',
-    bidderResponse: parsed.bidderResponse,
+    bidderResponse: parsed.bidderResponse ?? undefined,
     sourceDoc: parsed.sourceDoc ?? null,
-    sourcePage: parsed.sourcePage ?? null,
+    sourcePage,
   }
 }
 
@@ -116,19 +122,26 @@ export const technicalEvaluateStep = createStep({
           result = { status: 'cannot_evaluate', narration: `Evaluation error: ${msg}` }
         }
 
-        const [row] = await db.insert(technicalFindings).values({
-          tenantId, tenderId, bidderId,
-          clauseNo: clause.clauseNo,
-          clauseTitle: clause.title,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          status: result.status as any,
-          narration: result.narration,
-          rfpRequirement: clause.content,
-          bidderResponse: result.bidderResponse ?? null,
-          sourceDoc: result.sourceDoc ?? null,
-          sourcePage: result.sourcePage ?? null,
-          runId: 'live',
-        }).returning({ id: technicalFindings.id })
+        let findingId: string | undefined
+        try {
+          const [row] = await db.insert(technicalFindings).values({
+            tenantId, tenderId, bidderId,
+            clauseNo: clause.clauseNo,
+            clauseTitle: clause.title,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            status: result.status as any,
+            narration: result.narration,
+            rfpRequirement: clause.content,
+            bidderResponse: result.bidderResponse ?? null,
+            sourceDoc: result.sourceDoc ?? null,
+            sourcePage: result.sourcePage ?? null,
+            runId: 'live',
+          }).returning({ id: technicalFindings.id })
+          findingId = row.id
+        } catch (insertErr) {
+          console.error(`[technicalEvaluate] insert error clause ${clause.clauseNo} bidder ${bidder.name}:`, (insertErr as Error).message)
+          result = { status: 'cannot_evaluate', narration: `Save error: ${(insertErr as Error).message}`, sourceDoc: null, sourcePage: null }
+        }
 
         savedClauses.push({
           clauseNo: clause.clauseNo,
@@ -136,10 +149,10 @@ export const technicalEvaluateStep = createStep({
           status: result.status,
           narration: result.narration,
           rfpRequirement: clause.content,
-          bidderResponse: result.bidderResponse,
+          bidderResponse: result.bidderResponse ?? undefined,
           sourceDoc: result.sourceDoc ?? null,
           sourcePage: result.sourcePage ?? null,
-          findingId: row.id,
+          findingId,
         })
       }
 

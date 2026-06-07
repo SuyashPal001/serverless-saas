@@ -10,7 +10,6 @@ export const pqBidderSchema = z.object({
   bidderId: z.string(),
   bidderName: z.string(),
   displayLabel: z.string(),
-  pqFields: z.record(z.string(), z.number()),
   documentIds: z.array(z.string()).default([]),
 })
 

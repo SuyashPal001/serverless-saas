@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "domain": "GFR 2017 — Pre-Qualification Evaluation",
   "rules": [
     {
@@ -19,15 +19,6 @@
       "provision": "GFR 2017 Rule 161 — Technical Capability",
       "inputs": ["max_similar_work_crore"],
       "thresholdVars": ["similar_work_threshold"]
-    },
-    {
-      "id": "PQ003",
-      "name": "OEM Authorization",
-      "check": "has_oem_auth >= 1",
-      "error": "OEM authorization letter not found in submitted documents.",
-      "provision": "RFP Clause 2.4 — OEM Authorization Requirement",
-      "inputs": ["has_oem_auth"],
-      "thresholdVars": []
     },
     {
       "id": "PQ004",
