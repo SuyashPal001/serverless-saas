@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { db, tenders, tenderClauses, clauseLibrary, rfpSections, rfpSectionVersions } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
+import { tenderAuthorAgent } from '../mastra/agents/tenderAuthorAgent.js'
 
 const INTERNAL_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
 const GATEWAY_URL = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001') + '/v1/chat/completions'
 const CLOUD_MODEL = process.env.MASTRA_CLOUD_MODEL ?? 'gemini-2.5-flash'
 
+// Used only for single-section regeneration (different task from full authoring)
 async function generateJsonFromGateway(systemInstruction: string, userPrompt: string): Promise<string> {
   const res = await fetch(GATEWAY_URL, {
     method: 'POST',
@@ -55,12 +57,16 @@ tenderAuthoringRoutes.post('/internal/tender/author', async (c) => {
   const requirementText = tender.requirementText ?? ''
 
   try {
-    const raw = await generateJsonFromGateway(
-      buildSystemInstruction(),
+    const agentResult = await tenderAuthorAgent.generate(
       buildUserPrompt({ tender, templateFields, requirementText, libraryText })
     )
-    console.log('[tender/author] raw JSON length:', raw.length, 'preview:', raw.slice(0, 120))
-    const rawParsed = JSON.parse(raw)
+    const agentText = (agentResult.text ?? '').trim()
+    console.log('[tender/author] agent response length:', agentText.length, 'preview:', agentText.slice(0, 120))
+    // Extract outermost JSON object — model may emit trailing commentary after the closing brace
+    const jsonStart = agentText.indexOf('{')
+    const jsonEnd = agentText.lastIndexOf('}')
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('Agent returned no JSON object')
+    const rawParsed = JSON.parse(agentText.slice(jsonStart, jsonEnd + 1))
     const parsed: { sections: unknown[] } = Array.isArray(rawParsed)
       ? { sections: rawParsed }
       : Array.isArray(rawParsed?.sections)
@@ -68,7 +74,7 @@ tenderAuthoringRoutes.post('/internal/tender/author', async (c) => {
         : Array.isArray(rawParsed?.rfp?.sections)
           ? { sections: rawParsed.rfp.sections }
           : { sections: [] }
-    if (!parsed.sections.length) throw new Error(`Model returned 0 sections. Raw: ${raw.slice(0, 200)}`)
+    if (!parsed.sections.length) throw new Error(`Model returned 0 sections. Preview: ${agentText.slice(0, 200)}`)
 
     await saveRfpSections(tenderId, tenantId, parsed.sections, libraryRows)
     await db.update(tenders).set({ authoringStatus: 'completed' }).where(eq(tenders.id, tenderId))
@@ -129,13 +135,6 @@ Clause library:\n${libraryText}`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildSystemInstruction(): string {
-  return `You are a government procurement specialist drafting GFR-compliant RFP documents.
-Return a JSON object with exactly this structure:
-{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null,"cvcFlag":null}]}},{"sectionNo":"S2","title":"Eligibility and Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications and SLAs","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S5","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S7","title":"Contract Terms","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"7.1","title":"...","text":"...","source":"library","libraryRef":"CL-013","cvcFlag":null}]}},{"sectionNo":"S8","title":"Compliance and Security","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}}]}
-Rules: All 8 sections S1-S8 required in order. prose has text + clauses[]. criteria-table/spec-table have rows[] + empty clauses:[]. line-item-table has rows[] + empty clauses:[]. Use source:"library" + libraryRef code when using a clause from the library. cvcFlag is null or {"code":"CVC-02","message":"reason"}.`
-}
-
 interface AuthorPromptArgs {
   tender: { title: string; department: string; budget: string | null }
   templateFields: Record<string, unknown>
@@ -144,7 +143,8 @@ interface AuthorPromptArgs {
 }
 
 function buildUserPrompt({ tender, templateFields, requirementText, libraryText }: AuthorPromptArgs): string {
-  return `Draft a complete 8-section government RFP.
+  return `Draft a complete 8-section government RFP with the following details.
+
 Title: ${tender.title}
 Department: ${tender.department}
 Estimated Value: Rs.${tender.budget ?? 'TBD'}
@@ -153,11 +153,14 @@ Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
 Contract Duration: ${templateFields.contractDuration ?? '36 months'}
 Key Dates: ${JSON.stringify(templateFields.keyDates ?? {})}
 
-Requirement:
-${requirementText.slice(0, 6000) || '(Draft based on title and department context.)'}
+Requirement Document:
+${requirementText.slice(0, 6000) || '(Draft from title and department context.)'}
 
-Clause library (use source:"library" + code as libraryRef when including):
-${libraryText || '(None)'}`
+Clause library (set source:"library" + libraryRef to the clause code when reusing):
+${libraryText || '(None)'}
+
+OUTPUT FORMAT — return ONLY this JSON, no markdown:
+{"sections":[{"sectionNo":"S1","title":"Notice Inviting Tender","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"1.1","title":"...","text":"...","source":"drafted","libraryRef":null,"cvcFlag":null}]}},{"sectionNo":"S2","title":"Eligibility and Pre-Qualification Criteria","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S3","title":"Scope of Work","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S4","title":"Technical Specifications and SLAs","blockType":"spec-table","content":{"rows":[{"metric":"...","target":"...","measurement":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}},{"sectionNo":"S5","title":"Bill of Quantities","blockType":"line-item-table","content":{"rows":[{"slNo":1,"item":"...","unit":"...","qty":1,"remarks":"..."}],"clauses":[]}},{"sectionNo":"S6","title":"Evaluation Methodology","blockType":"prose","content":{"text":"...","clauses":[]}},{"sectionNo":"S7","title":"Contract Terms","blockType":"prose","content":{"text":"...","clauses":[{"clauseNo":"7.1","title":"...","text":"...","source":"library","libraryRef":"CL-013","cvcFlag":null}]}},{"sectionNo":"S8","title":"Compliance and Security","blockType":"criteria-table","content":{"rows":[{"criterion":"...","threshold":"...","verification":"...","source":"drafted","libraryRef":null,"cvcFlag":null}],"clauses":[]}}]}`
 }
 
 interface LibraryRow { id: string; code: string; category: string; title: string; content: string; tags: unknown; version: number; isActive: boolean; tenantId: string; createdAt: Date; updatedAt: Date }

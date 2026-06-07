@@ -32,6 +32,7 @@
     "@serverless-saas/storage": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
+    "docx": "^9.7.1",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
     "jose": "^6.2.1",
