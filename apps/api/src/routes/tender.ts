@@ -9,8 +9,14 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
-const RELAY_URL = (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
-const INTERNAL_KEY = (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
+const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
+const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
+
+function relayHeaders() {
+  const key = internalKey();
+  console.log(`[tender] keyPresent: ${key.length > 0}`);
+  return { 'Content-Type': 'application/json', ...(key ? { 'x-internal-service-key': key } : {}) };
+}
 
 export const tenderRoutes = new Hono<AppEnv>();
 
@@ -65,9 +71,9 @@ tenderRoutes.post('/evaluations/:id/run', async (c) => {
   if (!tender) return c.json({ error: 'not found' }, 404);
 
   try {
-    const res = await fetch(`${RELAY_URL}/internal/tender/run`, {
+    const res = await fetch(`${relayUrl()}/internal/tender/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(INTERNAL_KEY ? { 'x-internal-service-key': INTERNAL_KEY } : {}) },
+      headers: relayHeaders(),
       body: JSON.stringify({ tenderId: id, tenantId }),
       signal: AbortSignal.timeout(120000),
     });
@@ -91,9 +97,9 @@ tenderRoutes.post('/evaluations/:id/technical/run', async (c) => {
   if (!tender) return c.json({ error: 'not found' }, 404);
 
   try {
-    const res = await fetch(`${RELAY_URL}/internal/tender/technical/run`, {
+    const res = await fetch(`${relayUrl()}/internal/tender/technical/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(INTERNAL_KEY ? { 'x-internal-service-key': INTERNAL_KEY } : {}) },
+      headers: relayHeaders(),
       body: JSON.stringify({ tenderId: id, tenantId, bidderId: body.bidderId }),
       signal: AbortSignal.timeout(90000),
     });

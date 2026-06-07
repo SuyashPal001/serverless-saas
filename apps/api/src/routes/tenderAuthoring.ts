@@ -6,11 +6,13 @@ import { eq, and, asc } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 import { buildWordDoc } from './tenderExport';
 
-const RELAY_URL = (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
-const INTERNAL_KEY = (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
+const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
+const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
 
 function relayHeaders() {
-  return { 'Content-Type': 'application/json', ...(INTERNAL_KEY ? { 'x-internal-service-key': INTERNAL_KEY } : {}) };
+  const key = internalKey();
+  console.log(`[tender-authoring] keyPresent: ${key.length > 0}`);
+  return { 'Content-Type': 'application/json', ...(key ? { 'x-internal-service-key': key } : {}) };
 }
 
 export const tenderAuthoringRoutes = new Hono<AppEnv>();
@@ -61,7 +63,7 @@ tenderAuthoringRoutes.post('/authoring', async (c) => {
 
   // Fire and await relay — synchronous for demo (120s timeout)
   try {
-    const res = await fetch(`${RELAY_URL}/internal/tender/author`, {
+    const res = await fetch(`${relayUrl()}/internal/tender/author`, {
       method: 'POST',
       headers: relayHeaders(),
       body: JSON.stringify({ tenderId: tender.id, tenantId }),
@@ -148,7 +150,7 @@ tenderAuthoringRoutes.post('/authoring/:id/sections/:sectionId/regenerate', asyn
   const body = await c.req.json<{ steer?: string }>().catch(() => ({ steer: undefined }));
 
   try {
-    const res = await fetch(`${RELAY_URL}/internal/tender/section/regenerate`, {
+    const res = await fetch(`${relayUrl()}/internal/tender/section/regenerate`, {
       method: 'POST',
       headers: relayHeaders(),
       body: JSON.stringify({ tenderId: id, tenantId, sectionId, steer: body.steer }),
