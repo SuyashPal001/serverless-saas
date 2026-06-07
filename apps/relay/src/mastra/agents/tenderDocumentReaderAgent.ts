@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { tenantContextSchema } from '../context.js'
 
 // Tier-3 document reader for tender evaluation.
@@ -53,6 +53,6 @@ ABSOLUTE RULES:
 - Numeric values must be numbers (not strings), without currency symbols
 - If the entire document is irrelevant to the requested schema, return rows: [] and list all fields as missing`,
 
-  model: saarthiModel,
+  model: saarthiCloudModel,
   requestContextSchema: tenantContextSchema,
 })

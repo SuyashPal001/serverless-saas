@@ -16,7 +16,8 @@ export interface PqRuleResult {
 }
 
 interface RawPqRule {
-  id: string; name: string; check: string; error: string; provision: string; inputs: string[]
+  id: string; name: string; check: string; error: string; provision: string
+  inputs: string[]; thresholdVars?: string[]
 }
 
 const RULES_PATH = process.env.TENDER_PQ_RULES_PATH
@@ -52,44 +53,43 @@ function evalArith(expr: string, vars: PqRuleInput): number {
   throw new Error(`missing:${trimmed}`)
 }
 
-export function evaluatePqRules(input: PqRuleInput): PqRuleResult[] {
+// thresholds: values from the tender's PQ criteria (e.g. {turnover_threshold: 5})
+export function evaluatePqRules(input: PqRuleInput, thresholds: Record<string, number> = {}): PqRuleResult[] {
+  const ctx: PqRuleInput = { ...thresholds, ...input }
+
   return loadRules().map((rule) => {
-    const missing = rule.inputs.some(k => !(k in input) || typeof input[k] !== 'number')
-    if (missing) {
+    const missingInput = rule.inputs.some(k => !(k in ctx) || typeof ctx[k] !== 'number')
+    if (missingInput) {
       return {
         ruleId: rule.id, ruleName: rule.name, status: 'cannot_evaluate', provision: rule.provision,
-        inputs: rule.inputs, declaredValue: null, thresholdValue: null, message: 'Missing required input.',
+        inputs: rule.inputs, declaredValue: null, thresholdValue: null,
+        message: `Missing required field(s): ${rule.inputs.filter(k => !(k in ctx)).join(', ')}.`,
       }
     }
 
     let passed: boolean
-    try { passed = evalCheck(rule.check, input) }
-    catch {
+    try { passed = evalCheck(rule.check, ctx) }
+    catch (e) {
       return {
         ruleId: rule.id, ruleName: rule.name, status: 'cannot_evaluate', provision: rule.provision,
-        inputs: rule.inputs, declaredValue: null, thresholdValue: null, message: 'Could not evaluate.',
+        inputs: rule.inputs, declaredValue: null, thresholdValue: null,
+        message: `Evaluation error: ${(e as Error).message}`,
       }
     }
 
-    // Surface declared vs threshold for financial rules
-    let declaredValue: string | null = null
-    let thresholdValue: string | null = null
-    if (rule.id === 'PQ001') {
-      declaredValue = `₹${input.avg_turnover_crore} Cr`
-      thresholdValue = '₹5 Cr'
-    }
-    if (rule.id === 'PQ002') {
-      declaredValue = `₹${input.max_similar_work_crore} Cr`
-      thresholdValue = '₹2 Cr'
-    }
+    // Surface declared value and threshold from context (not hardcoded)
+    const firstInput = rule.inputs[0]
+    const firstThreshVar = rule.thresholdVars?.[0]
+    const declaredValue = firstInput && ctx[firstInput] != null ? `₹${ctx[firstInput]} Cr` : null
+    const thresholdValue = firstThreshVar && ctx[firstThreshVar] != null ? `₹${ctx[firstThreshVar]} Cr` : null
 
     return {
       ruleId: rule.id, ruleName: rule.name,
       status: passed ? 'qualified' : 'not_qualified',
       provision: rule.provision, inputs: rule.inputs,
       declaredValue, thresholdValue,
-      message: passed ? `${rule.name}: qualified.` : rule.error
-        .replace(/\{(\w+)\}/g, (_, k) => String(input[k] ?? '')),
+      message: passed ? `${rule.name}: qualified.`
+        : rule.error.replace(/\{(\w+)\}/g, (_, k) => String(ctx[k] ?? '')),
     }
   })
 }
