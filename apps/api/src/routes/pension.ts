@@ -5,8 +5,8 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
-const RELAY_URL = (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
-const INTERNAL_KEY = (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
+const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
+const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
 
 export const pensionRoutes = new Hono<AppEnv>();
 
@@ -85,11 +85,12 @@ pensionRoutes.post('/cases/:id/action', async (c) => {
   // Resume the Mastra workflow run at the officer-review suspension point.
   // Best-effort — if the relay is unreachable the DB state is already correct.
   try {
-    const res = await fetch(`${RELAY_URL}/internal/pension/resume`, {
+    const key = internalKey();
+    const res = await fetch(`${relayUrl()}/internal/pension/resume`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(INTERNAL_KEY ? { 'x-internal-service-key': INTERNAL_KEY } : {}),
+        ...(key ? { 'x-internal-service-key': key } : {}),
       },
       body: JSON.stringify({
         caseId: id,

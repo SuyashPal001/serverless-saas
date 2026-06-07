@@ -9,7 +9,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, like } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
-const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3001';
+const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
 
 export const filesFolderRoutes = new Hono<AppEnv>();
 
@@ -71,7 +71,7 @@ filesFolderRoutes.post(
           uploaderIdentifier = uploader?.personalIdentifier ?? personalIdentifier;
         }
 
-        const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {
+        const relayRes = await fetch(`${relayUrl()}/internal/ingest`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

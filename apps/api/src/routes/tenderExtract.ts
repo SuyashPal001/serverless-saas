@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 
-const RELAY_URL = (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
-const INTERNAL_KEY = (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
+const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
+const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
 
 export const tenderExtractRoutes = new Hono<AppEnv>();
 
@@ -12,11 +12,12 @@ tenderExtractRoutes.post('/authoring/extract-text', async (c) => {
   const contentType = c.req.header('content-type') ?? '';
 
   try {
-    const res = await fetch(`${RELAY_URL}/internal/tender/extract-text`, {
+    const key = internalKey();
+    const res = await fetch(`${relayUrl()}/internal/tender/extract-text`, {
       method: 'POST',
       headers: {
         'content-type': contentType,
-        ...(INTERNAL_KEY ? { 'x-internal-service-key': INTERNAL_KEY } : {}),
+        ...(key ? { 'x-internal-service-key': key } : {}),
       },
       body,
       signal: AbortSignal.timeout(120_000),
