@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Globe, FileSearch, CalendarClock, Network, Scale, ClipboardCheck, UserCheck, BarChart3, BookOpen, Building2, TrendingUp } from "lucide-react";
+import { Brain, Globe, FileSearch, CalendarClock, Network, Scale, ClipboardCheck, UserCheck, BarChart3, BookOpen, Building2, TrendingUp, ScrollText, ShieldCheck, MessageSquareQuote, GitCompare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentDetail } from "@/components/platform/agents/types";
@@ -38,7 +38,53 @@ function isCommercialAgent(name: string): boolean {
     return n.includes("commercial");
 }
 
+function isTenderAgent(name: string): boolean {
+    const n = name.toLowerCase();
+    return n.includes("authoring") || n.includes("document intelligence") ||
+        n.includes("bid evaluation") || n.includes("procurement") ||
+        n.includes("tender") || (n.includes("advisor") && !n.includes("paras"));
+}
+
+function tenderCapabilities(name: string): CapabilityItem[] {
+    const n = name.toLowerCase();
+    if (n.includes("authoring")) return [
+        { icon: ScrollText, label: "Clause-library drafting", description: "Reuses your organisation's approved clauses (GFR-2017 compliant) and flags gaps" },
+        { icon: BookOpen, label: "GFR-2017 structuring", description: "Generates all 8 sections: NIT, eligibility, scope, technical, SLA/KPI, BOQ, eval method, contract terms" },
+        { icon: ShieldCheck, label: "CVC-safety flags", description: "Highlights provisions that deviate from CVC circulars before the document is exported" },
+        { icon: UserCheck, label: "Versioned officer review", description: "Every section is versioned; officers accept or edit each before the RFP is finalised" },
+    ];
+    if (n.includes("document") || n.includes("intelligence")) return [
+        { icon: FileSearch, label: "Multi-format OCR extraction", description: "Parses PDFs, Word, and scanned images — structured output from any bid document" },
+        { icon: BookOpen, label: "Page-level provenance", description: "Every extracted value cites the exact source page — no hallucination, no inference beyond the doc" },
+        { icon: ClipboardCheck, label: "Eligibility & BOQ parsing", description: "Extracts turnover, experience, certifications, and BOQ line items into structured tables" },
+        { icon: ShieldCheck, label: "Fabrication-free guarantee", description: "Only reports what is in the document; missing data is flagged, not assumed" },
+    ];
+    if (n.includes("bid evaluation") || n.includes("evaluation")) return [
+        { icon: ClipboardCheck, label: "Clause-wise compliance", description: "Marks each RFP clause as complied, deviation, or not-found with a cited narration" },
+        { icon: FileSearch, label: "Cited findings", description: "Every finding linked to the exact source page in the bid document" },
+        { icon: GitCompare, label: "Comparative evaluation", description: "Side-by-side compliance matrix across all bidders for officer comparison" },
+        { icon: UserCheck, label: "Human owns the verdict", description: "Routes findings to the officer review queue; no autonomous award recommendation" },
+    ];
+    if (n.includes("advisor") || n.includes("procurement")) return [
+        { icon: MessageSquareQuote, label: "RAG Q&A with citations", description: "Answers procurement queries grounded in your own tender documents with source references" },
+        { icon: BarChart3, label: "Trade-off analysis", description: "Compares evaluation dimensions and flags risks in bid or RFP design" },
+        { icon: ShieldCheck, label: "Never recommends a bidder", description: "Advisory output is advisory-only; award decisions remain with the officer" },
+        { icon: ScrollText, label: "Audit-clean output", description: "Every answer is source-attributed and suitable for file noting" },
+    ];
+    return BASE_CAPABILITIES;
+}
+
+function tenderFallbackDescription(name: string): string {
+    const n = name.toLowerCase();
+    if (n.includes("authoring")) return "Drafts complete government RFPs from your requirement document and template fields. Structures all 8 GFR-2017 sections with your clause library, flags CVC-safety issues, and versions every section for officer review before export.";
+    if (n.includes("document") || n.includes("intelligence")) return "Extracts structured data from uploaded bid documents — PDFs, Word, and scanned images — with page-level provenance. Never fabricates beyond what is in the document.";
+    if (n.includes("bid evaluation") || n.includes("evaluation")) return "Evaluates bids clause-by-clause against the RFP with cited findings. Compares compliance across bidders and routes shortfalls for officer clarification. The officer owns the final verdict.";
+    if (n.includes("advisor") || n.includes("procurement")) return "Answers procurement questions grounded in your tender documents with citations. Provides trade-off analysis and risk flags — never recommends a specific bidder.";
+    return "A government procurement AI agent.";
+}
+
 function fallbackDescription(name: string): string {
+    if (isTenderAgent(name)) return tenderFallbackDescription(name);
     const n = name.toLowerCase();
     if (isSupervisor(n)) {
         return "Orchestrates the full PM lifecycle — writes PRDs, generates roadmaps, and breaks milestones into engineering tasks by delegating to specialist agents. Use this when you want to plan and ship a feature end-to-end.";
@@ -108,7 +154,9 @@ export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) 
         ? agent.description
         : fallbackDescription(name);
 
-    const capabilities: CapabilityItem[] = isParasAgent(name)
+    const capabilities: CapabilityItem[] = isTenderAgent(name)
+        ? tenderCapabilities(name)
+        : isParasAgent(name)
         ? PARAS_CAPABILITIES
         : isITRAgent(name)
         ? ITR_CAPABILITIES

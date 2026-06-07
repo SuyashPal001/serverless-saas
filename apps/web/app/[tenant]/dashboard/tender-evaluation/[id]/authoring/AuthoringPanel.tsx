@@ -48,6 +48,14 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
         },
     });
 
+    const retryMutation = useMutation({
+        mutationFn: async () => {
+            const res = await fetch(`/api/proxy/api/v1/tender/authoring/${tenderId}/retry`, { method: "POST" });
+            if (!res.ok) throw new Error((await res.json()).error ?? "Retry failed");
+        },
+        onSuccess: () => refetch(),
+    });
+
     if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" />Loading RFP…</div>;
 
     const generating = data?.tender?.authoringStatus === "generating";
@@ -63,14 +71,6 @@ export function AuthoringPanel({ tenderId }: { tenderId: string }) {
     }
 
     const failed = data?.tender?.authoringStatus === "failed";
-
-    const retryMutation = useMutation({
-        mutationFn: async () => {
-            const res = await fetch(`/api/proxy/api/v1/tender/authoring/${tenderId}/retry`, { method: "POST" });
-            if (!res.ok) throw new Error((await res.json()).error ?? "Retry failed");
-        },
-        onSuccess: () => refetch(),
-    });
 
     if (failed || error) {
         return (
