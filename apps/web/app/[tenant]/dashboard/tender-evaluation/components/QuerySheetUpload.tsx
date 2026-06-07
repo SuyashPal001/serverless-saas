@@ -5,6 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Upload, X, CheckCircle2, AlertCircle, Eye } from "lucide-react";
 
+const PARSE_STEPS = [
+  "Reading uploaded query sheets…",
+  "Identifying clause references and bidder queries…",
+  "Parsing query text and intent…",
+  "Cross-referencing RFP sections…",
+  "Drafting AI responses for each query…",
+  "Finalising query register…",
+]
+
 interface FileStatus { name: string; status: "pending" | "extracting" | "done" | "failed"; error?: string; charCount?: number }
 
 interface Props {
@@ -20,6 +29,17 @@ export function QuerySheetUpload({ tenderId, currentQueryCount, onQueriesParsed 
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
   const [isParsing, setIsParsing] = useState(false);
+  const [parseStep, setParseStep] = useState(0);
+  const [stepVisible, setStepVisible] = useState(true);
+
+  useEffect(() => {
+    if (!isParsing) { setParseStep(0); setStepVisible(true); return; }
+    const t = setInterval(() => {
+      setStepVisible(false);
+      setTimeout(() => { setParseStep(i => (i + 1) % PARSE_STEPS.length); setStepVisible(true); }, 350);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [isParsing]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const preUploadCount = useRef(0);
@@ -129,8 +149,22 @@ export function QuerySheetUpload({ tenderId, currentQueryCount, onQueriesParsed 
         </div>
       )}
       {isParsing && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin text-blue-400" />Parsing queries with AI…
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-blue-500/20 bg-blue-500/5">
+          <div className="relative flex-shrink-0 w-7 h-7 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border border-blue-500/20 animate-ping" />
+            <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-blue-400 mb-0.5">Pre-Bid Query Parser · working</p>
+            <p className={`text-xs text-foreground transition-opacity duration-300 truncate ${stepVisible ? "opacity-100" : "opacity-0"}`}>
+              {PARSE_STEPS[parseStep]}
+            </p>
+          </div>
+          <div className="flex gap-1 flex-shrink-0">
+            {PARSE_STEPS.map((_, i) => (
+              <div key={i} className={`rounded-full transition-all duration-300 ${i === parseStep ? "w-3 h-1 bg-blue-400" : "w-1 h-1 bg-muted-foreground/30"}`} />
+            ))}
+          </div>
         </div>
       )}
       {!isParsing && fileStatuses.some(f => f.status === "done") && (
