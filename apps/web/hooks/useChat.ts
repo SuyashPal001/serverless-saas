@@ -14,6 +14,7 @@ export interface UseChatOptions {
     conversationId?: string;
     agentId?: string;
     folderId?: string;
+    tenderId?: string;
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
     onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown) => void;
     onError?: (code: string, message: string) => void;
@@ -36,6 +37,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         conversationId,
         agentId,
         folderId,
+        tenderId,
         onDelta,
         onDone,
         onError,
@@ -66,9 +68,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const conversationIdRef = useRef(conversationId);
     const agentIdRef = useRef(agentId);
     const folderIdRef = useRef(folderId);
+    const tenderIdRef = useRef(tenderId);
 
     onDeltaRef.current = onDelta;
     folderIdRef.current = folderId;
+    tenderIdRef.current = tenderId;
     onDoneRef.current = onDone;
     onErrorRef.current = onError;
     onToolCallRef.current = onToolCall;
@@ -154,6 +158,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 conversationId: conversationIdRef.current,
                 attachments,
                 ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
+                ...(tenderIdRef.current ? { tenderId: tenderIdRef.current } : {}),
             }),
             signal: controller.signal,
         });

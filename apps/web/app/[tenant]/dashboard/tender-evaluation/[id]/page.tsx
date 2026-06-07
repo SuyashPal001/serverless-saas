@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2 } from "lucide-react";
+import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2, MessageSquare } from "lucide-react";
 import { PreBidPanel } from "../components/PreBidPanel";
 import { BidsPanel } from "../components/BidsPanel";
 import { PQPanel } from "../components/PQPanel";
@@ -104,6 +104,7 @@ export default function TenderWorkspacePage() {
     });
 
     const anyProcessing = (data?.bidders?.length ?? 0) > 0 && (data?.bidders?.some(b => !b.embeddingReady) ?? false);
+    const hasEmbeddingReady = data?.bidders?.some(b => b.embeddingReady) ?? false;
 
     // Auto-clear evalRunning once all stages complete
     const allDone = data?.evalProgress?.status === 'completed';
@@ -156,14 +157,27 @@ export default function TenderWorkspacePage() {
                     <h1 className="text-2xl font-bold tracking-tight text-foreground">{data.title}</h1>
                     <p className="text-muted-foreground mt-1">{data.department} · Budget: ₹{data.budget ? (Number(data.budget) / 1e7).toFixed(1) : "—"} Cr</p>
                 </div>
-                <Button
-                    onClick={handleRunEvaluation}
-                    disabled={runningEval || (data?.bidders?.length ?? 0) === 0 || anyProcessing}
-                    title={anyProcessing ? "Wait for all bids to finish processing" : (data?.bidders?.length ?? 0) === 0 ? "Upload at least one bid to run evaluation" : undefined}
-                    size="sm" className="bg-primary text-primary-foreground gap-2"
-                >
-                    {runningEval ? <><Loader2 className="w-4 h-4 animate-spin" />Running…</> : <><Play className="w-4 h-4" />Run Evaluation</>}
-                </Button>
+                <div className="flex items-center gap-2">
+                    {hasEmbeddingReady && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => router.push(`/${tenant}/dashboard/tender-evaluation/${tender_id}/chat`)}
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                            Chat with Advisor
+                        </Button>
+                    )}
+                    <Button
+                        onClick={handleRunEvaluation}
+                        disabled={runningEval || (data?.bidders?.length ?? 0) === 0 || anyProcessing}
+                        title={anyProcessing ? "Wait for all bids to finish processing" : (data?.bidders?.length ?? 0) === 0 ? "Upload at least one bid to run evaluation" : undefined}
+                        size="sm" className="bg-primary text-primary-foreground gap-2"
+                    >
+                        {runningEval ? <><Loader2 className="w-4 h-4 animate-spin" />Running…</> : <><Play className="w-4 h-4" />Run Evaluation</>}
+                    </Button>
+                </div>
             </div>
 
             {evalError && <p className="text-xs text-red-400">{evalError}</p>}

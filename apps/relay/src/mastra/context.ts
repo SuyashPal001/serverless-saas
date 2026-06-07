@@ -14,5 +14,10 @@ export const pensionContextSchema = tenantContextSchema.extend({
   folderId: z.string().optional().default(''),
 })
 
+export const tenderContextSchema = tenantContextSchema.extend({
+  tenderId: z.string().optional().default(''),
+})
+
 export type TenantContext = z.infer<typeof tenantContextSchema>
 export type PensionContext = z.infer<typeof pensionContextSchema>
+export type TenderContext = z.infer<typeof tenderContextSchema>
