@@ -1,8 +1,9 @@
 "use client";
 
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, HelpCircle, FileText } from "lucide-react";
+import { CheckCircle, XCircle, HelpCircle, FileText, Clock } from "lucide-react";
 
 interface PqFinding {
     id: string; ruleId: string; ruleName: string;
@@ -23,21 +24,25 @@ interface PQPanelProps {
     onAction: (findingId: string, findingType: "pq") => void;
 }
 
-const FINDING_CONFIG = {
+type BidderPqStatus = "qualified" | "not_qualified" | "cannot_evaluate" | "pending";
+
+const FINDING_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
     qualified: { label: "Qualified", color: "bg-green-500/20 text-green-400 border-green-500/30", icon: CheckCircle },
     not_qualified: { label: "Not Qualified", color: "bg-red-500/20 text-red-400 border-red-500/30", icon: XCircle },
     cannot_evaluate: { label: "Cannot Evaluate", color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30", icon: HelpCircle },
+    pending: { label: "Awaiting Evaluation", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: Clock },
 };
 
-const BIDDER_STATUS_COLOR = {
+const BIDDER_STATUS_COLOR: Record<BidderPqStatus, string> = {
     qualified: "bg-green-500/20 text-green-400 border-green-500/30",
     not_qualified: "bg-red-500/20 text-red-400 border-red-500/30",
     cannot_evaluate: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+    pending: "bg-blue-500/10 text-blue-400 border-blue-500/20",
 };
 
-function getBidderPqStatus(bidderId: string, findings: PqFinding[]): "qualified" | "not_qualified" | "cannot_evaluate" {
+function getBidderPqStatus(bidderId: string, findings: PqFinding[]): BidderPqStatus {
     const bidderFindings = findings.filter(f => f.bidderId === bidderId);
-    if (!bidderFindings.length) return "cannot_evaluate";
+    if (!bidderFindings.length) return "pending";
     if (bidderFindings.some(f => f.status === "not_qualified")) return "not_qualified";
     if (bidderFindings.some(f => f.status === "cannot_evaluate")) return "cannot_evaluate";
     return "qualified";

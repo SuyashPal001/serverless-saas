@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertTriangle, XCircle, Zap, Loader2, FileText } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, FileText, Clock } from "lucide-react";
 import { ScoringConfigEditor } from "./ScoringConfigEditor";
 import { ComparativeScoringTable } from "./ComparativeScoringTable";
 import type { BidderTechnicalScore } from "./types";
@@ -28,7 +27,6 @@ interface TechnicalPanelProps {
     scoringConfig: { weights: Record<string, number> } | null;
     bidderTechnicalScores: BidderTechnicalScore[];
     onAction: (findingId: string, findingType: "technical") => void;
-    onLiveRunComplete: () => void;
 }
 
 const CLAUSE_CONFIG = {
@@ -38,11 +36,6 @@ const CLAUSE_CONFIG = {
     cannot_evaluate: { label: "Cannot Evaluate", color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30", icon: XCircle },
 };
 
-interface LiveResult {
-    clauseNo: string; clauseTitle: string;
-    status: "complied" | "deviation" | "not_found" | "cannot_evaluate";
-    narration: string; sourceDoc: string | null; sourcePage: number | null;
-}
 
 // Derive distinct ordered clauses from all findings across all bidders
 function deriveDistinctClauses(findings: TechFinding[]) {
@@ -53,43 +46,17 @@ function deriveDistinctClauses(findings: TechFinding[]) {
 
 export function TechnicalPanel({
     tenderId, bidders, technicalFindings, scoringConfig,
-    bidderTechnicalScores, onAction, onLiveRunComplete,
+    bidderTechnicalScores, onAction,
 }: TechnicalPanelProps) {
     const [selectedBidderId, setSelectedBidderId] = useState(bidders[0]?.id ?? "");
-    const [liveRunning, setLiveRunning] = useState(false);
-    const [liveResults, setLiveResults] = useState<LiveResult[] | null>(null);
-    const [liveError, setLiveError] = useState("");
     const [localScores, setLocalScores] = useState<BidderTechnicalScore[]>(bidderTechnicalScores);
 
     const selectedBidder = bidders.find(b => b.id === selectedBidderId) ?? bidders[0];
 
-    async function runLiveEvaluation() {
-        setLiveRunning(true);
-        setLiveError("");
-        try {
-            const res = await fetch(`/api/proxy/api/v1/tender/evaluations/${tenderId}/technical/run`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bidderId: selectedBidder?.id }),
-            });
-            if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-            const data = await res.json() as { techResults?: Array<{ clauses?: LiveResult[] }> };
-            setLiveResults(data.techResults?.[0]?.clauses ?? []);
-            onLiveRunComplete();
-        } catch (e) {
-            setLiveError(e instanceof Error ? e.message : "Evaluation failed");
-        } finally {
-            setLiveRunning(false);
-        }
-    }
-
     const seededFindings = selectedBidder
         ? technicalFindings.filter(f => f.bidderId === selectedBidder.id)
         : [];
-    const displayClauses: LiveResult[] = liveResults ?? seededFindings.map(f => ({
-        clauseNo: f.clauseNo, clauseTitle: f.clauseTitle, status: f.status,
-        narration: f.narration, sourceDoc: f.sourceDoc, sourcePage: f.sourcePage,
-    }));
+    const displayClauses = seededFindings;
 
     const complied = displayClauses.filter(c => c.status === "complied").length;
     const deviations = displayClauses.filter(c => c.status === "deviation").length;
@@ -117,20 +84,14 @@ export function TechnicalPanel({
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                    Clause-wise compliance evaluation against RFP technical requirements.
-                </p>
-                <Button onClick={runLiveEvaluation} disabled={liveRunning} size="sm"
-                    className="bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 gap-2">
-                    {liveRunning ? <><Loader2 className="w-4 h-4 animate-spin" />Evaluating…</> : <><Zap className="w-4 h-4" />Run Live Evaluation</>}
-                </Button>
-            </div>
+            <p className="text-sm text-muted-foreground">
+                Clause-wise compliance evaluation against RFP technical requirements.
+            </p>
 
             {bidders.length > 1 && (
                 <div className="flex gap-1 flex-wrap">
                     {bidders.map(b => (
-                        <button key={b.id} onClick={() => { setSelectedBidderId(b.id); setLiveResults(null); }}
+                        <button key={b.id} onClick={() => { setSelectedBidderId(b.id); }}
                             className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${b.id === selectedBidderId ? "bg-primary/20 text-primary border-primary/30" : "text-muted-foreground border-border hover:text-foreground hover:border-border/80"}`}>
                             {b.displayLabel}: {b.name}
                         </button>
@@ -138,14 +99,7 @@ export function TechnicalPanel({
                 </div>
             )}
 
-            {liveError && <p className="text-xs text-red-400 p-2 rounded bg-red-500/10 border border-red-500/20">{liveError}</p>}
-            {liveResults && (
-                <p className="text-xs text-green-400 p-2 rounded bg-green-500/10 border border-green-500/20">
-                    ✓ Live evaluation completed for {selectedBidder?.displayLabel} — {liveResults.length} clauses assessed
-                </p>
-            )}
-
-            <div className="flex gap-3 flex-wrap">
+<div className="flex gap-3 flex-wrap">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
                     <CheckCircle className="w-3.5 h-3.5 text-green-400" />
                     <span className="text-xs text-green-400 font-medium">{complied} Complied</span>
@@ -193,6 +147,16 @@ export function TechnicalPanel({
                                 </tr>
                             </thead>
                             <tbody>
+                                {displayClauses.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="py-8 text-center">
+                                            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                                                <Clock className="w-4 h-4" />
+                                                <span className="text-xs">Awaiting Evaluation — run the evaluation to populate findings</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                                 {displayClauses.map((c, i) => {
                                     const cfg = CLAUSE_CONFIG[c.status];
                                     const Icon = cfg.icon;
