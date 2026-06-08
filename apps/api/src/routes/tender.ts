@@ -282,6 +282,13 @@ tenderRoutes.delete('/evaluations/:tenderId/bidders/:bidderId', async (c) => {
     DELETE FROM person_folders WHERE id = ${folderId}::uuid AND tenant_id = ${tenantId}::uuid
   `);
 
+  // evaluation_reports.l1_bidder_id has no ON DELETE CASCADE — deleting any bidder
+  // invalidates the report, so remove it first.
+  await db.delete(evaluationReports)
+    .where(and(eq(evaluationReports.tenderId, tenderId), eq(evaluationReports.tenantId, tenantId)));
+  // bidder_technical_scores FK — delete explicitly to be safe regardless of DB cascade state.
+  await db.delete(bidderTechnicalScores)
+    .where(and(eq(bidderTechnicalScores.bidderId, bidderId), eq(bidderTechnicalScores.tenantId, tenantId)));
   // Deleting the bidder cascades to pq_findings, technical_findings, shortfalls,
   // clarification_requests, financial_findings, bids
   await db.delete(bidders)
