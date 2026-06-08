@@ -90,6 +90,48 @@ async function upsertScores(
   );
 }
 
+// ── Auto-seed helper ─────────────────────────────────────────────────────────
+// Called from GET /evaluations/:id to transparently seed equal weights when
+// scoring_config is absent or doesn't cover all current technical clauses.
+
+type RawFinding = { bidderId: string; clauseNo: string; status: unknown };
+
+export async function ensureScoresSeeded(
+  tenantId: string,
+  tenderId: string,
+  rawFindings: RawFinding[],
+  config: { weights?: Record<string, number> } | null,
+): Promise<Array<{ bidderId: string; technicalScore: string; breakdown: unknown[] }>> {
+  if (rawFindings.length === 0) return [];
+
+  const allClauseNos = [...new Set(rawFindings.map(f => f.clauseNo))].sort();
+  let weights = config?.weights ?? {};
+
+  // Refresh when weights are empty or don't cover all current clauses
+  const needsRefresh = Object.keys(weights).length === 0
+    || allClauseNos.some(c => !(c in weights));
+
+  if (needsRefresh) {
+    weights = equalWeights(allClauseNos);
+    await db.update(tenders)
+      .set({ scoringConfig: { weights }, updatedAt: new Date() })
+      .where(and(eq(tenders.id, tenderId), eq(tenders.tenantId, tenantId)));
+  }
+
+  const typedFindings: Finding[] = rawFindings.map(f => ({
+    bidderId: f.bidderId,
+    clauseNo: f.clauseNo,
+    status: String(f.status),
+  }));
+  const scores = computeTechnicalScores(typedFindings, weights);
+  await upsertScores(tenantId, tenderId, scores);
+  return scores.map(s => ({
+    bidderId: s.bidderId,
+    technicalScore: String(s.technicalScore),
+    breakdown: s.breakdown,
+  }));
+}
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export const tenderScoringRoutes = new Hono<AppEnv>();

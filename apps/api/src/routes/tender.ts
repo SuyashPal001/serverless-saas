@@ -9,6 +9,7 @@ import {
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and, count, sql } from 'drizzle-orm';
 import type { AppEnv } from '../types';
+import { ensureScoresSeeded } from './tenderScoring';
 
 function bidderFolderId(tenantId: string, tenderId: string, displayLabel: string): string {
   const stem = displayLabel.toLowerCase().replace(/\s+/g, '-');
@@ -99,6 +100,20 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     embeddingReady: embeddedFolderIds.has(bidderFolderId(tenantId, id, b.displayLabel)),
   }));
 
+  // Auto-seed scores when missing or stale (transparent on first GET after eval)
+  let scoringRows = btsRows;
+  if (techRows.length > 0) {
+    const config = tender.scoringConfig as { weights?: Record<string, number> } | null;
+    const allClauseNos = [...new Set(techRows.map(r => r.clauseNo))].sort();
+    const weights = config?.weights ?? {};
+    const needsSeed = btsRows.length === 0
+      || Object.keys(weights).length === 0
+      || allClauseNos.some(c => !(c in weights));
+    if (needsSeed) {
+      scoringRows = await ensureScoresSeeded(tenantId, id, techRows, config);
+    }
+  }
+
   const evalProgress = deriveEvalProgress(pqRows.length, techRows.length, finRows.length, !!reportRows[0]);
   return c.json({
     ...tender,
@@ -110,7 +125,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     clarificationRequests: crRows,
     financialFindings: finRows,
     report: reportRows[0] ?? null,
-    bidderTechnicalScores: btsRows,
+    bidderTechnicalScores: scoringRows,
     evalProgress,
   });
 });
