@@ -106,7 +106,7 @@ export function QueryCard({ query: q, tenderId, onMutate, hasAmendment, isAmendm
               <p className="text-xs text-muted-foreground">{q.finalResponse}</p>
             </div>
           )}
-          {clauseRef && (
+          {(q.draftedResponse || responded) && (
             <button
               onClick={onToggleAmendment}
               disabled={isAmendmentLoading}
