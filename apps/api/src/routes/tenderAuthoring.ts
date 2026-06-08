@@ -272,7 +272,11 @@ function buildExportHtml(tender: any, sections: any[]): string {
     const content = (s.content ?? {}) as any;
     let body = '';
     if (s.blockType === 'prose') {
-      body = `<p>${(content.text ?? '').replace(/\n/g, '</p><p>')}</p>`;
+      const text = `<p>${(content.text ?? '').replace(/\n/g, '</p><p>')}</p>`;
+      const clauses = (content.clauses ?? []).map((cl: any) =>
+        `<p style="margin-left:1.5em"><b>${cl.clauseNo} ${cl.title}</b>${cl.libraryRef ? ` [${cl.libraryRef}]` : ''}<br/>${(cl.text ?? '').replace(/\n/g, '<br/>')}</p>`
+      ).join('');
+      body = text + clauses;
     } else if (s.blockType === 'criteria-table') {
       const rows = (content.rows ?? []).map((r: any) => `<tr><td>${r.criterion}</td><td>${r.threshold}</td><td>${r.verification}</td></tr>`).join('');
       body = `<table border="1" cellpadding="6"><thead><tr><th>Criterion</th><th>Threshold</th><th>Verification</th></tr></thead><tbody>${rows}</tbody></table>`;
