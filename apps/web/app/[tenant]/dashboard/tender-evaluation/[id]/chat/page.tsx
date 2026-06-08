@@ -6,7 +6,7 @@ import { useChat } from "@/hooks/useChat";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, MessageSquare, Send, Loader2 } from "lucide-react";
 import { TenderChatMessage, StreamingBubble } from "./TenderChatMessage";
-import type { Msg, ToolCallItem } from "./TenderChatMessage";
+import type { Msg, ToolCallItem, ToolResult } from "./TenderChatMessage";
 
 export default function TenderAdvisorChatPage() {
     const params = useParams();
@@ -22,6 +22,7 @@ export default function TenderAdvisorChatPage() {
     const [input, setInput] = useState("");
     const [streamingText, setStreamingText] = useState("");
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, string>>(new Map());
+    const pendingToolResults = useRef<ToolResult[]>([]);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,9 +36,11 @@ export default function TenderAdvisorChatPage() {
         tenderId,
         onDelta: (delta) => setStreamingText((prev) => prev + delta),
         onDone: (fullText) => {
+            const toolResults = pendingToolResults.current.slice();
+            pendingToolResults.current = [];
             setMessages((prev) => [
                 ...prev,
-                { id: crypto.randomUUID(), role: "assistant", text: fullText },
+                { id: crypto.randomUUID(), role: "assistant", text: fullText, toolResults },
             ]);
             setStreamingText("");
             setActiveToolCalls(new Map());
@@ -45,7 +48,8 @@ export default function TenderAdvisorChatPage() {
         onToolCall: (toolName, toolCallId) => {
             setActiveToolCalls((prev) => new Map(prev).set(toolCallId, toolName));
         },
-        onToolDone: (toolCallId) => {
+        onToolDone: (toolCallId, toolName, result) => {
+            pendingToolResults.current.push({ toolCallId, toolName, result });
             setActiveToolCalls((prev) => {
                 const next = new Map(prev);
                 next.delete(toolCallId);
@@ -53,6 +57,7 @@ export default function TenderAdvisorChatPage() {
             });
         },
         onError: (_code, msg) => {
+            pendingToolResults.current = [];
             setMessages((prev) => [
                 ...prev,
                 { id: crypto.randomUUID(), role: "assistant", text: `Error: ${msg}` },

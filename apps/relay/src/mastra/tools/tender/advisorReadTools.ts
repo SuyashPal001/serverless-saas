@@ -4,7 +4,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { db, bidders, pqFindings, technicalFindings, shortfalls, financialFindings, evaluationReports } from '@serverless-saas/database'
 import { eq, and } from 'drizzle-orm'
-import { getFullBidText } from '../../../../tender/getFullBidText.js'
+import { getFullBidText } from '../../../tender/getFullBidText.js'
 import * as crypto from 'crypto'
 
 function getCtx(execContext: unknown): { tenderId: string; tenantId: string } {

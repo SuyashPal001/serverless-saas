@@ -3,15 +3,18 @@ import { platformAgent } from './agents/platformAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
 import { aiParasAgent } from './agents/aiParasAgent.js'
+import { tenderAdvisorAgent } from './agents/tenderAdvisorAgent.js'
 
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
-  saarthi:               platformAgent as unknown as Agent,
-  'pm agent':            pmAgent as unknown as Agent,
-  architect:             architectAgent as unknown as Agent,
-  'ai-paras':            aiParasAgent as unknown as Agent,
+  saarthi:                 platformAgent as unknown as Agent,
+  'pm agent':              pmAgent as unknown as Agent,
+  architect:               architectAgent as unknown as Agent,
+  'ai-paras':              aiParasAgent as unknown as Agent,
   'document intelligence': aiParasAgent as unknown as Agent, // routes to AI-PARAS; DocIntel is a sub-agent
+  'tender-advisor':        tenderAdvisorAgent as unknown as Agent,
+  'procurement advisor':   tenderAdvisorAgent as unknown as Agent,
 }
 
 /**

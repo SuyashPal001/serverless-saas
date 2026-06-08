@@ -150,9 +150,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
+    // Guard: only query DB if agentId looks like a UUID — string-ID agents
+    // (e.g. 'tender-advisor') skip DB lookups and resolve via registry directly.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)
     const [agentSkill, agentName] = await Promise.all([
-      fetchAgentSkill(agentId),
-      fetchAgentName(agentId),
+      isUuid ? fetchAgentSkill(agentId) : Promise.resolve(null),
+      isUuid ? fetchAgentName(agentId) : Promise.resolve(agentId),
     ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)

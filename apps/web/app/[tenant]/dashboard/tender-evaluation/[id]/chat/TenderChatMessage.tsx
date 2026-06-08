@@ -2,6 +2,9 @@
 
 import { Bot, User, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TenderToolCards, type ToolResult } from "./TenderToolCards";
+
+export type { ToolResult };
 
 export interface ToolCallItem {
     toolCallId: string;
@@ -14,6 +17,7 @@ export interface Msg {
     role: "user" | "assistant";
     text: string;
     toolCalls?: ToolCallItem[];
+    toolResults?: ToolResult[];
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -61,11 +65,14 @@ export function TenderChatMessage({ msg }: { msg: Msg }) {
                     <Bot className="w-4 h-4 text-primary" />
                 </div>
             )}
-            <div className={cn("max-w-[78%] flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
+            <div className={cn("flex flex-col gap-1", isUser ? "items-end max-w-[78%]" : "items-start w-full max-w-[90%]")}>
                 {msg.toolCalls && msg.toolCalls.length > 0 && (
                     <div className="flex flex-wrap">
                         {msg.toolCalls.map(tc => <ToolChip key={tc.toolCallId} item={tc} />)}
                     </div>
+                )}
+                {!isUser && msg.toolResults && msg.toolResults.length > 0 && (
+                    <TenderToolCards toolResults={msg.toolResults} />
                 )}
                 <div
                     className={cn(
