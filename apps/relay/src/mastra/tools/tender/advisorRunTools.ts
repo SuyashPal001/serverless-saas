@@ -11,6 +11,7 @@ import {
   buildBidderMap, asPqBidders,
   buildPqResults, buildTechResults, buildShortfallItems, buildFinResults,
 } from './advisorRunHelpers.js'
+import { writeTenderAuditLog } from '../../workflows/tenderAuditLog.js'
 
 function getCtx(execContext: unknown): { tenderId: string; tenantId: string } {
   const rc = (execContext as any)?.requestContext
@@ -32,7 +33,7 @@ export const runPqTool = createTool({
     if (!tenderId || !tenantId) return ctxError('run_pq')
 
     const result = await pqEvaluateStep.execute({ inputData: { tenderId, tenantId } })
-    return {
+    const out = {
       qualifiedBidderIds: result.qualifiedBidderIds,
       totalBidders: result.bidders.length,
       qualifiedCount: result.qualifiedBidderIds.length,
@@ -42,6 +43,8 @@ export const runPqTool = createTool({
         failedRules: r.findings.filter(f => f.status !== 'qualified').map(f => f.ruleName),
       })),
     }
+    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_pq', resource: 'tender', resourceId: tenderId, metadata: { qualifiedCount: out.qualifiedCount, totalBidders: out.totalBidders } })
+    return out
   },
 })
 
@@ -63,12 +66,14 @@ export const runTechnicalTool = createTool({
     const result = await technicalEvaluateStep.execute({
       inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, liveRunBidderId: bidderId },
     })
-    return {
+    const out = {
       techResults: result.techResults.map(r => ({
         bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
         compliedCount: r.compliedCount, deviationCount: r.deviationCount, notFoundCount: r.notFoundCount,
       })),
     }
+    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_technical', resource: 'tender', resourceId: tenderId, metadata: { bidderCount: out.techResults.length } })
+    return out
   },
 })
 
@@ -90,13 +95,15 @@ export const runShortfallTool = createTool({
     const result = await shortfallDetectStep.execute({
       inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults },
     })
-    return {
+    const out = {
       shortfallCount: result.shortfalls.length,
       shortfalls: result.shortfalls.map(s => ({
         bidderId: s.bidderId, bidderName: s.bidderName,
         discrepancy: s.discrepancy, status: s.status,
       })),
     }
+    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_shortfall', resource: 'tender', resourceId: tenderId, metadata: { shortfallCount: out.shortfallCount } })
+    return out
   },
 })
 
@@ -119,7 +126,7 @@ export const runFinancialTool = createTool({
     const result = await financialEvaluateStep.execute({
       inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults, shortfalls: shortfallItems },
     })
-    return {
+    const out = {
       l1BidderId: result.l1BidderId,
       l1Amount: result.l1Amount,
       rankings: result.finResults.map(r => ({
@@ -127,6 +134,8 @@ export const runFinancialTool = createTool({
         correctedTotal: r.correctedTotal, isL1: r.isL1, l1Margin: r.l1Margin,
       })),
     }
+    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_financial', resource: 'tender', resourceId: tenderId, metadata: { l1BidderId: out.l1BidderId, l1Amount: out.l1Amount } })
+    return out
   },
 })
 
@@ -155,6 +164,7 @@ export const runReportTool = createTool({
         techResults, shortfalls: shortfallItems, finResults, l1BidderId, l1Amount,
       },
     })
+    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_report', resource: 'tender', resourceId: tenderId, metadata: { reportId: result.reportId, l1BidderId } })
     return { reportId: result.reportId, recommendation: result.recommendation }
   },
 })

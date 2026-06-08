@@ -5,6 +5,7 @@ import { eq, desc } from 'drizzle-orm'
 interface TenderAuditLogInput {
   tenantId: string
   actorId: string
+  actorType?: 'human' | 'agent' | 'system'
   action: string
   resource: string
   resourceId: string
@@ -39,7 +40,7 @@ export async function writeTenderAuditLog(input: TenderAuditLogInput): Promise<v
     await db.insert(auditLog).values({
       tenantId: input.tenantId,
       actorId: input.actorId,
-      actorType: 'system',
+      actorType: input.actorType ?? 'system',
       action: input.action,
       resource: input.resource,
       resourceId: input.resourceId,
