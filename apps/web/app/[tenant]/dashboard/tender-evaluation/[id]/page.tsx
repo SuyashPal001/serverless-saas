@@ -32,6 +32,8 @@ interface TenderData {
     financialFindings: Array<{ id: string; bidderId: string; boqLines: Array<{ item: string; rfpQty: number; unit: string; quotedRate: number; amount: number }>; totalAmount: string; arithmeticCorrection: string; correctedTotal: string; isL1: string; l1Margin: string | null; sourceDoc: string | null; sourcePage: number | null }>;
     report: { id: string; recommendation: string } | null;
     evalProgress?: EvalProgress;
+    scoringConfig: { weights: Record<string, number> } | null;
+    bidderTechnicalScores: Array<{ bidderId: string; technicalScore: number; breakdown: Array<{ clauseNo: string; weight: number; status: string; points: number }> }>;
 }
 
 const STAGES = [
@@ -215,7 +217,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage2" && <PreBidPanel tenderId={tender_id} />}
                 {activeStage === "stage3" && <BidsPanel tenderId={tender_id} bidders={data.bidders} onBidderAdded={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
                 {activeStage === "stage4" && <PQPanel bidders={data.bidders} pqFindings={data.pqFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "pq", findingId: id })} />}
-                {activeStage === "stage5" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
+                {activeStage === "stage5" && <TechnicalPanel tenderId={tender_id} bidders={data.bidders.filter(b => b.status !== "pq_disqualified")} technicalFindings={data.technicalFindings} scoringConfig={data.scoringConfig ?? null} bidderTechnicalScores={data.bidderTechnicalScores ?? []} onAction={(id) => setModal({ open: true, type: "accept", findingType: "technical", findingId: id })} onLiveRunComplete={() => qc.invalidateQueries({ queryKey: ["tender", tender_id] })} />}
                 {activeStage === "stage6" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
                 {activeStage === "stage7" && <FinancialPanel bidders={data.bidders} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
                 {activeStage === "stage8" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}

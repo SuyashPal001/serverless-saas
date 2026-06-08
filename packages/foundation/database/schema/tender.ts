@@ -40,6 +40,7 @@ export const tenders = pgTable('tenders', {
   evalMethod:   text('eval_method').notNull().default('L1'),  // L1 | QCBS
   status:       tenderStatusEnum('status').notNull().default('evaluation'),
   pqCriteria:      jsonb('pq_criteria').notNull().default('{}'),
+  scoringConfig:   jsonb('scoring_config').default('{}'),   // { weights: { "3.8": 15, "4.3": 20 } }
   templateFields:  jsonb('template_fields').default('{}'),  // authoring form inputs
   requirementText: text('requirement_text'),                // extracted requirement doc text
   authoringStatus: text('authoring_status').default('idle'), // idle|generating|completed|failed
@@ -223,6 +224,20 @@ export const evaluationReports = pgTable('evaluation_reports', {
   l1BidderId:   uuid('l1_bidder_id').references(() => bidders.id),
   generatedAt:  timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Stage 4b: Computed technical scores (display + audit only) ───────────────
+
+export const bidderTechnicalScores = pgTable('bidder_technical_scores', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  tenantId:       uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  tenderId:       uuid('tender_id').notNull().references(() => tenders.id, { onDelete: 'cascade' }),
+  bidderId:       uuid('bidder_id').notNull().references(() => bidders.id, { onDelete: 'cascade' }),
+  technicalScore: numeric('technical_score').notNull(),   // 0–100
+  breakdown:      jsonb('breakdown').notNull().default('[]'), // [{clauseNo,weight,status,points}]
+  computedAt:     timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  tenderIdx: index('idx_bts_tender').on(t.tenderId),
+}));
 
 // Officer actions across all stages
 export const tenderOfficerActions = pgTable('tender_officer_actions', {

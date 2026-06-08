@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertTriangle, XCircle, Zap, Loader2, FileText } from "lucide-react";
+import { ScoringConfigEditor } from "./ScoringConfigEditor";
+import { ComparativeScoringTable } from "./ComparativeScoringTable";
+import type { BidderTechnicalScore } from "./types";
 
 interface TechFinding {
     id: string; clauseNo: string; clauseTitle: string;
@@ -22,6 +25,8 @@ interface TechnicalPanelProps {
     tenderId: string;
     bidders: Bidder[];
     technicalFindings: TechFinding[];
+    scoringConfig: { weights: Record<string, number> } | null;
+    bidderTechnicalScores: BidderTechnicalScore[];
     onAction: (findingId: string, findingType: "technical") => void;
     onLiveRunComplete: () => void;
 }
@@ -39,11 +44,22 @@ interface LiveResult {
     narration: string; sourceDoc: string | null; sourcePage: number | null;
 }
 
-export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction, onLiveRunComplete }: TechnicalPanelProps) {
+// Derive distinct ordered clauses from all findings across all bidders
+function deriveDistinctClauses(findings: TechFinding[]) {
+    const seen = new Map<string, string>();
+    findings.forEach(f => { if (!seen.has(f.clauseNo)) seen.set(f.clauseNo, f.clauseTitle); });
+    return Array.from(seen.entries()).map(([clauseNo, clauseTitle]) => ({ clauseNo, clauseTitle }));
+}
+
+export function TechnicalPanel({
+    tenderId, bidders, technicalFindings, scoringConfig,
+    bidderTechnicalScores, onAction, onLiveRunComplete,
+}: TechnicalPanelProps) {
     const [selectedBidderId, setSelectedBidderId] = useState(bidders[0]?.id ?? "");
     const [liveRunning, setLiveRunning] = useState(false);
     const [liveResults, setLiveResults] = useState<LiveResult[] | null>(null);
     const [liveError, setLiveError] = useState("");
+    const [localScores, setLocalScores] = useState<BidderTechnicalScore[]>(bidderTechnicalScores);
 
     const selectedBidder = bidders.find(b => b.id === selectedBidderId) ?? bidders[0];
 
@@ -58,8 +74,7 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
             });
             if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
             const data = await res.json() as { techResults?: Array<{ clauses?: LiveResult[] }> };
-            const clauses = data.techResults?.[0]?.clauses ?? [];
-            setLiveResults(clauses);
+            setLiveResults(data.techResults?.[0]?.clauses ?? []);
             onLiveRunComplete();
         } catch (e) {
             setLiveError(e instanceof Error ? e.message : "Evaluation failed");
@@ -80,6 +95,26 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
     const deviations = displayClauses.filter(c => c.status === "deviation").length;
     const notFound = displayClauses.filter(c => c.status === "not_found").length;
 
+    const selectedScore = localScores.find(s => s.bidderId === selectedBidder?.id);
+
+    // Compute effective weights for the comparative table
+    const distinctClauses = deriveDistinctClauses(technicalFindings);
+    const initWeights = scoringConfig?.weights ?? {};
+    const effectiveWeights: Record<string, number> = Object.keys(initWeights).length > 0
+        ? initWeights
+        : (() => {
+            const n = distinctClauses.length;
+            if (n === 0) return {};
+            const base = Math.floor((100 / n) * 10) / 10;
+            const w: Record<string, number> = {};
+            let assigned = 0;
+            distinctClauses.forEach((c, i) => {
+                if (i === n - 1) { w[c.clauseNo] = Math.round((100 - assigned) * 10) / 10; }
+                else { w[c.clauseNo] = base; assigned += base; }
+            });
+            return w;
+        })();
+
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -92,7 +127,6 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
                 </Button>
             </div>
 
-            {/* Bidder selector — only when multiple qualified bidders */}
             {bidders.length > 1 && (
                 <div className="flex gap-1 flex-wrap">
                     {bidders.map(b => (
@@ -127,7 +161,19 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
                     </div>
                 )}
                 {selectedBidder && <span className="text-xs text-muted-foreground self-center">— {selectedBidder.displayLabel}: {selectedBidder.name}</span>}
+                {selectedScore && (
+                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 border self-center text-xs">
+                        Technical Score: {selectedScore.technicalScore.toFixed(1)} / 100
+                    </Badge>
+                )}
             </div>
+
+            <ScoringConfigEditor
+                tenderId={tenderId}
+                clauses={distinctClauses}
+                initialWeights={initWeights}
+                onSaved={scores => setLocalScores(scores)}
+            />
 
             <Card className="border-border bg-card">
                 <CardHeader className="pb-2">
@@ -185,6 +231,15 @@ export function TechnicalPanel({ tenderId, bidders, technicalFindings, onAction,
                     </div>
                 </CardContent>
             </Card>
+
+            {localScores.length > 0 && (
+                <ComparativeScoringTable
+                    bidders={bidders}
+                    technicalFindings={technicalFindings}
+                    bidderScores={localScores}
+                    weights={effectiveWeights}
+                />
+            )}
         </div>
     );
 }

@@ -4,7 +4,7 @@ import { db } from '@serverless-saas/database';
 import {
   tenders, bidders, pqFindings, technicalFindings,
   shortfalls, clarificationRequests, financialFindings,
-  evaluationReports, tenderOfficerActions,
+  evaluationReports, tenderOfficerActions, bidderTechnicalScores,
 } from '@serverless-saas/database/schema/tender';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and, count, sql } from 'drizzle-orm';
@@ -70,7 +70,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     .where(and(eq(tenders.id, id), eq(tenders.tenantId, tenantId)));
   if (!tender) return c.json({ error: 'not found' }, 404);
 
-  const [bidderRows, pqRows, techRows, sfRows, crRows, finRows, reportRows] = await Promise.all([
+  const [bidderRows, pqRows, techRows, sfRows, crRows, finRows, reportRows, btsRows] = await Promise.all([
     db.select().from(bidders).where(eq(bidders.tenderId, id)),
     db.select().from(pqFindings).where(eq(pqFindings.tenderId, id)),
     db.select().from(technicalFindings).where(eq(technicalFindings.tenderId, id)),
@@ -78,6 +78,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     db.select().from(clarificationRequests).where(eq(clarificationRequests.tenderId, id)),
     db.select().from(financialFindings).where(eq(financialFindings.tenderId, id)),
     db.select().from(evaluationReports).where(eq(evaluationReports.tenderId, id)),
+    db.select().from(bidderTechnicalScores).where(eq(bidderTechnicalScores.tenderId, id)),
   ]);
 
   // Derive per-bidder embedding readiness from document_chunks (person_folder_id column is raw SQL only)
@@ -101,6 +102,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
   const evalProgress = deriveEvalProgress(pqRows.length, techRows.length, finRows.length, !!reportRows[0]);
   return c.json({
     ...tender,
+    scoringConfig: tender.scoringConfig,
     bidders: biddersWithStatus,
     pqFindings: pqRows,
     technicalFindings: techRows,
@@ -108,6 +110,7 @@ tenderRoutes.get('/evaluations/:id', async (c) => {
     clarificationRequests: crRows,
     financialFindings: finRows,
     report: reportRows[0] ?? null,
+    bidderTechnicalScores: btsRows,
     evalProgress,
   });
 });
