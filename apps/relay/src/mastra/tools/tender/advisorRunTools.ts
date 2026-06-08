@@ -32,19 +32,23 @@ export const runPqTool = createTool({
     const { tenderId, tenantId } = getCtx(execContext)
     if (!tenderId || !tenantId) return ctxError('run_pq')
 
-    const result = await pqEvaluateStep.execute({ inputData: { tenderId, tenantId } })
-    const out = {
-      qualifiedBidderIds: result.qualifiedBidderIds,
-      totalBidders: result.bidders.length,
-      qualifiedCount: result.qualifiedBidderIds.length,
-      pqResults: result.pqResults.map(r => ({
-        bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
-        overallStatus: r.overallStatus,
-        failedRules: r.findings.filter(f => f.status !== 'qualified').map(f => f.ruleName),
-      })),
+    try {
+      const result = await pqEvaluateStep.execute({ inputData: { tenderId, tenantId } })
+      const out = {
+        qualifiedBidderIds: result.qualifiedBidderIds,
+        totalBidders: result.bidders.length,
+        qualifiedCount: result.qualifiedBidderIds.length,
+        pqResults: result.pqResults.map(r => ({
+          bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
+          overallStatus: r.overallStatus,
+          failedRules: r.findings.filter(f => f.status !== 'qualified').map(f => f.ruleName),
+        })),
+      }
+      void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_pq', resource: 'tender', resourceId: tenderId, metadata: { qualifiedCount: out.qualifiedCount, totalBidders: out.totalBidders } })
+      return out
+    } catch (err) {
+      return { error: `run_pq: ${(err as Error).message}` }
     }
-    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_pq', resource: 'tender', resourceId: tenderId, metadata: { qualifiedCount: out.qualifiedCount, totalBidders: out.totalBidders } })
-    return out
   },
 })
 
@@ -62,18 +66,23 @@ export const runTechnicalTool = createTool({
     const bMap = await buildBidderMap(tenderId)
     const pqBidders = asPqBidders(bMap)
     const pqResults = await buildPqResults(tenderId, tenantId, bMap)
+    if (pqResults.length === 0) return { error: 'Run PQ first — no PQ findings found for this tender.' }
 
-    const result = await technicalEvaluateStep.execute({
-      inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, liveRunBidderId: bidderId },
-    })
-    const out = {
-      techResults: result.techResults.map(r => ({
-        bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
-        compliedCount: r.compliedCount, deviationCount: r.deviationCount, notFoundCount: r.notFoundCount,
-      })),
+    try {
+      const result = await technicalEvaluateStep.execute({
+        inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, liveRunBidderId: bidderId },
+      })
+      const out = {
+        techResults: result.techResults.map(r => ({
+          bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
+          compliedCount: r.compliedCount, deviationCount: r.deviationCount, notFoundCount: r.notFoundCount,
+        })),
+      }
+      void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_technical', resource: 'tender', resourceId: tenderId, metadata: { bidderCount: out.techResults.length } })
+      return out
+    } catch (err) {
+      return { error: `run_technical: ${(err as Error).message}` }
     }
-    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_technical', resource: 'tender', resourceId: tenderId, metadata: { bidderCount: out.techResults.length } })
-    return out
   },
 })
 
@@ -90,20 +99,25 @@ export const runShortfallTool = createTool({
     const bMap = await buildBidderMap(tenderId)
     const pqBidders = asPqBidders(bMap)
     const pqResults = await buildPqResults(tenderId, tenantId, bMap)
+    if (pqResults.length === 0) return { error: 'Run PQ first — no PQ findings found for this tender.' }
     const techResults = await buildTechResults(tenderId, tenantId, bMap)
 
-    const result = await shortfallDetectStep.execute({
-      inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults },
-    })
-    const out = {
-      shortfallCount: result.shortfalls.length,
-      shortfalls: result.shortfalls.map(s => ({
-        bidderId: s.bidderId, bidderName: s.bidderName,
-        discrepancy: s.discrepancy, status: s.status,
-      })),
+    try {
+      const result = await shortfallDetectStep.execute({
+        inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults },
+      })
+      const out = {
+        shortfallCount: result.shortfalls.length,
+        shortfalls: result.shortfalls.map(s => ({
+          bidderId: s.bidderId, bidderName: s.bidderName,
+          discrepancy: s.discrepancy, status: s.status,
+        })),
+      }
+      void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_shortfall', resource: 'tender', resourceId: tenderId, metadata: { shortfallCount: out.shortfallCount } })
+      return out
+    } catch (err) {
+      return { error: `run_shortfall: ${(err as Error).message}` }
     }
-    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_shortfall', resource: 'tender', resourceId: tenderId, metadata: { shortfallCount: out.shortfallCount } })
-    return out
   },
 })
 
@@ -120,22 +134,27 @@ export const runFinancialTool = createTool({
     const bMap = await buildBidderMap(tenderId)
     const pqBidders = asPqBidders(bMap)
     const pqResults = await buildPqResults(tenderId, tenantId, bMap)
+    if (pqResults.length === 0) return { error: 'Run PQ first — no PQ findings found for this tender.' }
     const techResults = await buildTechResults(tenderId, tenantId, bMap)
     const shortfallItems = await buildShortfallItems(tenderId, tenantId, bMap)
 
-    const result = await financialEvaluateStep.execute({
-      inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults, shortfalls: shortfallItems },
-    })
-    const out = {
-      l1BidderId: result.l1BidderId,
-      l1Amount: result.l1Amount,
-      rankings: result.finResults.map(r => ({
-        bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
-        correctedTotal: r.correctedTotal, isL1: r.isL1, l1Margin: r.l1Margin,
-      })),
+    try {
+      const result = await financialEvaluateStep.execute({
+        inputData: { tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds, techResults, shortfalls: shortfallItems },
+      })
+      const out = {
+        l1BidderId: result.l1BidderId,
+        l1Amount: result.l1Amount,
+        rankings: result.finResults.map(r => ({
+          bidderId: r.bidderId, bidderName: r.bidderName, displayLabel: r.displayLabel,
+          correctedTotal: r.correctedTotal, isL1: r.isL1, l1Margin: r.l1Margin,
+        })),
+      }
+      void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_financial', resource: 'tender', resourceId: tenderId, metadata: { l1BidderId: out.l1BidderId, l1Amount: out.l1Amount } })
+      return out
+    } catch (err) {
+      return { error: `run_financial: ${(err as Error).message}` }
     }
-    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_financial', resource: 'tender', resourceId: tenderId, metadata: { l1BidderId: out.l1BidderId, l1Amount: out.l1Amount } })
-    return out
   },
 })
 
@@ -156,15 +175,20 @@ export const runReportTool = createTool({
     const techResults = await buildTechResults(tenderId, tenantId, bMap)
     const shortfallItems = await buildShortfallItems(tenderId, tenantId, bMap)
     const finResults = await buildFinResults(tenderId, tenantId, bMap)
+    if (finResults.length === 0) return { error: 'Run financial evaluation first.' }
     const qualifiedBidderIds = pqResults.filter(r => r.overallStatus === 'qualified').map(r => r.bidderId)
 
-    const result = await reportAssembleStep.execute({
-      inputData: {
-        tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds,
-        techResults, shortfalls: shortfallItems, finResults, l1BidderId, l1Amount,
-      },
-    })
-    void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_report', resource: 'tender', resourceId: tenderId, metadata: { reportId: result.reportId, l1BidderId } })
-    return { reportId: result.reportId, recommendation: result.recommendation }
+    try {
+      const result = await reportAssembleStep.execute({
+        inputData: {
+          tenderId, tenantId, bidders: pqBidders, pqResults, qualifiedBidderIds,
+          techResults, shortfalls: shortfallItems, finResults, l1BidderId, l1Amount,
+        },
+      })
+      void writeTenderAuditLog({ tenantId, actorId: 'tender-advisor', actorType: 'agent', action: 'run_report', resource: 'tender', resourceId: tenderId, metadata: { reportId: result.reportId, l1BidderId } })
+      return { reportId: result.reportId, recommendation: result.recommendation }
+    } catch (err) {
+      return { error: `run_report: ${(err as Error).message}` }
+    }
   },
 })
