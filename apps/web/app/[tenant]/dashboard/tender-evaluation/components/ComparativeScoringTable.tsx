@@ -86,7 +86,7 @@ export function ComparativeScoringTable({ bidders, technicalFindings, bidderScor
                                             const status = finding?.status ?? "cannot_evaluate";
                                             const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.cannot_evaluate;
                                             const Icon = cfg.icon;
-                                            const pts = breakdownItem?.points ?? 0;
+                                            const pts = Number(breakdownItem?.points ?? 0);
                                             return (
                                                 <td key={b.id} className="py-2 px-4">
                                                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -112,7 +112,7 @@ export function ComparativeScoringTable({ bidders, technicalFindings, bidderScor
                                     const score = scoreMap.get(b.id);
                                     return (
                                         <td key={b.id} className="py-2 px-4 text-foreground">
-                                            {score ? `${score.technicalScore.toFixed(1)} / 100` : "—"}
+                                            {score ? `${Number(score.technicalScore).toFixed(1)} / 100` : "—"}
                                         </td>
                                     );
                                 })}

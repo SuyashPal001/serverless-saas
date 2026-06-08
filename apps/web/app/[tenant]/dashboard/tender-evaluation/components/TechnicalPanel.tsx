@@ -117,7 +117,7 @@ export function TechnicalPanel({
                 {selectedBidder && <span className="text-xs text-muted-foreground self-center">— {selectedBidder.displayLabel}: {selectedBidder.name}</span>}
                 {selectedScore && (
                     <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 border self-center text-xs">
-                        Technical Score: {selectedScore.technicalScore.toFixed(1)} / 100
+                        Technical Score: {Number(selectedScore.technicalScore).toFixed(1)} / 100
                     </Badge>
                 )}
             </div>
