@@ -15,6 +15,7 @@ import { FinancialPanel } from "../components/FinancialPanel";
 import { ActionModal } from "../components/ActionModal";
 import { ReportPanel } from "../components/ReportPanel";
 import { DocumentCheckPanel } from "../components/DocumentCheckPanel";
+import { ProposalPanel } from "../components/ProposalPanel";
 import { AuthoringPanel } from "./authoring/AuthoringPanel";
 
 interface EvalProgress {
@@ -47,6 +48,7 @@ const STAGES = [
     { id: "stage7", label: "7. Financial", icon: BarChart3 },
     { id: "stage8", label: "8. Report", icon: ScrollText },
     { id: "stage9", label: "9. Document Check", icon: FileCheck2 },
+    { id: "stage10", label: "10. Proposal", icon: FileText },
 ];
 
 const EVAL_STAGES: Array<{ key: keyof EvalProgress['stages']; label: string }> = [
@@ -224,6 +226,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage7" && <FinancialPanel bidders={data.bidders} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
                 {activeStage === "stage8" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
                 {activeStage === "stage9" && <DocumentCheckPanel tenderId={tender_id} />}
+                {activeStage === "stage10" && <ProposalPanel tenderId={tender_id} />}
             </div>
 
             <ActionModal open={modal.open} onOpenChange={v => setModal(m => ({ ...m, open: v }))}
