@@ -20,20 +20,29 @@ interface RfpSectionRow {
   acceptedAt: Date | null
 }
 
+interface RfpClause { clauseNo?: string; title?: string; text?: string; source?: string; libraryRef?: string | null }
+
 function sectionHasContent(row: RfpSectionRow): boolean {
-  const content = row.content as { text?: string; rows?: unknown[] } | null
+  const content = row.content as { text?: string; rows?: unknown[]; clauses?: unknown[] } | null
   if (!content) return false
-  if (typeof content.text === 'string') return content.text.trim().length > 0
-  if (Array.isArray(content.rows)) return content.rows.length > 0
+  if (typeof content.text === 'string' && content.text.trim().length > 0) return true
+  if (Array.isArray(content.rows) && content.rows.length > 0) return true
+  if (Array.isArray(content.clauses) && content.clauses.length > 0) return true
   return false
 }
 
 function sectionText(row: RfpSectionRow): string {
-  const content = row.content as { text?: string; rows?: Array<Record<string, unknown>> } | null
+  const content = row.content as { text?: string; rows?: Array<Record<string, unknown>>; clauses?: RfpClause[] } | null
   if (!content) return ''
-  if (typeof content.text === 'string') return content.text
-  if (Array.isArray(content.rows)) return content.rows.map(r => JSON.stringify(r)).join('\n')
-  return ''
+  const parts: string[] = []
+  if (typeof content.text === 'string' && content.text.trim().length > 0) parts.push(content.text)
+  if (Array.isArray(content.rows) && content.rows.length > 0) {
+    parts.push(content.rows.map(r => JSON.stringify(r)).join('\n'))
+  }
+  if (Array.isArray(content.clauses) && content.clauses.length > 0) {
+    parts.push(content.clauses.map(c => `${c.clauseNo ?? ''} ${c.title ?? ''}: ${c.text ?? ''}`.trim()).join('\n'))
+  }
+  return parts.join('\n')
 }
 
 interface AgentConflict { sectionA: string; sectionB: string; description: string; severity: string }
@@ -74,6 +83,7 @@ export async function runDocumentCheck(tenderId: string, tenantId: string): Prom
     present: true,
     accepted: s.acceptedAt != null,
     hasContent: sectionHasContent(s),
+    title: s.title,
   }))
   const structuralResults = evaluateStructuralChecks(sectionStates)
 

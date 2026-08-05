@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '@serverless-saas/database';
 import { documentChecks } from '@serverless-saas/database/schema/tender-document-check';
+import { tenders } from '@serverless-saas/database/schema/tender';
 import { eq, and, asc } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 
@@ -32,6 +33,10 @@ tenderDocumentCheckRoutes.post('/:tenderId/document-check/run', async (c) => {
   const rc = c.get('requestContext') as any;
   const tenantId = rc?.tenant?.id as string;
   const tenderId = c.req.param('tenderId');
+
+  const [tender] = await db.select({ id: tenders.id }).from(tenders)
+    .where(and(eq(tenders.id, tenderId), eq(tenders.tenantId, tenantId)));
+  if (!tender) return c.json({ error: 'not found' }, 404);
 
   try {
     const res = await fetch(`${relayUrl()}/internal/tender/document-check`, {
