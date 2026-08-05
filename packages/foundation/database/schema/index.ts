@@ -23,3 +23,4 @@ export * from './observability';
 export * from './pension';
 export * from './tender';
 export * from './tender-authoring';
+export * from './tender-document-check';
