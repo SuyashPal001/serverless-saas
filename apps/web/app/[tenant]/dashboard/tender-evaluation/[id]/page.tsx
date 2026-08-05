@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2 } from "lucide-react";
+import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2, FileCheck2 } from "lucide-react";
 import { PreBidPanel } from "../components/PreBidPanel";
 import { BidsPanel } from "../components/BidsPanel";
 import { PQPanel } from "../components/PQPanel";
@@ -14,6 +14,7 @@ import { ShortfallPanel } from "../components/ShortfallPanel";
 import { FinancialPanel } from "../components/FinancialPanel";
 import { ActionModal } from "../components/ActionModal";
 import { ReportPanel } from "../components/ReportPanel";
+import { DocumentCheckPanel } from "../components/DocumentCheckPanel";
 import { AuthoringPanel } from "./authoring/AuthoringPanel";
 
 interface EvalProgress {
@@ -45,6 +46,7 @@ const STAGES = [
     { id: "stage6", label: "6. Shortfalls", icon: AlertCircle },
     { id: "stage7", label: "7. Financial", icon: BarChart3 },
     { id: "stage8", label: "8. Report", icon: ScrollText },
+    { id: "stage9", label: "9. Document Check", icon: FileCheck2 },
 ];
 
 const EVAL_STAGES: Array<{ key: keyof EvalProgress['stages']; label: string }> = [
@@ -221,6 +223,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage6" && <ShortfallPanel bidders={data.bidders} shortfalls={data.shortfalls} clarificationRequests={data.clarificationRequests} />}
                 {activeStage === "stage7" && <FinancialPanel bidders={data.bidders} financialFindings={data.financialFindings} onAction={(id) => setModal({ open: true, type: "accept", findingType: "financial", findingId: id })} />}
                 {activeStage === "stage8" && <ReportPanel tender={{ rfpNumber: data.rfpNumber, title: data.title, department: data.department }} bidders={data.bidders} pqFindings={data.pqFindings} technicalFindings={data.technicalFindings} financialFindings={data.financialFindings} report={data.report} />}
+                {activeStage === "stage9" && <DocumentCheckPanel tenderId={tender_id} />}
             </div>
 
             <ActionModal open={modal.open} onOpenChange={v => setModal(m => ({ ...m, open: v }))}
