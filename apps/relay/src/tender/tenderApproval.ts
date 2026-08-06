@@ -61,10 +61,18 @@ export async function actOnApprovalStep(
   }
 
   const newStatus = input.action === 'approve' ? 'approved' as const : 'rejected' as const
-  await db.update(tenderApprovalSteps).set({
+  const updateResult = await db.update(tenderApprovalSteps).set({
     status: newStatus, actorId: input.actorId, comment: input.comment ?? null,
     signatureRef: input.signatureRef ?? null, actionedAt: new Date(),
-  }).where(eq(tenderApprovalSteps.id, stepId))
+  }).where(and(
+    eq(tenderApprovalSteps.id, stepId),
+    eq(tenderApprovalSteps.tenantId, tenantId),
+    eq(tenderApprovalSteps.status, 'pending'),
+  )).returning({ id: tenderApprovalSteps.id })
+
+  if (updateResult.length === 0) {
+    throw new Error('step is not currently actionable — a prior step is still pending, this step is already decided, or the chain is halted')
+  }
 
   const updatedStates: ApprovalStepState[] = stepStates.map(s =>
     s.stepOrder === step.stepOrder ? { ...s, status: newStatus } : s
