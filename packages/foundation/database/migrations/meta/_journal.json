@@ -309,6 +309,13 @@
       "when": 1785959527331,
       "tag": "0046_tender_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785959627331,
+      "tag": "0047_tender_proposals_version_unique",
+      "breakpoints": true
     }
   ]
 }

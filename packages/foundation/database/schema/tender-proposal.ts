@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, timestamp, integer, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, integer, pgEnum, index, unique } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { tenders } from './tender';
 
@@ -18,4 +18,5 @@ export const tenderProposals = pgTable('tender_proposals', {
   generatedAt:      timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   tenderIdx: index('idx_tender_proposals_tender').on(t.tenderId),
+  tenderVersionUnique: unique('tender_proposals_tender_id_version_unique').on(t.tenderId, t.version),
 }));
