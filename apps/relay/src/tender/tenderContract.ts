@@ -9,10 +9,13 @@ const CONTRACT_SOURCE_SECTIONS = ['S3', 'S5', 'S8'] // Scope of Work, Service Le
 interface RfpSectionRow { sectionNo: string; title: string; content: unknown; acceptedAt: Date | null }
 
 function sectionText(row: RfpSectionRow): string {
-  const content = row.content as { text?: string; clauses?: Array<{ clauseNo?: string; title?: string; text?: string }> } | null
+  const content = row.content as { text?: string; rows?: Array<Record<string, unknown>>; clauses?: Array<{ clauseNo?: string; title?: string; text?: string }> } | null
   if (!content) return ''
   const parts: string[] = []
   if (typeof content.text === 'string' && content.text.trim()) parts.push(content.text)
+  if (Array.isArray(content.rows) && content.rows.length > 0) {
+    parts.push(content.rows.map(r => JSON.stringify(r)).join('\n'))
+  }
   if (Array.isArray(content.clauses)) {
     for (const c of content.clauses) {
       const label = [c.clauseNo, c.title].filter(Boolean).join(' ')
