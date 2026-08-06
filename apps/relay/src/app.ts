@@ -20,6 +20,7 @@ import { tenderPrebidRoutes } from './routes/tenderPrebid.js'
 import { tenderExtractRoutes } from './routes/tenderExtract.js'
 import { tenderDocumentCheckRoutes } from './routes/tenderDocumentCheck.js'
 import { tenderProposalRoutes } from './routes/tenderProposal.js'
+import { tenderContractRoutes } from './routes/tenderContract.js'
 import {
   API_BASE_URL, sessions,
 } from './types.js'
@@ -50,6 +51,7 @@ app.route('', tenderPrebidRoutes)
 app.route('', tenderExtractRoutes)
 app.route('', tenderDocumentCheckRoutes)
 app.route('', tenderProposalRoutes)
+app.route('', tenderContractRoutes)
 
 await initStudio(app)
 
