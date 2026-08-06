@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildClauseSearchQuery } from '../searchClauseLibrary.js';
+import { buildClauseSearchQuery } from '../clauseSearchQuery.js';
 
 describe('buildClauseSearchQuery', () => {
   it('builds a case-insensitive ILIKE pattern across title, content, and tags for a single-word query', () => {
