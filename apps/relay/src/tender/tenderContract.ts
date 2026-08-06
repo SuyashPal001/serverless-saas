@@ -2,28 +2,10 @@
 import { db, tenders, bidders, financialFindings, rfpSections, tenderContracts } from '@serverless-saas/database'
 import { eq, and, max } from 'drizzle-orm'
 import { buildContractContent, type ContractContentInput, type ContractSourceSection } from './tenderContractContent.js'
+import { sectionText, type RfpSectionRow } from './tenderContractSections.js'
 import { writeTenderAuditLog } from '../mastra/workflows/tenderAuditLog.js'
 
 const CONTRACT_SOURCE_SECTIONS = ['S3', 'S5', 'S8'] // Scope of Work, Service Levels (SLA/KPI), Contract Terms/Compliance/Security
-
-interface RfpSectionRow { sectionNo: string; title: string; content: unknown; acceptedAt: Date | null }
-
-function sectionText(row: RfpSectionRow): string {
-  const content = row.content as { text?: string; rows?: Array<Record<string, unknown>>; clauses?: Array<{ clauseNo?: string; title?: string; text?: string }> } | null
-  if (!content) return ''
-  const parts: string[] = []
-  if (typeof content.text === 'string' && content.text.trim()) parts.push(content.text)
-  if (Array.isArray(content.rows) && content.rows.length > 0) {
-    parts.push(content.rows.map(r => JSON.stringify(r)).join('\n'))
-  }
-  if (Array.isArray(content.clauses)) {
-    for (const c of content.clauses) {
-      const label = [c.clauseNo, c.title].filter(Boolean).join(' ')
-      parts.push(label ? `${label}: ${c.text ?? ''}` : (c.text ?? ''))
-    }
-  }
-  return parts.join('\n')
-}
 
 export async function generateContract(tenderId: string, tenantId: string): Promise<{ contractId: string; version: number }> {
   const [tender] = await db.select().from(tenders).where(
@@ -31,24 +13,32 @@ export async function generateContract(tenderId: string, tenantId: string): Prom
   )
   if (!tender) throw new Error('tender not found')
 
-  const [awardedBidder] = await db.select().from(bidders).where(
-    and(eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId), eq(bidders.status, 'awarded'))
-  )
-  if (!awardedBidder) throw new Error('no awarded bidder — tender is not ready for contract formulation')
+  const [awardedRow] = await db.select({ bidder: bidders, finding: financialFindings }).from(bidders)
+    .innerJoin(financialFindings, and(
+      eq(financialFindings.bidderId, bidders.id),
+      eq(financialFindings.tenderId, bidders.tenderId),
+      eq(financialFindings.tenantId, bidders.tenantId),
+    ))
+    .where(and(
+      eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId),
+      eq(bidders.status, 'awarded'), eq(financialFindings.isL1, 'yes'),
+    ))
+  if (!awardedRow) throw new Error('no awarded bidder — tender is not ready for contract formulation')
+  const awardedBidder = awardedRow.bidder
+  const finding = awardedRow.finding
 
-  const [[finding], sectionRows] = await Promise.all([
-    db.select().from(financialFindings).where(
-      and(eq(financialFindings.tenderId, tenderId), eq(financialFindings.tenantId, tenantId), eq(financialFindings.bidderId, awardedBidder.id))
-    ),
-    db.select().from(rfpSections).where(and(eq(rfpSections.tenderId, tenderId), eq(rfpSections.tenantId, tenantId))) as Promise<RfpSectionRow[]>,
-  ])
-  if (!finding) throw new Error('no financial finding for the awarded bidder — cannot determine contract value')
+  const sectionRows = await db.select().from(rfpSections)
+    .where(and(eq(rfpSections.tenderId, tenderId), eq(rfpSections.tenantId, tenantId))) as RfpSectionRow[]
 
   const sourceSections: ContractSourceSection[] = sectionRows
     .filter(r => CONTRACT_SOURCE_SECTIONS.includes(r.sectionNo) && r.acceptedAt != null)
     .sort((a, b) => CONTRACT_SOURCE_SECTIONS.indexOf(a.sectionNo) - CONTRACT_SOURCE_SECTIONS.indexOf(b.sectionNo))
     .map(r => ({ sectionNo: r.sectionNo, title: r.title, text: sectionText(r) }))
     .filter(s => s.text.trim().length > 0)
+
+  if (sourceSections.length === 0) {
+    throw new Error('no accepted contract source sections — author and accept the tender\'s scope of work, service levels, and contract terms sections first')
+  }
 
   const input: ContractContentInput = {
     tender: { rfpNumber: tender.rfpNumber, title: tender.title, department: tender.department },

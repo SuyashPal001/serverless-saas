@@ -29,10 +29,16 @@ tenderContractRoutes.post('/internal/tender/contract/generate', async (c) => {
     const result = await generateContract(tenderId, tenantId)
     return c.json({ status: 'completed', ...result })
   } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const code = (err as any)?.code
     const message = err instanceof Error ? err.message : 'unknown'
     console.error('[tender/contract/generate] error', message)
     if (message.includes('no awarded bidder')) return c.json({ error: message }, 409)
     if (message.includes('no financial finding')) return c.json({ error: message }, 409)
+    if (message.includes('no accepted contract source sections')) return c.json({ error: message }, 409)
+    if (code === '23505' || message.includes('tender_contracts_tender_id_version_unique')) {
+      return c.json({ error: 'A newer contract version was generated concurrently — please refresh and try again.' }, 409)
+    }
     return c.json({ error: message }, 500)
   }
 })
