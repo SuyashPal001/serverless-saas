@@ -1,6 +1,6 @@
 // apps/relay/src/tender/tenderContract.ts
 import { db, tenders, bidders, financialFindings, rfpSections, tenderContracts } from '@serverless-saas/database'
-import { eq, and, max } from 'drizzle-orm'
+import { eq, and, max, desc } from 'drizzle-orm'
 import { buildContractContent, type ContractContentInput, type ContractSourceSection } from './tenderContractContent.js'
 import { sectionText, type RfpSectionRow } from './tenderContractSections.js'
 import { writeTenderAuditLog } from '../mastra/workflows/tenderAuditLog.js'
@@ -23,6 +23,8 @@ export async function generateContract(tenderId: string, tenantId: string): Prom
       eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId),
       eq(bidders.status, 'awarded'), eq(financialFindings.isL1, 'yes'),
     ))
+    .orderBy(desc(financialFindings.createdAt))
+    .limit(1)
   if (!awardedRow) throw new Error('no awarded bidder — tender is not ready for contract formulation')
   const awardedBidder = awardedRow.bidder
   const finding = awardedRow.finding
