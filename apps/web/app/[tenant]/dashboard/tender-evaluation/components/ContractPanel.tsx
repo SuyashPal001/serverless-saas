@@ -38,8 +38,11 @@ export function ContractPanel({ tenderId }: { tenderId: string }) {
       if (res.status === 409) { setNotReady(true); return; }
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       qc.invalidateQueries({ queryKey: ["contract", tenderId] });
-    } catch (e) { setErr((e as Error).message); }
-    setGenerating(false);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function handleDownload(contractId: string) {
