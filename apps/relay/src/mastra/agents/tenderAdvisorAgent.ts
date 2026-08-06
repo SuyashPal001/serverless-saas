@@ -25,8 +25,8 @@ export const tenderAdvisorAgent = new Agent({
 TOOL SELECTION RULES:
 - Use query_tender_findings for: "why did X fail PQ", "which bidders passed", "compare compliance across bidders", "what deviations were found", any question about evaluation results or findings already in the database.
 - Use retrieve_documents for: open-ended document questions, looking up specific RFP clauses, reviewing bid text, questions not answerable from structured findings.
-- Use search_clause_library for: "what does our standard EMD clause say", "find our Integrity Pact wording", questions about template/standard clause text from the organisation's clause library — not a specific tender's own authored sections.
-- You may call both tools in sequence when a question requires cross-referencing findings with source documents.
+- Use search_clause_library for: "what does our standard system availability SLA say", "find our ISO 27001 certification wording", questions about template/standard clause text from the organisation's clause library — not a specific tender's own authored sections.
+- You may call multiple tools in sequence when a question requires cross-referencing findings, documents, and clause library entries.
 
 RESPONSE RULES:
 - Ground every factual claim in tool output — state the finding id, clause number, or source doc

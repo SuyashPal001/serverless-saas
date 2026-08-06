@@ -23,8 +23,29 @@ import 'dotenv/config'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import pg from 'pg'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+let _pool: pg.Pool | null = null
+function getPool(): pg.Pool {
+  if (!_pool) _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+  return _pool
+}
+
+// Look up the seeded "Procurement Advisor" agent's real UUID for this tenant.
+// The chat endpoint (apps/relay/src/routes/chat.ts) only ever reads `agentId`
+// from the request body — never an agent name — so sending a name string here
+// silently falls through to the generic platformAgent (resolveAgent(null ?? ''))
+// instead of the Tender Advisor. See Finding 1 of the whole-branch review.
+async function findProcurementAdvisorAgentId(tenantId: string): Promise<string | null> {
+  const p = getPool()
+  const res = await p.query<{ id: string }>(
+    `SELECT id FROM agents WHERE tenant_id = $1 AND name = $2 LIMIT 1`,
+    [tenantId, 'Procurement Advisor'],
+  )
+  return res.rows[0]?.id ?? null
+}
 
 export interface EvalItem {
   id: string
@@ -55,18 +76,53 @@ interface EvalItemResult {
   skipReason?: string
 }
 
-async function callTenderAdvisor(question: string, tenantId: string): Promise<string> {
-  const gatewayUrl = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001').trim()
+// Parses the raw SSE response body from POST /api/chat and returns just the
+// final assembled answer text — not the raw event stream. The stream (see
+// apps/relay/src/routes/chatStream.ts) emits a terminal `done` event whose
+// JSON payload has a `text` field containing the complete assistant answer;
+// prefer that over concatenating `delta` chunks since it can't be split
+// across multiple SSE frames the way a multi-word keyword match could be.
+function extractFinalAnswerText(sseText: string): string {
+  const events = sseText.split('\n\n').filter(chunk => chunk.trim().length > 0)
+  let doneText: string | null = null
+  const deltaChunks: string[] = []
+
+  for (const chunk of events) {
+    const lines = chunk.split('\n')
+    const eventLine = lines.find(l => l.startsWith('event:'))
+    const dataLine = lines.find(l => l.startsWith('data:'))
+    if (!dataLine) continue
+    const eventName = eventLine ? eventLine.slice('event:'.length).trim() : ''
+    const raw = dataLine.slice('data:'.length).trim()
+    try {
+      const data = JSON.parse(raw) as { text?: string }
+      if (eventName === 'done' && typeof data.text === 'string') {
+        doneText = data.text
+      } else if (eventName === 'delta' && typeof data.text === 'string') {
+        deltaChunks.push(data.text)
+      }
+    } catch {
+      // not a JSON data payload — skip
+    }
+  }
+
+  if (doneText !== null) return doneText
+  // Fallback: no terminal `done` event found — reconstruct from delta chunks only,
+  // excluding tool-call/tool-result payloads so those don't pollute the graded text.
+  return deltaChunks.join('')
+}
+
+async function callTenderAdvisor(question: string, tenantId: string, agentId: string): Promise<string> {
   const relayUrl = (process.env.RELAY_URL ?? 'http://localhost:3001').trim()
   const res = await fetch(`${relayUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Service-Key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-    body: JSON.stringify({ message: question, tenantId, agentName: 'Procurement Advisor', conversationId: `eval-${Date.now()}` }),
+    body: JSON.stringify({ message: question, tenantId, agentId, conversationId: `eval-${Date.now()}` }),
     signal: AbortSignal.timeout(60_000),
   })
   if (!res.ok) throw new Error(`chat endpoint returned ${res.status}`)
   const text = await res.text()
-  return text
+  return extractFinalAnswerText(text)
 }
 
 export async function runEval(): Promise<{ results: EvalItemResult[]; gradedCount: number; passCount: number; skippedCount: number }> {
@@ -76,13 +132,30 @@ export async function runEval(): Promise<{ results: EvalItemResult[]; gradedCoun
 
   const results: EvalItemResult[] = []
 
+  // Resolve the seeded "Procurement Advisor" agent's real UUID once, up front —
+  // the chat endpoint routes purely on agentId, so every item must send that
+  // agent's actual database id, never a name string (Finding 1).
+  let agentId: string | null = null
+  if (tenantId) {
+    try {
+      agentId = await findProcurementAdvisorAgentId(tenantId)
+    } catch (err) {
+      agentId = null
+      console.error('[eval] failed to look up Procurement Advisor agentId:', (err as Error).message)
+    }
+  }
+
   for (const item of items) {
     if (!tenantId) {
       results.push({ id: item.id, category: item.category, question: item.question, status: 'skipped', skipReason: 'SEED_TENANT_ID not set' })
       continue
     }
+    if (!agentId) {
+      results.push({ id: item.id, category: item.category, question: item.question, status: 'skipped', skipReason: 'Procurement Advisor agent not found for this tenant' })
+      continue
+    }
     try {
-      const answer = await callTenderAdvisor(item.question, tenantId)
+      const answer = await callTenderAdvisor(item.question, tenantId, agentId)
       const grade = gradeAnswer(answer, item.expectedKeywords)
       results.push({ id: item.id, category: item.category, question: item.question, status: 'graded', grade, answer })
     } catch (err) {
@@ -99,6 +172,7 @@ export async function runEval(): Promise<{ results: EvalItemResult[]; gradedCoun
 
 async function main() {
   const { results, gradedCount, passCount, skippedCount } = await runEval()
+  if (_pool) await _pool.end()
   const outPath = resolve(__dirname, `tenderAdvisorEval.results.${Date.now()}.json`)
   writeFileSync(outPath, JSON.stringify(results, null, 2))
 
