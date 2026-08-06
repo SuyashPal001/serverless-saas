@@ -9,9 +9,9 @@ const baseInput: ProposalContentInput = {
     { id: 'b3', name: 'NovaSys Integrators', displayLabel: 'Bidder C' },
   ],
   pqFindings: [
-    { bidderId: 'b1', status: 'qualified', ruleName: 'Turnover', narration: 'Meets threshold' },
-    { bidderId: 'b2', status: 'not_qualified', ruleName: 'Turnover', narration: 'Below ₹5 Cr threshold' },
-    { bidderId: 'b3', status: 'qualified', ruleName: 'Turnover', narration: 'Meets threshold' },
+    { id: 'pq1', bidderId: 'b1', status: 'qualified', ruleName: 'Turnover', narration: 'Meets threshold' },
+    { id: 'pq2', bidderId: 'b2', status: 'not_qualified', ruleName: 'Turnover', narration: 'Below ₹5 Cr threshold' },
+    { id: 'pq3', bidderId: 'b3', status: 'qualified', ruleName: 'Turnover', narration: 'Meets threshold' },
   ],
   technicalFindings: [
     { bidderId: 'b1', status: 'deviation' },
@@ -89,5 +89,41 @@ describe('buildProposalContent', () => {
     const content = buildProposalContent({ ...baseInput, financialFindings: [] });
     expect(content.recommendation).toContain('not');
     expect(content.priceComparison.rows).toHaveLength(0);
+  });
+
+  it('does not disqualify a bidder whose failing PQ finding was officer-overridden', () => {
+    const content = buildProposalContent({
+      ...baseInput,
+      pqOverrides: [{ findingId: 'pq2', rationale: 'Turnover shortfall waived per Committee minute dated 2026-08-01' }],
+    });
+    const row = content.complianceMatrix.find(r => r.bidderId === 'b2')!;
+    expect(row.pqStatus).toBe('not_qualified'); // factual finding is unchanged
+    expect(row.disqualified).toBe(false); // but the operative outcome is overridden
+    expect(row.overridden).toBe(true);
+    expect(row.overrideRationale).toContain('Committee minute');
+  });
+
+  it('excludes an overridden bidder from rejection grounds', () => {
+    const content = buildProposalContent({
+      ...baseInput,
+      pqOverrides: [{ findingId: 'pq2', rationale: 'Waived' }],
+    });
+    expect(content.rejectionGrounds).toHaveLength(0);
+  });
+
+  it('only overrides the specific finding id, not every not_qualified finding for the bidder', () => {
+    const content = buildProposalContent({
+      ...baseInput,
+      pqFindings: [
+        ...baseInput.pqFindings,
+        { id: 'pq2b', bidderId: 'b2', status: 'not_qualified', ruleName: 'Experience', narration: 'Below 3-year requirement' },
+      ],
+      pqOverrides: [{ findingId: 'pq2', rationale: 'Turnover waived' }], // only the turnover finding, not the experience one
+    });
+    const row = content.complianceMatrix.find(r => r.bidderId === 'b2')!;
+    expect(row.disqualified).toBe(true); // still disqualified — the experience finding was not overridden
+    expect(content.rejectionGrounds.find(g => g.bidderId === 'b2')?.reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining('Below 3-year requirement')])
+    );
   });
 });

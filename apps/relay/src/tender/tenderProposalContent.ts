@@ -1,6 +1,7 @@
 export interface ProposalTender { rfpNumber: string; title: string; department: string; budget: string | null }
 export interface ProposalBidder { id: string; name: string; displayLabel: string }
-export interface ProposalPqFinding { bidderId: string; status: 'qualified' | 'not_qualified' | 'cannot_evaluate'; ruleName: string; narration: string }
+export interface ProposalPqFinding { id: string; bidderId: string; status: 'qualified' | 'not_qualified' | 'cannot_evaluate'; ruleName: string; narration: string }
+export interface ProposalPqOverride { findingId: string; rationale: string | null }
 export interface ProposalTechFinding { bidderId: string; status: 'complied' | 'deviation' | 'not_found' | 'cannot_evaluate' }
 export interface ProposalFinFinding { bidderId: string; correctedTotal: string; isL1: string }
 export interface ProposalShortfall { bidderId: string; discrepancy: string; status: string }
@@ -12,6 +13,7 @@ export interface ProposalContentInput {
   technicalFindings: ProposalTechFinding[]
   financialFindings: ProposalFinFinding[]
   shortfalls: ProposalShortfall[]
+  pqOverrides?: ProposalPqOverride[]
 }
 
 export interface ComplianceRow {
@@ -19,6 +21,8 @@ export interface ComplianceRow {
   pqStatus: 'qualified' | 'not_qualified' | 'cannot_evaluate' | 'pending'
   techComplied: number; techDeviations: number; techNotFound: number
   disqualified: boolean
+  overridden: boolean
+  overrideRationale: string | null
 }
 
 export interface PriceComparisonRow {
@@ -64,16 +68,25 @@ function crFormat(rupees: number): string {
 }
 
 export function buildProposalContent(input: ProposalContentInput): ProposalContent {
-  const { tender, bidders, pqFindings, technicalFindings, financialFindings, shortfalls } = input
+  const { tender, bidders, pqFindings, technicalFindings, financialFindings, shortfalls, pqOverrides = [] } = input
+  const overrideByFindingId = new Map(pqOverrides.map(o => [o.findingId, o.rationale]))
 
   const complianceMatrix: ComplianceRow[] = bidders.map(b => {
     const pqStatus = pqStatusFor(b.id, pqFindings)
     const tech = techStatsFor(b.id, technicalFindings)
+    // A bidder is only genuinely disqualified if it has a not_qualified finding
+    // that an officer has NOT explicitly overridden. pqStatus stays factual
+    // ('not_qualified') either way — overridden is the operative outcome flag.
+    const failingFindings = pqFindings.filter(f => f.bidderId === b.id && f.status === 'not_qualified')
+    const unoverriddenFailures = failingFindings.filter(f => !overrideByFindingId.has(f.id))
+    const overriddenFailure = failingFindings.find(f => overrideByFindingId.has(f.id))
     return {
       bidderId: b.id, displayLabel: b.displayLabel, bidderName: b.name,
       pqStatus,
       techComplied: tech.complied, techDeviations: tech.deviations, techNotFound: tech.notFound,
-      disqualified: pqStatus === 'not_qualified',
+      disqualified: pqStatus === 'not_qualified' && unoverriddenFailures.length > 0,
+      overridden: pqStatus === 'not_qualified' && unoverriddenFailures.length === 0 && overriddenFailure != null,
+      overrideRationale: overriddenFailure ? overrideByFindingId.get(overriddenFailure.id) ?? null : null,
     }
   })
 
@@ -94,7 +107,7 @@ export function buildProposalContent(input: ProposalContentInput): ProposalConte
     .filter(r => r.disqualified)
     .map(r => {
       const pqReasons = pqFindings
-        .filter(f => f.bidderId === r.bidderId && f.status === 'not_qualified')
+        .filter(f => f.bidderId === r.bidderId && f.status === 'not_qualified' && !overrideByFindingId.has(f.id))
         .map(f => `${f.ruleName}: ${f.narration}`)
       const shortfallReasons = shortfalls
         .filter(s => s.bidderId === r.bidderId && s.status !== 'closed')

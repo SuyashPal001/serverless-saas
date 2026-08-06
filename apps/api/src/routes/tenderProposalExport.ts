@@ -5,6 +5,7 @@ interface ProposalTenderRow { rfpNumber: string; title: string; department: stri
 interface ComplianceRow {
   bidderId: string; displayLabel: string; bidderName: string
   pqStatus: string; techComplied: number; techDeviations: number; techNotFound: number; disqualified: boolean
+  overridden: boolean; overrideRationale: string | null
 }
 interface PriceComparisonRow { bidderId: string; displayLabel: string; correctedTotal: number; isL1: boolean; varianceFromEstimatePct: number | null }
 interface PriceComparison { internalEstimate: number | null; rows: PriceComparisonRow[] }
@@ -40,9 +41,16 @@ export function buildProposalWordDoc(tender: ProposalTenderRow, proposal: Propos
     proposal.complianceMatrix.map(r => tableRow([
       `${r.bidderName} (${r.displayLabel})`, r.pqStatus,
       String(r.techComplied), String(r.techDeviations), String(r.techNotFound),
-      r.disqualified ? 'Yes' : 'No',
+      r.disqualified ? 'Yes' : (r.overridden ? 'No (PQ finding overridden)' : 'No'),
     ])).join('')
-  }</table>`;
+  }</table>` +
+    (proposal.complianceMatrix.some(r => r.overridden)
+      ? `<p><em>Note: the following bidder(s) had a disqualifying pre-qualification finding overridden by an evaluating officer: ${
+          esc(proposal.complianceMatrix.filter(r => r.overridden).map(r =>
+            `${r.bidderName} (${r.displayLabel})${r.overrideRationale ? ` — ${r.overrideRationale}` : ''}`
+          ).join('; '))
+        }</em></p>`
+      : '');
 
   const priceTable = `<p>Internal Estimate: ${proposal.priceComparison.internalEstimate != null ? crFmt(proposal.priceComparison.internalEstimate) : 'Not set'}</p>` +
     `<table>${tableRow(['Bidder', 'Corrected Total', 'Variance from Estimate', 'L1'], true)}${
