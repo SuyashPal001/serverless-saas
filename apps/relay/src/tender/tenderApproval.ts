@@ -5,7 +5,7 @@ import { buildDefaultChainSteps, summarizeChain, canActOnStep, type ApprovalStep
 import { writeTenderAuditLog } from '../mastra/workflows/tenderAuditLog.js'
 
 export async function submitContractForApproval(
-  tenderId: string, tenantId: string, contractId: string
+  tenderId: string, tenantId: string, contractId: string, actorId: string
 ): Promise<{ steps: { id: string; stepOrder: number; approverRole: string }[] }> {
   const [contract] = await db.select().from(tenderContracts).where(
     and(eq(tenderContracts.id, contractId), eq(tenderContracts.tenderId, tenderId), eq(tenderContracts.tenantId, tenantId))
@@ -32,7 +32,7 @@ export async function submitContractForApproval(
   ).returning({ id: tenderApprovalSteps.id, stepOrder: tenderApprovalSteps.stepOrder, approverRole: tenderApprovalSteps.approverRole })
 
   await writeTenderAuditLog({
-    tenantId, actorId: 'system', action: 'approval_submitted', resource: 'tender_contract', resourceId: contractId,
+    tenantId, actorId, action: 'approval_submitted', resource: 'tender_contract', resourceId: contractId,
     metadata: { tenderId, stepCount: inserted.length },
   })
 
@@ -58,6 +58,10 @@ export async function actOnApprovalStep(
 
   if (!canActOnStep(stepStates, step.stepOrder)) {
     throw new Error('step is not currently actionable — a prior step is still pending, this step is already decided, or the chain is halted')
+  }
+
+  if (input.approverRole !== step.approverRole) {
+    throw new Error('approver role mismatch — this step requires ' + step.approverRole)
   }
 
   const newStatus = input.action === 'approve' ? 'approved' as const : 'rejected' as const
@@ -89,7 +93,7 @@ export async function actOnApprovalStep(
 
   await writeTenderAuditLog({
     tenantId, actorId: input.actorId, action: `approval_${newStatus}`, resource: 'tender_approval_step', resourceId: stepId,
-    metadata: { tenderId, resourceType: step.resourceType, resourceId: step.resourceId, stepOrder: step.stepOrder, comment: input.comment ?? null, chainComplete: summary.isFullyApproved || summary.isRejected, resourceFinalized },
+    metadata: { tenderId, resourceType: step.resourceType, resourceId: step.resourceId, stepOrder: step.stepOrder, approverRole: input.approverRole, comment: input.comment ?? null, chainComplete: summary.isFullyApproved || summary.isRejected, resourceFinalized },
   })
 
   return { status: newStatus, chainComplete: summary.isFullyApproved || summary.isRejected, resourceFinalized }
