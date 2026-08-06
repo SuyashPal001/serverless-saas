@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2, FileCheck2, FileSignature } from "lucide-react";
+import { Loader2, Play, FileText, Users, ClipboardList, ShieldCheck, AlertCircle, BarChart3, ArrowLeft, ScrollText, Upload, CheckCircle2, FileCheck2, FileSignature, ClipboardCheck } from "lucide-react";
 import { PreBidPanel } from "../components/PreBidPanel";
 import { BidsPanel } from "../components/BidsPanel";
 import { PQPanel } from "../components/PQPanel";
@@ -17,6 +17,7 @@ import { ReportPanel } from "../components/ReportPanel";
 import { DocumentCheckPanel } from "../components/DocumentCheckPanel";
 import { ProposalPanel } from "../components/ProposalPanel";
 import { ContractPanel } from "../components/ContractPanel";
+import { ApprovalPanel } from "../components/ApprovalPanel";
 import { AuthoringPanel } from "./authoring/AuthoringPanel";
 
 interface EvalProgress {
@@ -51,7 +52,10 @@ const STAGES = [
     { id: "stage9", label: "9. Document Check", icon: FileCheck2 },
     { id: "stage10", label: "10. Proposal", icon: FileText },
     { id: "stage11", label: "11. Contract", icon: FileSignature },
+    { id: "stage12", label: "12. Approval", icon: ClipboardCheck },
 ];
+
+interface ContractSummary { id: string; version: number; generatedAt: string }
 
 const EVAL_STAGES: Array<{ key: keyof EvalProgress['stages']; label: string }> = [
     { key: 'pq', label: 'PQ' },
@@ -110,6 +114,15 @@ export default function TenderWorkspacePage() {
             return 30000;
         },
     });
+
+    // Minimal page-level fetch to derive the latest contract id for the Approval tab —
+    // mirrors ContractPanel's own query rather than duplicating its business logic.
+    const { data: contractData } = useQuery({
+        queryKey: ["contract", tender_id],
+        queryFn: () => fetch(`/api/proxy/api/v1/tender/${tender_id}/contract`).then(r => r.json()),
+        enabled: activeStage === "stage12",
+    });
+    const latestContractId: string | null = (contractData?.contracts as ContractSummary[] | undefined)?.[0]?.id ?? null;
 
     const anyProcessing = (data?.bidders?.length ?? 0) > 0 && (data?.bidders?.some(b => !b.embeddingReady) ?? false);
 
@@ -230,6 +243,7 @@ export default function TenderWorkspacePage() {
                 {activeStage === "stage9" && <DocumentCheckPanel tenderId={tender_id} />}
                 {activeStage === "stage10" && <ProposalPanel tenderId={tender_id} />}
                 {activeStage === "stage11" && <ContractPanel tenderId={tender_id} />}
+                {activeStage === "stage12" && <ApprovalPanel tenderId={tender_id} contractId={latestContractId} />}
             </div>
 
             <ActionModal open={modal.open} onOpenChange={v => setModal(m => ({ ...m, open: v }))}
