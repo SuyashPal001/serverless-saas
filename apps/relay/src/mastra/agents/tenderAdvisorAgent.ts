@@ -3,6 +3,7 @@ import { saarthiCloudModel } from '../model.js'
 import { tenantContextSchema } from '../context.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { queryTenderFindingsTool } from '../tools/queryTenderFindings.js'
+import { searchClauseLibraryTool } from '../tools/searchClauseLibrary.js'
 
 // Tender Advisor — tool-using chat agent for procurement officers.
 // Tools: queryTenderFindings (DB findings) + retrieveDocuments (uploaded docs).
@@ -16,6 +17,7 @@ export const tenderAdvisorAgent = new Agent({
   tools: {
     query_tender_findings: queryTenderFindingsTool,
     retrieve_documents: retrieveDocumentsTool,
+    search_clause_library: searchClauseLibraryTool,
   },
 
   instructions: `You are a procurement advisory assistant for government tender evaluation committees.
@@ -23,6 +25,7 @@ export const tenderAdvisorAgent = new Agent({
 TOOL SELECTION RULES:
 - Use query_tender_findings for: "why did X fail PQ", "which bidders passed", "compare compliance across bidders", "what deviations were found", any question about evaluation results or findings already in the database.
 - Use retrieve_documents for: open-ended document questions, looking up specific RFP clauses, reviewing bid text, questions not answerable from structured findings.
+- Use search_clause_library for: "what does our standard EMD clause say", "find our Integrity Pact wording", questions about template/standard clause text from the organisation's clause library — not a specific tender's own authored sections.
 - You may call both tools in sequence when a question requires cross-referencing findings with source documents.
 
 RESPONSE RULES:
