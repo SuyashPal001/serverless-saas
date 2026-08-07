@@ -3,10 +3,12 @@ import { db } from '@serverless-saas/database';
 import { tenders } from '@serverless-saas/database/schema/tender';
 import { clauseLibrary, rfpSections, rfpSectionVersions } from '@serverless-saas/database/schema/tender-authoring';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { documentChecks } from '@serverless-saas/database/schema/tender-document-check';
 import { eq, and, asc } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 import { buildWordDoc } from './tenderExport';
 import { SEED_CLAUSES } from './tenderClauseSeed';
+import { evaluatePublishGate } from './tenderPublishGate';
 
 const relayUrl = () => (process.env.RELAY_URL ?? 'http://localhost:3001').trim();
 const internalKey = () => (process.env.INTERNAL_SERVICE_KEY ?? '').trim();
@@ -249,20 +251,39 @@ tenderAuthoringRoutes.post('/authoring/:id/publish', async (c) => {
   const tenantId = rc?.tenant?.id as string;
   const userId = c.get('userId') as string;
   const id = c.req.param('id');
+  const override = c.req.query('override') === 'true';
+
   const [tender] = await db.select().from(tenders).where(and(eq(tenders.id, id), eq(tenders.tenantId, tenantId)));
   if (!tender) return c.json({ error: 'not found' }, 404);
   if (tender.status === 'published') return c.json({ error: 'already published' }, 409);
+
   const secs = await db.select({ acceptedAt: rfpSections.acceptedAt }).from(rfpSections)
     .where(and(eq(rfpSections.tenderId, id), eq(rfpSections.tenantId, tenantId)));
   if (!secs.length || secs.some((s: { acceptedAt: Date | null }) => !s.acceptedAt))
     return c.json({ error: `All ${secs.length} sections must be accepted before publishing` }, 422);
+
+  const checks = await db.select({ status: documentChecks.status, ruleId: documentChecks.ruleId, message: documentChecks.message })
+    .from(documentChecks)
+    .where(and(eq(documentChecks.tenderId, id), eq(documentChecks.tenantId, tenantId)));
+  const gate = evaluatePublishGate(checks, override);
+  if (gate.blocked) {
+    return c.json({
+      error: `${gate.failCount} document check(s) failed. Resolve them or publish with ?override=true.`,
+      failedChecks: checks.filter((ch: { status: 'pass' | 'fail' | 'flagged'; ruleId: string; message: string }) => ch.status === 'fail'),
+    }, 422);
+  }
+
   const now = new Date();
   const tf = (tender.templateFields ?? {}) as Record<string, unknown>;
   await db.update(tenders)
     .set({ status: 'published', publishedAt: now, templateFields: { ...tf, publishedBy: userId }, updatedAt: now })
     .where(eq(tenders.id, id));
-  await db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tender_publish', resource: 'tender', resourceId: id, metadata: { rfpNumber: tender.rfpNumber, sectionCount: secs.length }, traceId: (c.get('traceId') as string | undefined) ?? '' });
-  return c.json({ ok: true, publishedAt: now.toISOString() });
+  await db.insert(auditLog).values({
+    tenantId, actorId: userId, actorType: 'human', action: 'tender_publish', resource: 'tender', resourceId: id,
+    metadata: { rfpNumber: tender.rfpNumber, sectionCount: secs.length, checksOverridden: gate.overridden, failedCheckCount: gate.failCount },
+    traceId: (c.get('traceId') as string | undefined) ?? '',
+  });
+  return c.json({ ok: true, publishedAt: now.toISOString(), checksOverridden: gate.overridden });
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
