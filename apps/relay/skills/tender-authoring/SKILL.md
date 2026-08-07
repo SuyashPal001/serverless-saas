@@ -59,6 +59,8 @@ the downstream evaluation engine can read it as structured data.
 | S6 | Bill of Quantities | line-item-table | Priced line items (item, unit, quantity); price left blank for bidders | **Financial Evaluation (L1)** |
 | S7 | Evaluation Methodology | prose | ≥5 substantive clauses — bid opening sequence, technical qualification, financial evaluation, award sign-off, QCBS formula (see S7 norms) | Governs all eval stages |
 | S8 | Contract Terms, Compliance & Security | prose | ≥9 substantive clauses — payment milestones, PBG, LD, warranty, security/compliance, confidentiality, IP ownership, termination, governing law (see S8 norms) | Contract |
+| S9 | GCC / GTC Annexures | annexure | Full text of the applicable General Conditions/Terms of Contract, selected by procurement category (goods/services/works). Pasted verbatim from the clause library — not freshly drafted. | Contract precedence (SCC/STC take precedence over this in case of conflict) |
+| S10 | Commercial Annexures | annexure | Standard commercial formats (EMD/PBG bank guarantee format, Integrity Pact format, Bid Form, Price Schedule format). Pasted verbatim from the clause library. | Bid submission |
 
 **S4 and S5 are separate — do not merge them.** S4 feeds `tenderClauses` (the exact yardstick the
 evaluator measures every bid against). SLA rows belong in S5; never put them in S4.
@@ -121,7 +123,7 @@ Use the `clauses[]` array with distinct `clauseNo` values. Required clauses:
 
 ## S8 — Contract Terms, Compliance & Security — required clause depth
 
-S8 MUST contain **at least nine** substantive numbered clauses:
+S8 MUST contain **at least twelve** substantive numbered clauses:
 
 1. **Payment terms**: Milestone-linked (e.g. 30% on delivery & installation; 40% on UAT
    sign-off; 30% on go-live + training). Payment released within 30 days of verified
@@ -147,6 +149,22 @@ S8 MUST contain **at least nine** substantive numbered clauses:
 9. **Governing law & dispute resolution**: Governed by laws of India; exclusive jurisdiction
    of courts in Madhya Pradesh; arbitration under the Arbitration and Conciliation Act 1996;
    seat in Bhopal.
+10. **Earnest Money Deposit (EMD)**: Applicable to goods/works procurement (not services);
+    2% of estimated value; MSE-registered bidders are exempt on production of Udyam
+    Registration. **Whether this clause applies is determined by the system's rules engine
+    from the tender's category and value, not by your judgment** — if the mandatory-clause
+    list you are given includes EMD, include it; otherwise omit it.
+11. **Integrity Pact**: Mandatory for tenders valued at Rs. 1 Crore or above, per CVC
+    guidelines. **Applicability is determined by the rules engine, not by your judgment** —
+    include it only when instructed.
+12. **MSE Participation & Exemption**: Always stated — EMD/tender-fee exemption and
+    turnover/experience relaxation for MSE-registered bidders, per the Public Procurement
+    Policy for MSEs Order 2012.
+
+When the prompt includes a "MANDATORY S8 CLAUSES" block, use the exact `clauseNo` and
+`libraryRef` given there for clauses 10–12 (and for clause 2, PBG, if a library reference is
+supplied) — these are computed deterministically from the tender's value and category, not
+drafted from scratch.
 
 ## Clause library — categories & usage
 
@@ -216,16 +234,21 @@ Return ONLY valid JSON matching this exact shape — no markdown, no wrapper obj
      {"clauseNo":"8.6","title":"Confidentiality","text":"...","source":"drafted","libraryRef":null},
      {"clauseNo":"8.7","title":"Intellectual Property","text":"...","source":"library","libraryRef":"CL-020"},
      {"clauseNo":"8.8","title":"Termination","text":"...","source":"drafted","libraryRef":null},
-     {"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"}
-   ]}}
+     {"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"},
+     {"clauseNo":"8.10","title":"Earnest Money Deposit (EMD)","text":"...","source":"library","libraryRef":"CL-021"}
+   ]}},
+  {"sectionNo":"S9","title":"General Conditions / Terms of Contract","blockType":"annexure",
+   "content":{"text":"...","clauses":[]}},
+  {"sectionNo":"S10","title":"Commercial Annexures","blockType":"annexure",
+   "content":{"text":"...","clauses":[]}}
 ],
 "cvcFlags":[{"section":"S2","clauseRef":"2.1","concern":"...","suggestion":"..."}]}
 ```
 
 Rules:
-- All 8 sections present in S1–S8 order; omit none.
+- All sections present in order: S1–S8 always; S9/S10 (annexures) when instructed by the MANDATORY ANNEXURE SECTIONS block in the prompt.
 - S7 `clauses[]` MUST have at least 5 entries (7.1–7.5 minimum).
-- S8 `clauses[]` MUST have at least 9 entries (8.1–8.9 minimum).
+- S8 `clauses[]` MUST have at least 12 entries when EMD/Integrity Pact both apply (10 minimum otherwise — MSE is always present, PBG is always present).
 - `criteria-table` rows use `{criterion, threshold, verification}` fields.
 - `spec-table` rows use `{metric, target, measurement}` fields.
 - `line-item-table` rows use `{slNo, item, unit, qty, remarks}` fields.
