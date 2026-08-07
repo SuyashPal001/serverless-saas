@@ -17,13 +17,33 @@ This spec covers all four, each kept narrow — same spirit as the five Tier 1 i
 - **GCC/GTC are new annexure sections (S9+) in the existing `rfpSections` model**, not a separate document table. They go through the same accept/version/publish lifecycle as S1–S8.
 - **Inter-module compatibility check = reuse Document Checker (#2, already built), gated on Publish.** No new conflict-detection logic — Document Generator's finalization step calls the existing `documentChecks` results instead of duplicating clause-conflict scanning.
 - **Threshold values are standard GFR/CVC-style defaults**, not OIL-specific (OIL hasn't supplied their procurement manual) — same posture as `tender_pq_rules.json`'s generic PQ criteria.
-- **Single shared rules module**, called from both `generateRfpBackground` (full generation) and `/internal/tender/section/regenerate` (single-section redraft), rather than two independent implementations — closes existing duplication between those two prompt-builders rather than adding to it.
+- **Single shared rules module**, called from both the full-generation path and the single-section regenerate path, rather than two independent implementations — closes existing duplication between those two prompt-builders rather than adding to it.
+- **Generation becomes a real Mastra workflow, not an imperative route.** Today `tenderAuthoring.ts` calls `tenderAuthorAgent.generate()` directly inside a Hono route handler — unlike ingestion, tender evaluation, and AI-PARAS/pension, which are all `createWorkflow`/`createStep` pipelines with one file per step (`ingestionWorkflow.detectFormat.ts`, `tenderEvaluationWorkflow.pqEvaluate.ts`, etc.), registered in `mastra/index.ts`, and traceable in Mastra Studio. This pass converts full-RFP generation into `tenderAuthoringWorkflow` for consistency with the rest of the codebase and to get step-level observability. The single-section regenerate path reuses the workflow's individual step by importing it and calling `.execute()` directly — the same pattern `tender.ts`'s `/internal/tender/technical/run` already uses to re-run `pqEvaluateStep` standalone.
 
 ## Architecture
 
+### 0. `tenderAuthoringWorkflow` (new — replaces the imperative `generateRfpBackground`)
+
+`apps/relay/src/mastra/workflows/tenderAuthoringWorkflow.ts` + `.schemas.ts` + one file per step, composed with `createWorkflow(...).then(...).commit()`, mirroring `tenderEvaluationWorkflow.ts`:
+
+```
+computeClauseRulesStep   → deterministic: calls computeApplicableClauses(), no LLM/DB
+draftSectionsStep        → the existing tenderAuthorAgent.generate() call + JSON parsing (S1–S10 now)
+enforceMandatoryClausesStep → deterministic: patches S8 if the LLM omitted a mandatory clause
+saveSectionsStep          → the existing saveRfpSections() persistence logic
+```
+
+Registered in `apps/relay/src/mastra/index.ts` as `'tender-authoring'`. `POST /internal/tender/author` becomes a thin trigger, same shape as `tender.ts`'s evaluation trigger:
+```ts
+const run = await mastra.getWorkflow('tender-authoring').createRun()
+run.start({ inputData: { tenderId, tenantId } })  // fire-and-forget, 202 response unchanged
+```
+
+`POST /internal/tender/section/regenerate` stays a lightweight route (it's a partial, steered, single-section operation — not a good fit for a fixed multi-step pipeline) but imports `draftSectionsStep` and `enforceMandatoryClausesStep` directly and calls their `execute()` fns, so the rules-engine call and enforcement logic are never duplicated between the two paths.
+
 ### 1. Clause rules engine (new)
 
-`apps/relay/src/mastra/rules/tenderClauseRules.ts` — pure function, same shape/pattern as `tenderPqRules.ts` (JSON-driven, no hardcoded thresholds in TS):
+`apps/relay/src/mastra/rules/tenderClauseRules.ts` — pure function, same shape/pattern as `tenderPqRules.ts` (JSON-driven, no hardcoded thresholds in TS), called by `computeClauseRulesStep`:
 
 ```ts
 export interface MandatoryClause {
@@ -51,6 +71,13 @@ Rules data: `ai-service/rules/tender/tender_clause_rules.json`, GFR/CVC-style de
 - **GCC/GTC annexure set** — selected by `templateFields.category` (goods / services / works each map to a distinct annexure set).
 
 Clause library additions: annexure content is stored as ordinary `clauseLibrary` rows tagged `category: 'annexure'` — no new table. Seed data adds GCC-GOODS / GTC-SERVICES / GTC-WORKS / commercial-annexure entries.
+
+### 1a. Skill update — `apps/relay/skills/tender-authoring/SKILL.md`
+
+The agent's authoring behavior is governed by this skill file (loaded as `tenderAuthorAgent`'s instructions), not just the prompt built per-request. It currently documents S1–S8 only and gives static guidance for PBG/LD/warranty/security/confidentiality/IP/termination/governing-law in S8 — but **has no mention of EMD, Integrity Pact, or MSE at all**, and no S9/S10 annexures. Static domain knowledge belongs in the skill (same as the existing S8 required-clause-depth list); per-tender computed figures (exact EMD ₹ amount, whether Integrity Pact applies at this tender's value) stay in the per-request prompt injection, matching how `turnoverThresholdCr` already works. This pass:
+- Adds S9 (GCC/GTC Annexures) and S10 (Commercial Annexures) to the canonical section table.
+- Extends the S8 required-clause-depth list with EMD, Integrity Pact, and MSE participation/exemption as named required clauses (currently absent), with guidance that their applicability is computed by the rules engine and passed in, not decided by the agent.
+- Updates the output-contract JSON example to include S9/S10 shapes so the agent's structured output stays consistent with what `saveRfpSections` expects.
 
 ### 2. Injection + enforcement
 
