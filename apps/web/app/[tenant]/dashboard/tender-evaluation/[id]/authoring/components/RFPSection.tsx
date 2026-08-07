@@ -60,7 +60,7 @@ export function RFPSection({ section, tenderId, onMutate, isPublished = false }:
     }
 
     function saveEdit() {
-        const newContent = section.blockType === "prose" ? { ...content, text: editText } : JSON.parse(editText);
+        const newContent = section.blockType === "prose" || section.blockType === "annexure" ? { ...content, text: editText } : JSON.parse(editText);
         editMutation.mutate(newContent);
     }
 

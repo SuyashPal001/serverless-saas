@@ -292,7 +292,7 @@ function buildExportHtml(tender: any, sections: any[]): string {
   const sectionHtml = sections.map(s => {
     const content = (s.content ?? {}) as any;
     let body = '';
-    if (s.blockType === 'prose') {
+    if (s.blockType === 'prose' || s.blockType === 'annexure') {
       const text = `<p>${(content.text ?? '').replace(/\n/g, '</p><p>')}</p>`;
       const clauses = (content.clauses ?? []).map((cl: any) =>
         `<p style="margin-left:1.5em"><b>${cl.clauseNo} ${cl.title}</b>${cl.libraryRef ? ` [${cl.libraryRef}]` : ''}<br/>${(cl.text ?? '').replace(/\n/g, '<br/>')}</p>`

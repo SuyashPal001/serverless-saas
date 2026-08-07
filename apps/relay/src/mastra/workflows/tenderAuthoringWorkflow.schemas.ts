@@ -32,7 +32,7 @@ export const rfpSectionSchema = z.object({
 
 export const draftStepOutputSchema = clauseRulesStepOutputSchema.extend({
   sections: z.array(rfpSectionSchema),
-  cvcFlags: z.array(z.record(z.any())),
+  cvcFlags: z.array(z.any()),
 })
 
 export const enforceStepOutputSchema = draftStepOutputSchema

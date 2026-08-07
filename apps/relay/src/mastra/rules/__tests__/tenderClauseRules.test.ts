@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeApplicableClauses, enforceRequiredClauses, normalizeCategory } from '../tenderClauseRules.js';
+import { computeApplicableClauses, enforceRequiredClauses, enforceRequiredAnnexures, normalizeCategory } from '../tenderClauseRules.js';
 
 describe('normalizeCategory', () => {
   it('maps goods/supply/equipment text to goods', () => {
@@ -110,5 +110,43 @@ describe('enforceRequiredClauses', () => {
     const sections = [{ sectionNo: 'S3', title: 'Scope', blockType: 'prose', content: { text: 'x', clauses: [] } }];
     const result = enforceRequiredClauses(sections, mandatory, libraryRows);
     expect(result).toEqual(sections);
+  });
+});
+
+describe('enforceRequiredAnnexures', () => {
+  const annexures = [
+    { sectionNo: 'S9', title: 'General Conditions of Contract (GCC) — Goods', libraryRef: 'CL-024' },
+    { sectionNo: 'S10', title: 'Commercial Annexures', libraryRef: 'CL-027' },
+  ];
+  const libraryRows = [
+    { code: 'CL-024', title: 'General Conditions of Contract (GCC) — Goods', content: 'GCC full text.' },
+    { code: 'CL-027', title: 'Commercial Annexures', content: 'Commercial annexure full text.' },
+  ];
+
+  it('does not add a duplicate when the annexure section is already present', () => {
+    const sections = [
+      { sectionNo: 'S9', title: 'GCC', blockType: 'annexure', content: { text: 'already drafted', clauses: [] } },
+      { sectionNo: 'S10', title: 'Commercial', blockType: 'annexure', content: { text: 'already drafted', clauses: [] } },
+    ];
+    const result = enforceRequiredAnnexures(sections, annexures, libraryRows);
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(sections);
+  });
+
+  it('appends a section for a missing annexure using the library row verbatim', () => {
+    const sections = [
+      { sectionNo: 'S9', title: 'GCC', blockType: 'annexure', content: { text: 'already drafted', clauses: [] } },
+    ];
+    const result = enforceRequiredAnnexures(sections, annexures, libraryRows);
+    expect(result).toHaveLength(2);
+    const s10 = result.find(s => s.sectionNo === 'S10')!;
+    expect(s10.blockType).toBe('annexure');
+    expect((s10.content as any).text).toBe('Commercial annexure full text.');
+  });
+
+  it('skips (does not throw) when a computed annexure has no matching library row', () => {
+    const result = enforceRequiredAnnexures([], annexures, [libraryRows[0]]); // CL-027 missing
+    expect(result).toHaveLength(1);
+    expect(result[0].sectionNo).toBe('S9');
   });
 });

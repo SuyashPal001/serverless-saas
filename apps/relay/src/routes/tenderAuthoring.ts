@@ -39,6 +39,11 @@ async function runAuthoringWorkflow(tenderId: string, tenantId: string): Promise
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const run = await (mastra.getWorkflow('tender-authoring') as any).createRun()
     const result = await run.start({ inputData: { tenderId, tenantId } })
+    if (result?.status !== 'success') {
+      console.error(`[tender/author] workflow status=${result?.status} tenderId=${tenderId}`, result?.error ?? result)
+      await db.update(tenders).set({ authoringStatus: 'failed' }).where(eq(tenders.id, tenderId))
+      return
+    }
     console.log(`[tender/author] workflow completed tenderId=${tenderId}`, result?.result ?? result)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown'
@@ -68,11 +73,15 @@ tenderAuthoringRoutes.post('/internal/tender/section/regenerate', async (c) => {
   const libraryText = libraryRows.map(cl => `${cl.code} [${cl.category}] "${cl.title}": ${cl.content}`).join('\n')
   const templateFields = (tender.templateFields ?? {}) as Record<string, unknown>
   const requirementText = tender.requirementText ?? ''
-  const { mandatory } = computeApplicableClauses({ budget: tender.budget }, templateFields)
+  const { mandatory, annexures } = computeApplicableClauses({ budget: tender.budget }, templateFields)
+  const annexureSpec = annexures.find(a => a.sectionNo === section.sectionNo)
 
   const sectionFormat = singleSectionOutputFormat(section.sectionNo, section.blockType)
   const mandatoryBlock = section.sectionNo === 'S8' && mandatory.length
     ? `\nMANDATORY CLAUSES — this section MUST include these, source:"library", with the exact clauseNo shown:\n${mandatory.map(m => `- Clause ${m.clauseNo} "${m.title}" (libraryRef "${m.libraryRef}"): ${m.reason}`).join('\n')}\n`
+    : ''
+  const annexureBlock = annexureSpec
+    ? `\nMANDATORY ANNEXURE SECTION — this is boilerplate, not freshly drafted prose: paste the full text of library clause "${annexureSpec.libraryRef}" verbatim as this section's content.text.\n`
     : ''
   const prompt = `Redraft ONLY section ${section.sectionNo} of this RFP. Return a single JSON section object.
 
@@ -82,7 +91,7 @@ Estimated Value: Rs.${tender.budget ?? 'TBD'}
 Category: ${templateFields.category ?? 'IT/Software'}
 Procurement Mode: ${templateFields.procurementMode ?? 'Two-Bid'}
 Contract Duration: ${templateFields.contractDuration ?? '36 months'}
-${mandatoryBlock}
+${mandatoryBlock}${annexureBlock}
 Requirement Document:
 ${requirementText.slice(0, 200000) || '(Draft from title and department context.)'}
 

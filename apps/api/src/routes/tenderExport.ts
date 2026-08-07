@@ -20,7 +20,7 @@ function tableRow(cells: string[], header = false): string {
 function sectionBody(s: SectionRow): string {
   const content = (s.content ?? {}) as Record<string, unknown>;
 
-  if (s.blockType === 'prose') {
+  if (s.blockType === 'prose' || s.blockType === 'annexure') {
     const text = (content.text as string) ?? '';
     return text.split('\n').filter(l => l.trim()).map(l => `<p>${esc(l)}</p>`).join('');
   }

@@ -234,8 +234,7 @@ Return ONLY valid JSON matching this exact shape — no markdown, no wrapper obj
      {"clauseNo":"8.6","title":"Confidentiality","text":"...","source":"drafted","libraryRef":null},
      {"clauseNo":"8.7","title":"Intellectual Property","text":"...","source":"library","libraryRef":"CL-020"},
      {"clauseNo":"8.8","title":"Termination","text":"...","source":"drafted","libraryRef":null},
-     {"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"},
-     {"clauseNo":"8.10","title":"Earnest Money Deposit (EMD)","text":"...","source":"library","libraryRef":"CL-021"}
+     {"clauseNo":"8.9","title":"Governing Law & Dispute Resolution","text":"...","source":"library","libraryRef":"CL-019"}
    ]}},
   {"sectionNo":"S9","title":"General Conditions / Terms of Contract","blockType":"annexure",
    "content":{"text":"...","clauses":[]}},

@@ -113,3 +113,32 @@ export function enforceRequiredClauses(
     return { ...section, content: { ...content, clauses: patchedClauses } }
   })
 }
+
+export function enforceRequiredAnnexures(
+  sections: RfpSectionLike[],
+  annexures: AnnexureSpec[],
+  libraryRows: LibraryRowLike[]
+): RfpSectionLike[] {
+  const libraryByCode = new Map(libraryRows.map(r => [r.code, r]))
+  const presentSectionNos = new Set(sections.map(s => s.sectionNo))
+
+  const missing = annexures.filter(a => !presentSectionNos.has(a.sectionNo))
+  if (missing.length === 0) return sections
+
+  const appended: RfpSectionLike[] = []
+  for (const a of missing) {
+    const libraryRow = libraryByCode.get(a.libraryRef)
+    if (!libraryRow) {
+      console.warn(`[tenderClauseRules] annexure section ${a.sectionNo} references unknown library code ${a.libraryRef} — skipped`)
+      continue
+    }
+    appended.push({
+      sectionNo: a.sectionNo,
+      title: libraryRow.title,
+      blockType: 'annexure',
+      content: { text: libraryRow.content, clauses: [] },
+    })
+  }
+
+  return appended.length ? [...sections, ...appended] : sections
+}
