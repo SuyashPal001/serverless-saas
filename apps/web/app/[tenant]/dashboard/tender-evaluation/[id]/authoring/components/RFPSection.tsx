@@ -138,7 +138,7 @@ export function RFPSection({ section, tenderId, onMutate, isPublished = false }:
 }
 
 function SectionBody({ blockType, content }: { blockType: string; content: SectionContent }) {
-    if (blockType === "prose") {
+    if (blockType === "prose" || blockType === "annexure") {
         return <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{content.text ?? ""}</p>;
     }
     if (blockType === "criteria-table") {
