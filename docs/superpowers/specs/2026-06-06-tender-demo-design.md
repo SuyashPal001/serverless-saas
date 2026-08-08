@@ -101,6 +101,69 @@ its **source document + page**. Full audit trail. Same contract as AI-PARAS / IT
 
 ---
 
+## Walkthrough refinements — gaps found in officer role-play (2026-06-06)
+
+A step-by-step role-play (Claude as demo presenter, user as a non-technical procurement officer)
+surfaced 6 gaps. These are **binding additions** to the design — build these, not the v1 simplification.
+
+### GAP 1 — Tender worklist / home (don't open on a single tender)
+Officers manage *many* tenders at different stages. The app home is a **Tender Worklist**: a list of
+all tenders, each with a **stage badge** (Draft → Published → Pre-Bid → Bids Received → PQ →
+Technical → Financial → Awarded) and a "pending with you" column. Clicking a row opens that tender's
+**workspace at its current stage**. For the demo only the IT-Infra tender is fully functional; 4–5
+other rows are realistic static context. (See sample worklist in §UI below.)
+
+### GAP 2 — Overview + Document Room before any evaluation
+The tender workspace has tabs: **Overview · Documents · Evaluation**, landing on Overview.
+- **Overview** = plain-language AI digest of the tender doc: what's being procured, value, mode, key
+  dates, eligibility-in-brief, evaluation method. Every line links to its RFP clause + page.
+- **Documents** = organized document room (not a folder dump), see GAP 3 for layout. Opening any
+  document shows the AI's extracted highlights pinned (turnover figure, spec table, etc.).
+Officer orients *first*, evaluates second.
+
+### GAP 3 — Two-sided document model ("yardstick vs measured")
+Keep the formal labels **"Tender Documents"** and **"Bid Submission"**, but lay them out as two clear
+sides so a non-technical officer never confuses them:
+- **Tender Documents** (left) = *what WE asked for* — RFP, corrigenda, PQ criteria, specs, BOQ
+  format, forms. The **yardstick**. Issued by us.
+- **Bid Submission** (right) = *what THEY offered* — each bidder's bundle, kept separate, split into
+  🔓 Technical envelope and 🔒 Financial envelope. Gets **measured** against the yardstick.
+
+### GAP 4 — Confirm-the-criteria step (guard against silent mis-extraction)
+Before each evaluation run, show the criteria the system extracted from the RFP (one line each, with
+clause + page) and require the officer to **Confirm** (or Edit). Prevents an OCR/extraction error
+(e.g. "₹6 Cr" read as "₹6 L") from silently corrupting every result, and puts the officer's sign-off
+on the yardstick on record.
+
+### GAP 5 — Chat architecture: structured findings + RAG, scoped (NOT raw documents)
+A naive "feed all documents to the model" chat fails (context limits). The tender chat is a
+**tool-using agent with two sources**, and runs **after** evaluation so structured findings exist:
+1. **Structured findings (Postgres)** — the extracted per-bidder fields and compliance/PQ/financial
+   tables. Powers **comparison / aggregate** questions (complete, deterministic, every bidder/field).
+   Free-form RAG is *unreliable* for these and must NOT be the path for comparisons.
+2. **Hybrid RAG retrieval** (existing pipeline) — for open-ended "what/where does bidder X say"
+   lookups; cites doc + page. Exhaustive-negative questions ("did A mention delivery anywhere?")
+   report "no firm commitment found in indexed content + closest match"; never claim a perfect negative.
+
+The agent picks the tool per question. **For the demo, scope the chat to a fixed set of supported
+questions**, each pre-verified against real seeded findings (open-ended chat is the highest live-demo
+risk). Demo-supported set:
+1. Warranty offered vs required (Bidder A) — findings
+2. Compare A and C on key specs — findings
+3. Why did Bidder B fail PQ — PQ findings + citation
+4. Where does Bidder A mention delivery timeline — RAG, honest closest-match
+5. Summarize Bidder C's bid — RAG over C's docs
+
+### GAP 6 — Neutral decision support: NEVER recommends a bidder (ABSOLUTE RULE)
+For the final award trade-off (e.g. L1 bidder with technical deviations vs pricier fully-compliant
+bidder), the chat is a **neutral advisor**: it lays out facts, trade-offs, risks, and rule
+implications for each option with citations, names the factual questions that decide it, then **hands
+the decision back**. It is **hard-constrained to never recommend or name a preferred bidder**, even
+when asked directly ("which should I pick?" → declines, offers to surface more facts instead). This
+is an absolute guardrail — bias/audit liability if violated. Reinforces "human owns the verdict."
+
+---
+
 ## Architecture & reuse (the speed story)
 
 Mastra is the backbone (workflow orchestration, step I/O, tool-calling, agent runtime, LLM routing),
@@ -128,6 +191,10 @@ Mirror the `pension.ts` shape. Tables (Postgres-first):
 - `financial_findings` — BOQ line comparison, arithmetic correction, L1 flag (stage 6)
 - `evaluation_reports` — consolidated PQ/Technical/Financial report (stage 6)
 - `officer_actions` — Accept/Override/Escalate + rationale (all stages)
+- `tender_chat` (or reuse existing `conversations`) — scoped chat threads per tender
+- `extracted_criteria` — PQ/spec criteria parsed from the RFP, with confirm-state (GAP 4)
+- `bidder_fields` — structured per-bidder extracted values (turnover, warranty, delivery, BOQ
+  totals…) that the chat's structured-findings tool queries (GAP 5)
 
 ### Workflow — `tenderEvaluationWorkflow` (Mastra)
 Steps mapping to stages 3–6 (1–2 are lighter assist features):
@@ -136,15 +203,24 @@ Steps mapping to stages 3–6 (1–2 are lighter assist features):
 Reuse `documentIntelligenceAgent` (Tier 3) for OCR/extraction as ITR does.
 
 ### UI — new dashboard route (sibling to `apps/web/app/[tenant]/dashboard/pension-review`)
-Suggested: `tender-evaluation` (or `bid-evaluation`). Surfaces:
-- **Evaluation cockpit** (first screen): tender header, 3 bidders, Run Evaluation.
-- **6-stage lifecycle view**: stage tabs/timeline; stages 1–2 as flashback panels.
-- **PQ panel**: per-bidder Qualified/Not-Qualified with cited evidence.
-- **Technical panel**: clause-wise compliance sheet (Complied/Deviation/Not Found + page cite) +
-  comparative technical statement; this panel hosts the **live run**.
-- **Shortfall panel**: discrepancies + auto-drafted clarification requests + tracking.
-- **Financial panel**: BOQ comparison table + L1 determination.
-- **Report**: one-click consolidated evaluation report (PQ/Technical/Financial).
+Suggested: `tender-evaluation` (or `bid-evaluation`). Surfaces (revised per role-play GAPs):
+- **Tender Worklist (home)** — all tenders, each with a **stage badge** + "pending with you"; click
+  a row → workspace at its current stage. Only IT-Infra tender is functional; others static. (GAP 1)
+- **Tender workspace** with tabs **Overview · Documents · Evaluation**:
+  - **Overview** — plain-language AI digest, every line linking to RFP clause + page. (GAP 2)
+  - **Documents** — two-sided room: **Tender Documents** (yardstick) | **Bid Submission** (measured,
+    🔓 technical / 🔒 financial). Open a doc → pinned AI highlights. (GAP 2, 3)
+  - **Evaluation** — 6-stage lifecycle (stepper). Each run preceded by **Confirm-the-criteria** (GAP 4):
+    - **PQ panel**: per-bidder Qualified/Not-Qualified with cited evidence.
+    - **Technical panel**: clause-wise compliance (Complied/Deviation/Not Found + page cite) +
+      comparative statement; hosts the **live run**. Not-Found never guesses.
+    - **Shortfall panel**: discrepancies + auto-drafted CVC-clean clarification + response tracking.
+    - **Financial panel**: sealed-until-qualified envelopes (failed bidder's never opens) → BOQ
+      comparison → arithmetic correction → L1 with price-vs-compliance trade-off surfaced.
+    - **Report**: one-click consolidated evaluation report (PQ/Technical/Financial).
+- **Tender chat panel** (docked) — scoped to current tender; tool-using agent over structured
+  findings + RAG; runs after evaluation; demo-scoped question set; **neutral, never recommends a
+  bidder**. (GAP 5, 6)
 - Officer controls (Accept/Override/Escalate) throughout; source attribution everywhere.
 
 ---
