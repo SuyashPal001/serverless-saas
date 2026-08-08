@@ -313,7 +313,7 @@ tenderRoutes.patch('/evaluations/:tenderId/bidders/:bidderId/vendor', async (c) 
   if (!bidder) return c.json({ error: 'not found' }, 404);
 
   if (body.vendorId === null || body.vendorId === undefined) {
-    await db.update(bidders).set({ vendorId: null }).where(eq(bidders.id, bidderId));
+    await db.update(bidders).set({ vendorId: null }).where(and(eq(bidders.id, bidderId), eq(bidders.tenantId, tenantId)));
     return c.json({ ok: true, vendorId: null });
   }
 
@@ -325,6 +325,6 @@ tenderRoutes.patch('/evaluations/:tenderId/bidders/:bidderId/vendor', async (c) 
     return c.json({ error: `Cannot link a blacklisted vendor: ${gate.reason}` }, 422);
   }
 
-  await db.update(bidders).set({ vendorId: vendor.id }).where(eq(bidders.id, bidderId));
+  await db.update(bidders).set({ vendorId: vendor.id }).where(and(eq(bidders.id, bidderId), eq(bidders.tenantId, tenantId)));
   return c.json({ ok: true, vendorId: vendor.id });
 });
