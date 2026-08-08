@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { db, vendors } from '@serverless-saas/database';
+import { db, vendors, bidders, tenders, rateContracts } from '@serverless-saas/database';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
@@ -122,4 +122,69 @@ vendorsRoutes.patch('/:id', async (c) => {
   }
 
   return c.json(updated);
+});
+
+// GET /vendors/:id/participation — derived from bidders.vendorId, joined to tenders
+vendorsRoutes.get('/:id/participation', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const [vendor] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, id), eq(vendors.tenantId, tenantId)));
+  if (!vendor) return c.json({ error: 'not found' }, 404);
+
+  const rows = await db.select({
+    tenderId: tenders.id, rfpNumber: tenders.rfpNumber, tenderTitle: tenders.title,
+    bidderStatus: bidders.status, submittedAt: bidders.createdAt,
+  })
+    .from(bidders)
+    .innerJoin(tenders, eq(tenders.id, bidders.tenderId))
+    .where(and(eq(bidders.vendorId, id), eq(bidders.tenantId, tenantId)))
+    .orderBy(bidders.createdAt);
+
+  return c.json({ participation: rows });
+});
+
+// GET /vendors/:id/rate-contracts
+vendorsRoutes.get('/:id/rate-contracts', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const [vendor] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, id), eq(vendors.tenantId, tenantId)));
+  if (!vendor) return c.json({ error: 'not found' }, 404);
+
+  const rows = await db.select().from(rateContracts)
+    .where(and(eq(rateContracts.vendorId, id), eq(rateContracts.tenantId, tenantId)))
+    .orderBy(rateContracts.createdAt);
+
+  return c.json({ rateContracts: rows });
+});
+
+// POST /vendors/:id/rate-contracts — create
+vendorsRoutes.post('/:id/rate-contracts', async (c) => {
+  const rc = c.get('requestContext') as any;
+  const tenantId = rc?.tenant?.id as string;
+  const id = c.req.param('id');
+
+  const [vendor] = await db.select({ id: vendors.id }).from(vendors).where(and(eq(vendors.id, id), eq(vendors.tenantId, tenantId)));
+  if (!vendor) return c.json({ error: 'not found' }, 404);
+
+  let body: { contractType?: string; terms?: string; pricing?: object; validFrom?: string; validTo?: string };
+  try { body = await c.req.json() } catch { return c.json({ error: 'invalid JSON' }, 400) }
+
+  if (!body.contractType || !['limited', 'framework', 'rate'].includes(body.contractType)) {
+    return c.json({ error: 'contractType must be one of: limited, framework, rate' }, 400);
+  }
+
+  const [row] = await db.insert(rateContracts).values({
+    tenantId, vendorId: id,
+    contractType: body.contractType as 'limited' | 'framework' | 'rate',
+    terms: body.terms ?? null,
+    pricing: body.pricing ?? {},
+    validFrom: body.validFrom ? new Date(body.validFrom) : null,
+    validTo: body.validTo ? new Date(body.validTo) : null,
+  }).returning();
+
+  return c.json(row, 201);
 });
