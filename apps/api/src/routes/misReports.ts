@@ -49,11 +49,11 @@ misReportsRoutes.get('/contracts', async (c) => {
     return c.json({ error: 'invalid from/to date parameter' }, 400);
   }
 
-  // Latest contract version per tender
+  // Latest finalized contract version per tender
   const latestVersions = db.$with('latest_versions').as(
     db.select({ tenderId: tenderContracts.tenderId, maxVersion: max(tenderContracts.version).as('max_version') })
       .from(tenderContracts)
-      .where(eq(tenderContracts.tenantId, tenantId))
+      .where(and(eq(tenderContracts.tenantId, tenantId), eq(tenderContracts.status, 'finalized')))
       .groupBy(tenderContracts.tenderId)
   );
 
@@ -116,7 +116,7 @@ misReportsRoutes.get('/spend-by-category', async (c) => {
   const latestVersions = db.$with('latest_versions').as(
     db.select({ tenderId: tenderContracts.tenderId, maxVersion: max(tenderContracts.version).as('max_version') })
       .from(tenderContracts)
-      .where(eq(tenderContracts.tenantId, tenantId))
+      .where(and(eq(tenderContracts.tenantId, tenantId), eq(tenderContracts.status, 'finalized')))
       .groupBy(tenderContracts.tenderId)
   );
 
