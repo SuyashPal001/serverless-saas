@@ -8,10 +8,25 @@ import { toCsv, toHtmlTable } from './exportFormat';
 
 export const misReportsRoutes = new Hono<AppEnv>();
 
+const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 function parseDateParam(raw: string | undefined): Date | null {
   if (!raw) return null;
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// Same as parseDateParam, but a bare YYYY-MM-DD value is advanced to the
+// end of that day (23:59:59.999 UTC) so an inclusive `to` filter doesn't
+// exclude same-day records generated after UTC midnight.
+function parseToDateParam(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return null;
+  if (BARE_DATE_RE.test(raw)) {
+    d.setUTCHours(23, 59, 59, 999);
+  }
+  return d;
 }
 
 function dateRangeConditions(from: Date | null, to: Date | null) {
@@ -26,8 +41,13 @@ misReportsRoutes.get('/contracts', async (c) => {
   const rc = c.get('requestContext') as any;
   const tenantId = rc?.tenant?.id as string;
   const format = c.req.query('format') === 'csv' ? 'csv' : 'html';
-  const from = parseDateParam(c.req.query('from'));
-  const to = parseDateParam(c.req.query('to'));
+  const rawFrom = c.req.query('from');
+  const rawTo = c.req.query('to');
+  const from = parseDateParam(rawFrom);
+  const to = parseToDateParam(rawTo);
+  if ((rawFrom && !from) || (rawTo && !to)) {
+    return c.json({ error: 'invalid from/to date parameter' }, 400);
+  }
 
   // Latest contract version per tender
   const latestVersions = db.$with('latest_versions').as(
@@ -49,7 +69,7 @@ misReportsRoutes.get('/contracts', async (c) => {
       eq(latestVersions.maxVersion, tenderContracts.version),
     ))
     .innerJoin(tenders, eq(tenders.id, tenderContracts.tenderId))
-    .where(and(eq(tenderContracts.tenantId, tenantId), ...dateRangeConditions(from, to)));
+    .where(and(eq(tenderContracts.tenantId, tenantId), eq(tenderContracts.status, 'finalized'), ...dateRangeConditions(from, to)));
 
   const withBidCounts = await Promise.all(contractRows.map(async (row: (typeof contractRows)[number]) => {
     const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(bidders)
@@ -85,8 +105,13 @@ misReportsRoutes.get('/spend-by-category', async (c) => {
   const rc = c.get('requestContext') as any;
   const tenantId = rc?.tenant?.id as string;
   const format = c.req.query('format') === 'csv' ? 'csv' : 'html';
-  const from = parseDateParam(c.req.query('from'));
-  const to = parseDateParam(c.req.query('to'));
+  const rawFrom = c.req.query('from');
+  const rawTo = c.req.query('to');
+  const from = parseDateParam(rawFrom);
+  const to = parseToDateParam(rawTo);
+  if ((rawFrom && !from) || (rawTo && !to)) {
+    return c.json({ error: 'invalid from/to date parameter' }, 400);
+  }
 
   const latestVersions = db.$with('latest_versions').as(
     db.select({ tenderId: tenderContracts.tenderId, maxVersion: max(tenderContracts.version).as('max_version') })
@@ -106,7 +131,7 @@ misReportsRoutes.get('/spend-by-category', async (c) => {
       eq(latestVersions.maxVersion, tenderContracts.version),
     ))
     .innerJoin(tenders, eq(tenders.id, tenderContracts.tenderId))
-    .where(and(eq(tenderContracts.tenantId, tenantId), ...dateRangeConditions(from, to)));
+    .where(and(eq(tenderContracts.tenantId, tenantId), eq(tenderContracts.status, 'finalized'), ...dateRangeConditions(from, to)));
 
   const report = buildSpendByCategoryReport(rows);
   const headers = ['category', 'tenderCount', 'totalSpend'];
