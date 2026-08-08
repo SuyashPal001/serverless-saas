@@ -1,9 +1,10 @@
 // apps/relay/src/tender/tenderContract.ts
-import { db, tenders, bidders, financialFindings, rfpSections, tenderContracts } from '@serverless-saas/database'
+import { db, tenders, bidders, financialFindings, rfpSections, tenderContracts, vendors } from '@serverless-saas/database'
 import { eq, and, max, desc } from 'drizzle-orm'
 import { buildContractContent, type ContractContentInput, type ContractSourceSection } from './tenderContractContent.js'
 import { sectionText, type RfpSectionRow } from './tenderContractSections.js'
 import { writeTenderAuditLog } from '../mastra/workflows/tenderAuditLog.js'
+import { checkVendorBlacklist } from '../mastra/rules/vendorBlacklist.js'
 
 const CONTRACT_SOURCE_SECTIONS = ['S3', 'S5', 'S8'] // Scope of Work, Service Levels (SLA/KPI), Contract Terms/Compliance/Security
 
@@ -28,6 +29,18 @@ export async function generateContract(tenderId: string, tenantId: string): Prom
   if (!awardedRow) throw new Error('no awarded bidder — tender is not ready for contract formulation')
   const awardedBidder = awardedRow.bidder
   const finding = awardedRow.finding
+
+  if (awardedBidder.vendorId) {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, awardedBidder.vendorId))
+    const gate = checkVendorBlacklist(vendor ? { isBlacklisted: vendor.isBlacklisted, blacklistReason: vendor.blacklistReason } : null)
+    if (gate.blocked) {
+      await writeTenderAuditLog({
+        tenantId, actorId: 'system', action: 'contract_blocked_blacklisted_vendor', resource: 'tender', resourceId: tenderId,
+        metadata: { bidderId: awardedBidder.id, vendorId: awardedBidder.vendorId, reason: gate.reason },
+      })
+      throw new Error(`Cannot generate contract — awarded bidder's linked vendor is blacklisted: ${gate.reason}`)
+    }
+  }
 
   const sectionRows = await db.select().from(rfpSections)
     .where(and(eq(rfpSections.tenderId, tenderId), eq(rfpSections.tenantId, tenantId))) as RfpSectionRow[]
