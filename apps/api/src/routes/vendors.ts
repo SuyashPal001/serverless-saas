@@ -3,6 +3,7 @@ import { db, vendors } from '@serverless-saas/database';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and } from 'drizzle-orm';
 import type { AppEnv } from '../types';
+import { ensureVendors } from './vendorSeed';
 
 export const vendorsRoutes = new Hono<AppEnv>();
 
@@ -14,6 +15,7 @@ const isValidCategory = (value: string): value is typeof VALID_CATEGORIES[number
 vendorsRoutes.get('/', async (c) => {
   const rc = c.get('requestContext') as any;
   const tenantId = rc?.tenant?.id as string;
+  await ensureVendors(tenantId);
   const category = c.req.query('category');
   const blacklisted = c.req.query('blacklisted');
 
