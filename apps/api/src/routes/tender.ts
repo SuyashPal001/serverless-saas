@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { createHash } from 'node:crypto';
-import { db } from '@serverless-saas/database';
+import { db, vendors } from '@serverless-saas/database';
 import {
   tenders, bidders, pqFindings, technicalFindings,
   shortfalls, clarificationRequests, financialFindings,
@@ -10,6 +10,7 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { eq, and, count, sql } from 'drizzle-orm';
 import type { AppEnv } from '../types';
 import { ensureScoresSeeded } from './tenderScoring';
+import { checkVendorBlacklist } from './vendorBlacklist';
 
 function bidderFolderId(tenantId: string, tenderId: string, displayLabel: string): string {
   const stem = displayLabel.toLowerCase().replace(/\s+/g, '-');
@@ -295,4 +296,35 @@ tenderRoutes.delete('/evaluations/:tenderId/bidders/:bidderId', async (c) => {
     .where(and(eq(bidders.id, bidderId), eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId)));
 
   return c.json({ ok: true });
+});
+
+// PATCH /tender/evaluations/:tenderId/bidders/:bidderId/vendor — link/unlink a vendor
+tenderRoutes.patch('/evaluations/:tenderId/bidders/:bidderId/vendor', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id as string;
+  const tenderId = c.req.param('tenderId');
+  const bidderId = c.req.param('bidderId');
+
+  let body: { vendorId?: string | null };
+  try { body = await c.req.json() } catch { return c.json({ error: 'invalid JSON' }, 400) }
+
+  const [bidder] = await db.select({ id: bidders.id }).from(bidders)
+    .where(and(eq(bidders.id, bidderId), eq(bidders.tenderId, tenderId), eq(bidders.tenantId, tenantId)));
+  if (!bidder) return c.json({ error: 'not found' }, 404);
+
+  if (body.vendorId === null || body.vendorId === undefined) {
+    await db.update(bidders).set({ vendorId: null }).where(eq(bidders.id, bidderId));
+    return c.json({ ok: true, vendorId: null });
+  }
+
+  const [vendor] = await db.select().from(vendors).where(and(eq(vendors.id, body.vendorId), eq(vendors.tenantId, tenantId)));
+  if (!vendor) return c.json({ error: 'vendor not found' }, 404);
+
+  const gate = checkVendorBlacklist({ isBlacklisted: vendor.isBlacklisted, blacklistReason: vendor.blacklistReason });
+  if (gate.blocked) {
+    return c.json({ error: `Cannot link a blacklisted vendor: ${gate.reason}` }, 422);
+  }
+
+  await db.update(bidders).set({ vendorId: vendor.id }).where(eq(bidders.id, bidderId));
+  return c.json({ ok: true, vendorId: vendor.id });
 });
