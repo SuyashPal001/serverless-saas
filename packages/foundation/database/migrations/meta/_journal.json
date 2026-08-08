@@ -232,6 +232,104 @@
       "when": 1779984000000,
       "tag": "0032_github_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780070400000,
+      "tag": "0033_agent_fairness_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780156800000,
+      "tag": "0034_document_sensitivity",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779831437918,
+      "tag": "0035_handy_zzzax",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779870515888,
+      "tag": "0036_worthless_kabuki",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779884166076,
+      "tag": "0037_large_the_twelve",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1779912974055,
+      "tag": "0038_rapid_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1780758252636,
+      "tag": "0039_strange_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780786353847,
+      "tag": "0040_fat_shadowcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780821846374,
+      "tag": "0041_nasty_the_watchers",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780821846375,
+      "tag": "0045_document_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785959527331,
+      "tag": "0046_tender_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785959627331,
+      "tag": "0047_tender_proposals_version_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1786010835371,
+      "tag": "0048_tender_contracts",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1786017345932,
+      "tag": "0049_third_flatman",
+      "breakpoints": true
     }
   ]
 }

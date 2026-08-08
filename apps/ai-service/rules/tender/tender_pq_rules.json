@@ -1,0 +1,33 @@
+{
+  "version": "1.2",
+  "domain": "GFR 2017 — Pre-Qualification Evaluation",
+  "rules": [
+    {
+      "id": "PQ001",
+      "name": "Annual Turnover Threshold",
+      "check": "avg_turnover_crore >= turnover_threshold",
+      "error": "Turnover below threshold. Declared average: ₹{avg_turnover_crore} Cr, required ≥ ₹{turnover_threshold} Cr (last 3 financial years).",
+      "provision": "GFR 2017 Rule 160 — Minimum Financial Capacity",
+      "inputs": ["avg_turnover_crore"],
+      "thresholdVars": ["turnover_threshold"]
+    },
+    {
+      "id": "PQ002",
+      "name": "Similar Work Experience",
+      "check": "max_similar_work_crore >= similar_work_threshold",
+      "error": "Insufficient similar work experience. Highest single similar project: ₹{max_similar_work_crore} Cr, required ≥ ₹{similar_work_threshold} Cr.",
+      "provision": "GFR 2017 Rule 161 — Technical Capability",
+      "inputs": ["max_similar_work_crore"],
+      "thresholdVars": ["similar_work_threshold"]
+    },
+    {
+      "id": "PQ004",
+      "name": "No Blacklisting",
+      "check": "is_blacklisted == 0",
+      "error": "Bidder is blacklisted by a Government entity. Not eligible to participate.",
+      "provision": "GFR 2017 Rule 175 — Disqualification Criteria",
+      "inputs": ["is_blacklisted"],
+      "thresholdVars": []
+    }
+  ]
+}

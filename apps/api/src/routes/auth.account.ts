@@ -32,38 +32,26 @@ export async function handleDeleteAccount(c: Context<AppEnv>) {
             .from(memberships).innerJoin(roles, eq(memberships.roleId, roles.id))
             .where(and(eq(memberships.userId, userId), inArray(memberships.status, ['active', 'invited'])));
 
-        const blockerTenantIds: string[] = [];
+        // Collect workspaces where user is sole owner with no other human members → archive them
         const soloTenantIds: string[] = [];
 
         for (const m of userMemberships) {
             if (m.roleName !== 'owner') continue;
 
-            const [{ totalMembers }] = await db
-                .select({ totalMembers: count() }).from(memberships)
-                .where(and(eq(memberships.tenantId, m.tenantId), inArray(memberships.status, ['active', 'invited']), ne(memberships.userId, userId)));
+            // Count only human members (exclude agent memberships) other than the current user
+            const [{ humanMembers }] = await db
+                .select({ humanMembers: count() }).from(memberships)
+                .where(and(
+                    eq(memberships.tenantId, m.tenantId),
+                    inArray(memberships.status, ['active', 'invited']),
+                    ne(memberships.userId, userId),
+                    eq(memberships.memberType, 'human'),
+                ));
 
-            if (totalMembers === 0) {
-                soloTenantIds.push(m.tenantId);
-            } else {
-                const [{ otherOwners }] = await db
-                    .select({ otherOwners: count() }).from(memberships)
-                    .innerJoin(roles, eq(memberships.roleId, roles.id))
-                    .where(and(eq(memberships.tenantId, m.tenantId), eq(roles.name, 'owner'), inArray(memberships.status, ['active']), ne(memberships.userId, userId)));
-                if (otherOwners === 0) blockerTenantIds.push(m.tenantId);
-            }
+            if (humanMembers === 0) soloTenantIds.push(m.tenantId);
         }
 
-        if (blockerTenantIds.length > 0) {
-            const blockerTenants = await db
-                .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
-                .from(tenants).where(inArray(tenants.id, blockerTenantIds));
-            return c.json({
-                error: 'You are the sole owner of one or more workspaces that have other members. Transfer ownership or remove all members before deleting your account.',
-                code: 'SOLE_OWNER_BLOCKER',
-                workspaces: blockerTenants.map((t: { id: string; name: string; slug: string }) => ({ id: t.id, name: t.name, slug: t.slug })),
-            }, 409);
-        }
-
+        // Archive all workspaces where user is the sole human member
         if (soloTenantIds.length > 0) {
             const now = new Date();
             await db.update(tenants).set({ status: 'deleted', deletedAt: now }).where(inArray(tenants.id, soloTenantIds));
@@ -75,6 +63,7 @@ export async function handleDeleteAccount(c: Context<AppEnv>) {
                 .where(and(inArray(webhookEndpoints.tenantId, soloTenantIds), eq(webhookEndpoints.status, 'active')));
         }
 
+        // Suspend all user memberships across all workspaces
         if (userMemberships.length > 0) {
             await db.update(memberships).set({ status: 'suspended' })
                 .where(inArray(memberships.id, userMemberships.map((m: { membershipId: string }) => m.membershipId)));

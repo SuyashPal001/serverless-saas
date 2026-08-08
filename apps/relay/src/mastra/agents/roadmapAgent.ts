@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { roadmapWorkspace } from '../workspace/roadmapWorkspace.js'
 import { roadmapWorkflow } from '../workflows/roadmapWorkflow.js'
 import { fetchPRD } from '../tools/fetchPRD.js'
@@ -24,7 +24,7 @@ When only a prdId is provided in context:
 - Call save-plan with the result
 
 Never generate tasks — that is a separate phase.`,
-  model: saarthiModel,
+  model: saarthiCloudModel,
   workspace: roadmapWorkspace,
   workflows: { roadmap: roadmapWorkflow },
   tools: { fetchPRD, savePlan },

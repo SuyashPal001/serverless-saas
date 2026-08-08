@@ -1,15 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { agents, agentTemplates } from '@serverless-saas/database/schema/agents';
-import { agentSkills } from '@serverless-saas/database/schema/conversations';
-import { apiKeys } from '@serverless-saas/database/schema/access';
-import { eq, isNull, and, desc } from 'drizzle-orm';
+import { eq, isNull, and } from 'drizzle-orm';
 
 import type { AppEnv } from '../types';
 
@@ -116,126 +112,8 @@ onboardingRoutes.post('/complete', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
-    // Step 7: Seed default agent (Saarthi) for new tenant
-    // Note: if apiKeys insert fails, agents insert will throw FK error
-    // No rollback — acceptable for MVP, add transaction wrapper later
-
-    // Resolve system prompt from active published template (ADR-030).
-    // Falls back to hardcoded string if no published template exists.
-    const [publishedTemplate] = await db
-        .select({
-            systemPrompt: agentTemplates.systemPrompt,
-            tools: agentTemplates.tools,
-            model: agentTemplates.model,
-        })
-        .from(agentTemplates)
-        .where(eq(agentTemplates.status, 'published'))
-        .orderBy(desc(agentTemplates.version))
-        .limit(1);
-
-    if (!publishedTemplate) {
-        console.warn('[onboarding] No published agent template found, using fallback prompt');
-    }
-
-    const resolvedSystemPrompt = publishedTemplate
-        ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
-        : `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`;
-
-    const resolvedTools = publishedTemplate?.tools ?? [];
-    const resolvedModel = publishedTemplate?.model ?? null;
-
-    const rawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const keyHash = createHash('sha256').update(rawKey).digest('hex');
-
-    const [saarthiKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Saarthi API Key',
-        type: 'agent',
-        keyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-
-    const [saarthiAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'Saarthi',
-        type: 'custom',
-        status: 'active',
-        apiKeyId: saarthiKey.id,
-        model: resolvedModel,
-        createdBy: userId,
-    }).returning();
-
-    await db.insert(agentSkills).values({
-        agentId: saarthiAgent.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: resolvedSystemPrompt,
-        tools: resolvedTools,
-        status: 'active',
-    });
-
-    // Seed PM Agent as inactive — visible as locked on free plan, activated on upgrade
-    const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
-    const [pmKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'PM Agent API Key',
-        type: 'agent',
-        keyHash: pmKeyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [pmAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'PM Agent',
-        type: 'custom',
-        status: 'paused',
-        apiKeyId: pmKey.id,
-        createdBy: userId,
-    }).returning();
-    await db.insert(agentSkills).values({
-        agentId: pmAgent.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: 'You are a PM Agent that helps with product planning, PRDs, roadmaps, and task breakdowns.',
-        tools: [],
-        status: 'active',
-    });
-
-    // Seed Architect Agent as paused — visible in agent list, routes to architectAgent in relay
-    const archRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const archKeyHash = createHash('sha256').update(archRawKey).digest('hex');
-    const [archKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Architect API Key',
-        type: 'agent',
-        keyHash: archKeyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [archAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'Architect',
-        type: 'custom',
-        status: 'active',
-        apiKeyId: archKey.id,
-        createdBy: userId,
-    }).returning();
-    await db.insert(agentSkills).values({
-        agentId: archAgent.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: 'You are the technical architect. Always call retrieve_knowledge before answering any technical question about the codebase.',
-        tools: [],
-        status: 'active',
-    });
-
-    // Step 6: Return response
-    return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+    // Step 7: Return response — no agents seeded; user picks from catalog on first login
+    return c.json({ tenantId, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
 
 export { onboardingRoutes };

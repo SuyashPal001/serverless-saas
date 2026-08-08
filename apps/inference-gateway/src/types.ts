@@ -51,6 +51,8 @@ export interface OpenAIRequest {
   top_p?: number;
   tools?: OpenAITool[];
   tool_choice?: OpenAIToolChoice;
+  thinkingBudget?: number; // Gemini-specific — mapped to generationConfig.thinkingConfig by VertexAdapter
+  response_format?: { type: 'json_object' | 'text' }; // mapped to responseMimeType for Gemini
 }
 
 export interface OpenAIUsage {
