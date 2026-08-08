@@ -112,13 +112,13 @@ vendorsRoutes.patch('/:id', async (c) => {
   const [updated] = await db.update(vendors).set(update).where(and(eq(vendors.id, id), eq(vendors.tenantId, tenantId))).returning();
 
   if (blacklistChanged) {
-    await db.insert(auditLog).values({
-      tenantId, actorId: userId, actorType: 'human',
+    db.insert(auditLog).values({
+      tenantId, actorId: userId ?? 'system', actorType: 'human',
       action: body.isBlacklisted ? 'vendor_blacklisted' : 'vendor_unblacklisted',
       resource: 'vendor', resourceId: id,
       metadata: { vendorName: updated.name, reason: update.blacklistReason ?? null },
       traceId: (c.get('traceId') as string | undefined) ?? '',
-    });
+    }).catch((err: unknown) => console.error('Audit log write failed:', err));
   }
 
   return c.json(updated);

@@ -36,6 +36,7 @@ tenderContractRoutes.post('/internal/tender/contract/generate', async (c) => {
     if (message.includes('no awarded bidder')) return c.json({ error: message }, 409)
     if (message.includes('no financial finding')) return c.json({ error: message }, 409)
     if (message.includes('no accepted contract source sections')) return c.json({ error: message }, 409)
+    if (message.includes('vendor is blacklisted')) return c.json({ error: message }, 422)
     if (code === '23505' || message.includes('tender_contracts_tender_id_version_unique')) {
       return c.json({ error: 'A newer contract version was generated concurrently — please refresh and try again.' }, 409)
     }

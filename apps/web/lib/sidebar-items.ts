@@ -19,6 +19,7 @@ import {
     LayoutList,
     Database,
     ClipboardList,
+    BookUser,
 } from "lucide-react";
 import React from 'react';
 
@@ -64,6 +65,7 @@ export function getSidebarItems(
     items.push({ label: "Datasource", href: `${base}/lakehouse`, icon: Database });
     if (FEATURE_FLAGS.pensionReview) items.push({ label: "Pension Review", href: `${base}/pension-review`, icon: ClipboardList });
     if (FEATURE_FLAGS.tenderEvaluation) items.push({ label: "Tender Evaluation", href: `${base}/tender-evaluation`, icon: ClipboardList });
+    if (FEATURE_FLAGS.vendorDatabase) items.push({ label: "Vendor Database", href: `${base}/vendors`, icon: BookUser });
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
