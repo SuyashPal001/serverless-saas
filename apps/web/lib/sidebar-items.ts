@@ -17,6 +17,8 @@ import {
     UserCircle,
     KanbanSquare,
     LayoutList,
+    Database,
+    ClipboardList,
 } from "lucide-react";
 import React from 'react';
 
@@ -32,6 +34,8 @@ export interface SidebarItem {
     sectionLabel?: string;
     isDivider?: boolean;
 }
+
+import { FEATURE_FLAGS } from './feature-flags';
 
 export function getSidebarItems(
     role: string,
@@ -54,9 +58,12 @@ export function getSidebarItems(
     // 1. MAIN SECTION — all users
     items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
     items.push({ label: "Agents", href: `${base}/agents`, icon: Bot });
-    items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
-    items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
-    items.push({ label: "Files", href: `${base}/files`, icon: FolderOpen });
+    if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
+    if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
+    items.push({ label: "Documents", href: `${base}/files`, icon: FolderOpen });
+    items.push({ label: "Datasource", href: `${base}/lakehouse`, icon: Database });
+    if (FEATURE_FLAGS.pensionReview) items.push({ label: "Pension Review", href: `${base}/pension-review`, icon: ClipboardList });
+    if (FEATURE_FLAGS.tenderEvaluation) items.push({ label: "Tender Evaluation", href: `${base}/tender-evaluation`, icon: ClipboardList });
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 

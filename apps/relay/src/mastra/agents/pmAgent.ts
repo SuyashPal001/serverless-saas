@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 import { tenantContextSchema } from '../context.js'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
 import { prdAgent } from './prdAgent.js'
@@ -40,7 +40,7 @@ export const pmAgent = new Agent({
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`,
   requestContextSchema: tenantContextSchema,
-  model: saarthiModel,
+  model: saarthiCloudModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },

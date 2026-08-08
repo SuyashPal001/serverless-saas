@@ -16,16 +16,23 @@ interface AgentInfoCardProps {
     isLoading: boolean;
 }
 
+function resolveModelLabel(name: string): string {
+    const n = (name ?? "").toLowerCase();
+    const isTender = n.includes("authoring") || n.includes("document intelligence") ||
+        n.includes("bid evaluation") || n.includes("procurement") ||
+        n.includes("tender") || n.includes("advisor");
+    const isPension = n.includes("paras") || n.includes("pension");
+    if (isTender) return "Saarthi Sovereign LLM";
+    if (isPension) return "AI-PARAS v1";
+    return "Saarthi AI";
+}
+
 export function AgentInfoCard({ agent, providers, isLoading }: AgentInfoCardProps) {
     const formattedDate = agent
         ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date(agent.createdAt))
         : "";
 
-    const resolvedModel =
-        providers.find((p) => p.id === agent?.llmProviderId)?.displayName
-        || providers.find((p) => p.isDefault)?.displayName
-        || agent?.model
-        || "Not set";
+    const resolvedModel = resolveModelLabel(agent?.name ?? "");
 
     return (
         <Card>

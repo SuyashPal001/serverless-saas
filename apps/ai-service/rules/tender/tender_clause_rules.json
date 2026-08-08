@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "domain": "GFR 2017 / CVC — Mandatory Clause & Annexure Selection",
+  "mandatoryClauses": [
+    {
+      "id": "MC-EMD",
+      "clauseNo": "8.10",
+      "libraryRef": "CL-021",
+      "title": "Earnest Money Deposit (EMD)",
+      "categories": ["goods", "works"],
+      "minValueInr": 0,
+      "reason": "EMD is mandatory for goods/works procurement per GFR Rule 170 (2% of estimated value); MSE-registered bidders are exempt per MSME Act Section 11B."
+    },
+    {
+      "id": "MC-PBG",
+      "clauseNo": "8.2",
+      "libraryRef": "CL-015",
+      "title": "Performance Bank Guarantee (PBG)",
+      "categories": null,
+      "minValueInr": 0,
+      "reason": "PBG is mandatory on contract award per GFR Rule 171, regardless of category or value."
+    },
+    {
+      "id": "MC-IP",
+      "clauseNo": "8.11",
+      "libraryRef": "CL-022",
+      "title": "Integrity Pact",
+      "categories": null,
+      "minValueInr": 10000000,
+      "reason": "CVC guidelines mandate an Integrity Pact for tenders valued at Rs. 1 Crore or above."
+    },
+    {
+      "id": "MC-MSE",
+      "clauseNo": "8.12",
+      "libraryRef": "CL-023",
+      "title": "MSE Participation & Exemption",
+      "categories": null,
+      "minValueInr": 0,
+      "reason": "Public Procurement Policy for MSEs Order 2012 — always stated regardless of category or value."
+    }
+  ],
+  "annexureSets": {
+    "goods":    [{ "sectionNo": "S9", "title": "General Conditions of Contract (GCC) — Goods",    "libraryRef": "CL-024" }],
+    "services": [{ "sectionNo": "S9", "title": "General Terms & Conditions (GTC) — Services", "libraryRef": "CL-025" }],
+    "works":    [{ "sectionNo": "S9", "title": "General Terms & Conditions (GTC) — Works",    "libraryRef": "CL-026" }]
+  },
+  "commercialAnnexure": { "sectionNo": "S10", "title": "Commercial Annexures", "libraryRef": "CL-027" }
+}

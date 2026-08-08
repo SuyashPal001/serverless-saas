@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 
 import { tenantContextSchema } from '../context.js'
-import { saarthiModel } from '../model.js'
+import { saarthiCloudModel } from '../model.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
@@ -38,6 +38,6 @@ You know about:
   requestContextSchema: tenantContextSchema,
 
   tools: { retrieve_knowledge: retrieveKnowledge },
-  model: saarthiModel,
+  model: saarthiCloudModel,
   memory: architectMemory,
 })

@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { CreateAgentDialog } from "./CreateAgentDialog";
 import { AgentCard } from "./AgentCard";
+import { AgentTemplatePicker } from "./AgentTemplatePicker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Plus } from "lucide-react";
@@ -72,25 +73,7 @@ export function AgentsView() {
                         ))}
                 </div>
             ) : (
-                <div className="flex h-[350px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
-                    <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
-                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-4">
-                            <AlertCircle className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-foreground">No agents found</h3>
-                        <p className="mb-6 mt-2 text-sm text-muted-foreground">
-                            {isPlatformAdmin ? "No agents yet. Create your first agent." : "No active agents available at the moment."}
-                        </p>
-                        {isPlatformAdmin && (
-                            <CreateAgentDialog>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Create Agent
-                                </Button>
-                            </CreateAgentDialog>
-                        )}
-                    </div>
-                </div>
+                <AgentTemplatePicker />
             )}
         </div>
     );
