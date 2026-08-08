@@ -104,6 +104,7 @@ export const bidders = pgTable('bidders', {
   name:         text('name').notNull(),
   displayLabel: text('display_label').notNull(),        // "Bidder A"
   contactEmail: text('contact_email'),
+  vendorId:     uuid('vendor_id'), // nullable — links to vendors.id, added in vendor.ts to avoid a circular import; FK enforced at the DB level via the migration below, not via a Drizzle .references() call here
   documentIds:  jsonb('document_ids').notNull().default('[]'), // string[] of uploaded doc IDs
   status:       bidStatusEnum('status').notNull().default('submitted'),
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

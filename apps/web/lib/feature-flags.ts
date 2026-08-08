@@ -8,4 +8,5 @@ export const FEATURE_FLAGS = {
     chatVoice:        false,  // Voice orb / mic button in chat
     pensionReview:    false,  // AI-PARAS pension pre-scrutiny queue
     tenderEvaluation: true,   // Government tender evaluation demo
+    vendorDatabase:   true,   // Vendor master database (blacklist, OEM authorization, participation history)
 } as const;
