@@ -31,7 +31,7 @@ export async function generateContract(tenderId: string, tenantId: string): Prom
   const finding = awardedRow.finding
 
   if (awardedBidder.vendorId) {
-    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, awardedBidder.vendorId))
+    const [vendor] = await db.select().from(vendors).where(and(eq(vendors.id, awardedBidder.vendorId), eq(vendors.tenantId, tenantId)))
     const gate = checkVendorBlacklist(vendor ? { isBlacklisted: vendor.isBlacklisted, blacklistReason: vendor.blacklistReason } : null)
     if (gate.blocked) {
       await writeTenderAuditLog({
