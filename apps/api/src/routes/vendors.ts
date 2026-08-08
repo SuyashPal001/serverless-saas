@@ -107,7 +107,7 @@ vendorsRoutes.patch('/:id', async (c) => {
     update.blacklistedAt = body.isBlacklisted ? new Date() : null;
   }
 
-  const [updated] = await db.update(vendors).set(update).where(eq(vendors.id, id)).returning();
+  const [updated] = await db.update(vendors).set(update).where(and(eq(vendors.id, id), eq(vendors.tenantId, tenantId))).returning();
 
   if (blacklistChanged) {
     await db.insert(auditLog).values({
